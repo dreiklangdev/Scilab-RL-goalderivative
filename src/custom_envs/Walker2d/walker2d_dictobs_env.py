@@ -79,26 +79,17 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         # distance = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
         # success = (distance <= self.distance_threshold).astype(np.float64)
         
-
-        # distance = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
-
         reward = 1
 
         velocity = achieved_goal[0]
         height = achieved_goal[1]
 
-        # sparse reward(binary 0,1) vs. sparse penalty/reward(-1,1)
-        # rewards[velocity >= self.goal_velocity_range[0] and velocity <= self.goal_velocity_range[1]] = 1
-
         # neutralize(0) vs. punish(-1)
-
         if velocity < self.goal_velocity_range[0] or velocity > self.goal_velocity_range[1]:
             reward = 0
         if height < 0.8:
             reward = 0
 
-        # success = (distance <= self.distance_threshold).astype(np.float64)
-        # success = np.array(velocity > self.goal_velocity_range[0] and velocity < self.goal_velocity_range[1]).astype(np.float64)
         # penalty / punishment (may lead to non-action? ("fear of action"))
         # (0,1) vs. (-1,1) vs. (-k,1) vs. (-1,k)
 
@@ -151,12 +142,12 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
             # self.goal_threshold = max(self.goal_threshold, 0.1)
 
-
-            print('termination!')
-            print('termination: ep_rewards_mean', self.ep_rewards_mean)
-            print('termination: ep_num_steps', self.ep_num_steps)
-            print('goal_velocity_range', self.goal_velocity_range)
-            print('ep_velocity_mean', self.ep_velocity_mean)
+            if False:
+                print('\ntermination!')
+                print('ep_rewards_mean', self.ep_rewards_mean)
+                print('ep_num_steps', self.ep_num_steps)
+                print('goal_velocity_range', self.goal_velocity_range)
+                print('ep_velocity_mean', self.ep_velocity_mean)
 
             self.ep_rewards_mean = 0
             self.ep_num_steps = 0
