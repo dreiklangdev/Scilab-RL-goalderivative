@@ -156,6 +156,12 @@ def register_custom_envs():
 
     register_metaworld_envs()
 
+    register(
+        id="le-walker2d-v4",
+        entry_point='custom_envs.Walker2d.walker2d_dictobs_env:Walker2dDictObsEnv',
+        max_episode_steps=1000,
+    )
+
 
 def register_metaworld_envs():
     for env_name, env_class in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE.items():

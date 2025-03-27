@@ -159,7 +159,7 @@ def main(cfg: DictConfig) -> (float, int):
         training_finished = False
         total_steps = cfg.eval_after_n_steps * cfg.n_epochs
         try:
-            baseline.learn(total_timesteps=total_steps, callback=callback, log_interval=None)
+            baseline.learn(total_timesteps=total_steps, callback=callback, log_interval=None, progress_bar=True)
             training_finished = True
             logger.info("Training finished!")
             # Save model when training is finished
