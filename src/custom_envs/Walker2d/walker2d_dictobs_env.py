@@ -38,9 +38,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         print('walker-2d initialized.')
-        self.goal_velocity_range = (0.3, 0.5)
+        self.inaccuracy_threshold = 0.1
+
         self.ep_rewards_mean: float = 0
-        self.ep_velocity_mean: float = 0
+        self.ep_achieved_goal_mean: float = 0
+        self.ep_inaccuracy_mean: float = 0
         self.ep_num_steps: int = 0
 
 
@@ -53,50 +55,55 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             position = position[1:]
 
         observation = np.concatenate((position, velocity)).ravel()
+        # torso-height, torso-angle, torso-velocity
+        # achieved_goal = np.array((position[0], position[1], velocity[0]))
+        achieved_goal = np.array((position[0], velocity[0]))
+        # TODO manually find perfect desire! (how?)
+        desired_goal = np.array((1.1, 0.7))
+        min_goal = np.array((0.8, 0.5))
+        max_goal = np.array((2, 0.9))
 
-        min_z, max_z = self._healthy_z_range
-
-        # achieved_goal = np.concatenate(([position[1]], [velocity[0]])).ravel()
-        achieved_goal = np.array((velocity[0], position[0]))
-        desired_goal = self.goal_velocity_range[0]
+        # manual normalization (obs fairness)
+        # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
+        achieved_goal = (achieved_goal - min_goal) / (max_goal - min_goal)
+        achieved_goal[achieved_goal < 0] = 0
+        achieved_goal[achieved_goal > 1] = 1
+        desired_goal = (desired_goal - min_goal) / (max_goal - min_goal)
+        desired_goal[desired_goal < 0] = 0
+        desired_goal[desired_goal > 1] = 1
 
         obs = dict(
+                observation=observation,
                 achieved_goal=achieved_goal,
                 desired_goal=desired_goal,
-                observation=observation,
             )
 
         return obs
-
-
-    # only needed with HER
 
     # TODO single-goal, then multi-goal
     def compute_reward(
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        # distance = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
-        # success = (distance <= self.distance_threshold).astype(np.float64)
-        
-        reward = 1
+        # closed-merged accuracy/distance vs. open-separate intervals
+        # eg. "exactly" (better for episodic?) vs. "at-least" (tolerance better for infinite?)
+        # TODO achieved_goal obs norm: weighting/normalization?
+        # scalar accuracy training: too strict? ( no fine-tuning possible, but minimal/simple!)
+        # distance increases with num_obs
 
-        velocity = achieved_goal[0]
-        height = achieved_goal[1]
+        inaccuracy = np.linalg.norm(achieved_goal - desired_goal, axis=-1)        
+        self.ep_inaccuracy_mean = ((self.ep_num_steps * self.ep_inaccuracy_mean) + np.mean(inaccuracy)) / (self.ep_num_steps + 1)
 
-        # neutralize(0) vs. punish(-1)
-        if velocity < self.goal_velocity_range[0] or velocity > self.goal_velocity_range[1]:
-            reward = 0
-        if height < 0.8:
-            reward = 0
-
-        # penalty / punishment (may lead to non-action? ("fear of action"))
-        # (0,1) vs. (-1,1) vs. (-k,1) vs. (-1,k)
+        # threshold-sparse: binary vs. continuous
+        # neg. rewards (episodic) vs. pos. rewards (continuous)
+        # reward = max(self.init_inaccuracy - inaccuracy, 0)
+        reward = (inaccuracy < self.inaccuracy_threshold)
 
         return np.float64(reward)
 
 
     def step(self, action):
+
         # x_position_before = self.data.qpos[0]
         self.do_simulation(action, self.frame_skip)
         # x_position_after = self.data.qpos[0]
@@ -119,18 +126,28 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         obs = self._get_obs()
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
 
-        velocity = obs['achieved_goal'][0]
-        height = obs['achieved_goal'][1]
-
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
-        self.ep_velocity_mean = ((self.ep_num_steps * self.ep_velocity_mean) + velocity) / (self.ep_num_steps + 1)
-        self.ep_num_steps = self.ep_num_steps + 1
+        self.ep_achieved_goal_mean = ((self.ep_num_steps * self.ep_achieved_goal_mean) + obs['achieved_goal']) / (self.ep_num_steps + 1)
+        self.ep_num_steps += 1
 
         # neutral termination (minimal?)
         # terminated = self.terminated or obs['achieved_goal'] < -0.3
-        terminated = height < 0.3
+        # accuracy termination?
+        # problem: start may already be terminating state
+        # inaccuracy = np.linalg.norm(obs['achieved_goal'] - obs['desired_goal'], axis=-1)
 
+        height = obs['observation'][0]
+        velocity = obs['observation'][1]
+        terminated = 0
 
+        if height < 0.8:
+            print('height too low! ', height)
+            terminated = 1
+            
+        if velocity < -0.3:
+            print('negative velocity! ', velocity)
+            terminated = 1
+        
         if terminated:
 
             # adaptive goal?
@@ -142,18 +159,29 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
             # self.goal_threshold = max(self.goal_threshold, 0.1)
 
-            if False:
-                print('\ntermination!')
-                print('ep_rewards_mean', self.ep_rewards_mean)
+            if True: # TODO move to info dict?
                 print('ep_num_steps', self.ep_num_steps)
-                print('goal_velocity_range', self.goal_velocity_range)
-                print('ep_velocity_mean', self.ep_velocity_mean)
+                print('ep_desired_goal', obs['desired_goal'])
+                print('ep_achieved_goal_last', obs['achieved_goal'])
+                print('ep_achieved_goal_mean', self.ep_achieved_goal_mean)
+                print('ep_inaccuracy_mean', self.ep_inaccuracy_mean)
+                print('ep_rewards_mean', self.ep_rewards_mean)
+                print('\n')
 
-            self.ep_rewards_mean = 0
             self.ep_num_steps = 0
+            self.ep_achieved_goal_mean = 0
+            self.ep_inaccuracy_mean = 0
+            self.ep_rewards_mean = 0
 
         if self.render_mode == "human":
             self.render()
 
         result = obs, reward, terminated, False, info
         return result
+
+    def reset_model(self):
+
+        obs = self._get_obs()
+        self.init_inaccuracy = np.linalg.norm(obs['achieved_goal'] - obs['desired_goal'], axis=-1)
+
+        return super().reset_model()
