@@ -159,7 +159,7 @@ def register_custom_envs():
     register(
         id="le-walker2d-v4",
         entry_point='custom_envs.Walker2d.walker2d_dictobs_env:Walker2dDictObsEnv',
-        max_episode_steps=1000,
+        max_episode_steps=2000,
     )
 
 

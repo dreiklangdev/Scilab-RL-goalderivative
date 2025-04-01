@@ -57,20 +57,23 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         observation = np.concatenate((position, velocity)).ravel()
         # torso-height, torso-angle, torso-velocity
         # achieved_goal = np.array((position[0], position[1], velocity[0]))
-        achieved_goal = np.array((position[0], velocity[0]))
+        achieved_goal = np.array((velocity[0]))
         # TODO manually find perfect desire! (how?)
-        desired_goal = np.array((1.1, 0.7))
-        min_goal = np.array((0.8, 0.5))
-        max_goal = np.array((2, 0.9))
+        desired_goal = np.array((1.0))
+
+        # min_goal = np.array((0.5))
+        # max_goal = np.array((0.9))
 
         # manual normalization (obs fairness)
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
-        achieved_goal = (achieved_goal - min_goal) / (max_goal - min_goal)
-        achieved_goal[achieved_goal < 0] = 0
-        achieved_goal[achieved_goal > 1] = 1
-        desired_goal = (desired_goal - min_goal) / (max_goal - min_goal)
-        desired_goal[desired_goal < 0] = 0
-        desired_goal[desired_goal > 1] = 1
+        # achieved_goal = (achieved_goal - min_goal) / (max_goal - min_goal)
+        # achieved_goal = np.array([achieved_goal])
+        # achieved_goal[achieved_goal < 0] = 0
+        # achieved_goal[achieved_goal > 1] = 1
+        # desired_goal = (desired_goal - min_goal) / (max_goal - min_goal)
+        # desired_goal = np.array([desired_goal])
+        # desired_goal[desired_goal < 0] = 0
+        # desired_goal[desired_goal > 1] = 1
 
         obs = dict(
                 observation=observation,
@@ -91,7 +94,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         # scalar accuracy training: too strict? ( no fine-tuning possible, but minimal/simple!)
         # distance increases with num_obs
 
-        inaccuracy = np.linalg.norm(achieved_goal - desired_goal, axis=-1)        
+        goal_diff = achieved_goal - desired_goal
+        goal_diff = np.array([goal_diff])
+
+        inaccuracy = np.linalg.norm(goal_diff, axis=-1)        
         self.ep_inaccuracy_mean = ((self.ep_num_steps * self.ep_inaccuracy_mean) + np.mean(inaccuracy)) / (self.ep_num_steps + 1)
 
         # threshold-sparse: binary vs. continuous
@@ -103,6 +109,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
 
     def step(self, action):
+
+        # reduce possible torque
+        action = np.clip(action, -0.5, 0.5)
 
         # x_position_before = self.data.qpos[0]
         self.do_simulation(action, self.frame_skip)
@@ -124,6 +133,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         info = {}
         obs = self._get_obs()
+        # print(dir(self.data))
+        
+        n_contact = self.data.ncon
+
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -138,16 +151,22 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         height = obs['observation'][0]
         velocity = obs['observation'][1]
+
         terminated = 0
 
+        # decrease search space
         if height < 0.8:
             print('height too low! ', height)
             terminated = 1
-            
+
         if velocity < -0.3:
             print('negative velocity! ', velocity)
             terminated = 1
-        
+
+        if self.ep_num_steps > 150 and n_contact != 1:
+            print('not only 1 foot! ', n_contact)
+            terminated = 1
+
         if terminated:
 
             # adaptive goal?
@@ -162,7 +181,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             if True: # TODO move to info dict?
                 print('ep_num_steps', self.ep_num_steps)
                 print('ep_desired_goal', obs['desired_goal'])
-                print('ep_achieved_goal_last', obs['achieved_goal'])
+                print('ep_achieved_goal_end', obs['achieved_goal'])
                 print('ep_achieved_goal_mean', self.ep_achieved_goal_mean)
                 print('ep_inaccuracy_mean', self.ep_inaccuracy_mean)
                 print('ep_rewards_mean', self.ep_rewards_mean)
@@ -180,8 +199,4 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         return result
 
     def reset_model(self):
-
-        obs = self._get_obs()
-        self.init_inaccuracy = np.linalg.norm(obs['achieved_goal'] - obs['desired_goal'], axis=-1)
-
         return super().reset_model()
