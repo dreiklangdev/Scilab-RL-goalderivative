@@ -2,14 +2,11 @@
 from gymnasium import utils
 from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
-import gymnasium as gym
 import numpy as np
 
-# gym.pprint_registry()
+THRESHOLD_ACCURACY = 0.1
+GOAL_VELOCITY = 1.0
 
-
-# TODO observations: box to dict
-# TODO HER
 # TODO continue training with existent data?
 
 # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
@@ -38,14 +35,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         print('walker-2d initialized.')
-        self.inaccuracy_threshold = 0.1
-
         self.ep_rewards_mean: float = 0
         self.ep_achieved_goal_mean: float = 0
-        self.ep_inaccuracy_mean: float = 0
         self.ep_num_steps: int = 0
-        self.ep_goal_counter: int = 0
-
+        self.ep_first_reward_state = None
 
     def _get_obs(self):
 
@@ -57,9 +50,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         observation = np.concatenate((position, velocity)).ravel()
 
-        # TODO manually find perfect desire! (how?)
+        # TODO manually find (1-dim) perfect desire! (how?)
         achieved_goal = np.array((velocity[0]))
-        desired_goal = np.array((1.5))
+        desired_goal = np.array((GOAL_VELOCITY))
 
         obs = dict(
                 observation=observation,
@@ -69,37 +62,20 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         return obs
 
+
     def compute_reward(
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        reward = achieved_goal > desired_goal
-        reward = np.logical_and.reduce(reward, axis=-1).astype(np.float64)
+        goal_diff = np.array([achieved_goal - desired_goal])
+        # distance/accuracy (~min-max, != logical_and(), > at-least-only (needs control from both sides))
+        accuracy = np.linalg.norm(goal_diff, axis=-1)
+        reward = (accuracy < THRESHOLD_ACCURACY).astype(np.float64)
         return reward
 
 
     def step(self, action):
-
-        # reduce possible torque
-        # action = np.clip(action, -0.5, 0.5)
-
-        # x_position_before = self.data.qpos[0]
         self.do_simulation(action, self.frame_skip)
-        # x_position_after = self.data.qpos[0]
-        # x_velocity = (x_position_after - x_position_before) / self.dt
-
-        # ctrl_cost = self.control_cost(action)
-
-        # forward_reward = self._forward_reward_weight * x_velocity
-        # healthy_reward = self.healthy_reward
-
-        # rewards = forward_reward + healthy_reward
-        # costs = ctrl_cost
-
-        # info = {
-        #     "x_position": x_position_after,
-        #     "x_velocity": x_velocity,
-        # }
 
         info = {}
         obs = self._get_obs()
@@ -118,36 +94,32 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         terminated = 0
 
-        # decrease search space
-        if height < 0.8:
+        # decrease search/interaction space (find essential terminations)
+        # imitation vs. direction (guidance, experience)
+        # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
+        if height < 0.9:
             print('height too low! ', height)
             terminated = 1
 
         if velocity < -0.3:
             print('negative velocity! ', velocity)
             terminated = 1
-
-        if self.ep_num_steps > 500 and n_contact != 1:
-            print('not only 1 foot! ', n_contact)
-            terminated = 1
+            
 
         if terminated:
-
             reward = 0
 
             if True: # TODO move to info dict?
+                info = {'ep_num_steps': self.ep_num_steps}
                 print('ep_num_steps', self.ep_num_steps)
                 print('ep_desired_goal', obs['desired_goal'])
                 print('ep_achieved_goal_end', obs['achieved_goal'])
                 print('ep_achieved_goal_mean', self.ep_achieved_goal_mean)
-                print('ep_inaccuracy_mean', self.ep_inaccuracy_mean)
                 print('ep_rewards_mean', self.ep_rewards_mean)
                 print('\n')
 
-            self.ep_num_steps = 0
-            self.ep_achieved_goal_mean = 0
-            self.ep_inaccuracy_mean = 0
-            self.ep_rewards_mean = 0
+        if reward:
+            self.ep_first_reward_state = (self.data.qpos.ravel().copy(), self.data.qvel.ravel().copy())
 
         if self.render_mode == "human":
             self.render()
@@ -157,4 +129,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
 
     def reset_model(self):
-        return super().reset_model()
+
+        obs = super().reset_model()
+        
+        self.ep_num_steps = 0
+        self.ep_achieved_goal_mean = 0
+        self.ep_rewards_mean = 0
+
+        return obs
