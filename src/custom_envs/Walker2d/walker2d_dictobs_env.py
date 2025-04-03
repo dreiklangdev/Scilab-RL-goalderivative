@@ -4,28 +4,36 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
 import numpy as np
 
-THRESHOLD_ACCURACY = 0.1
-# TODO include backwards? (similar enough?)
-INTERVAL_SAMPLE_GOAL_VELOCITY = [0.1, 2.0]
-INTERVAL_SAMPLE_GOAL_VELOCITY = [1.0, 1.0]
+THRESHOLD_ACCURACY_START = 0.1
+ADAPTIVE_ACCURACY_THRESHOLD = True
+# TODO how to find perfect sparsity? (only manually?)
+ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY HYPER PARAM - adapts threshold for specific rewards mean (hold constant difficulty level)
+ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # how fast it adapts (how well it holds the rewards mean (=sparsity)) 
 
-# TODO continue training with existent data?
+# TODO include neg. backwards? (similar enough?)
+# recognize impossible goal comps?
+INTERVAL_SAMPLE_GOALS = np.array([
+     # height, velocity
+    [0.8, 1.0], # min
+    [2.0, 2.0], # max
+])
+
 
 # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
 # https://gymnasium.farama.org/environments/mujoco/walker2d/
 # src/custom_envs/maze/ant_env.py
 # https://scilab-rl.github.io/Scilab-RL/wiki/Restore-a-saved-policy.html
-
 # https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/mujoco/walker2d_v4.py
 # extend (vs wrapper)
 class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
+
 
     def __init__(self):
 
         Walker2dEnv.__init__(self, exclude_current_positions_from_observation=True)
 
         orig_obspace = self.observation_space
-        obspace = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
+        obspace = spaces.Box(-np.inf, np.inf, shape=(INTERVAL_SAMPLE_GOALS.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -36,13 +44,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             )
         )
 
-        print('walker-2d initialized.')
-        self.ep_rewards_mean: float = 0
-        self.ep_achieved_goal_mean: float = 0
-        self.ep_num_steps: int = 0
-        self.first_reward_state = None
-        self.ep_first_reward_step: int = -1
-        self.ep_goal_velocity: float = np.random.uniform(INTERVAL_SAMPLE_GOAL_VELOCITY[0], INTERVAL_SAMPLE_GOAL_VELOCITY[1])
+        self.ep_threshold_accuracy = THRESHOLD_ACCURACY_START
+        self._reset_kpi()
+        print('le-walker-2d initialized.')
+
 
     def _get_obs(self):
 
@@ -54,31 +59,26 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         observation = np.concatenate((position, velocity)).ravel()
 
-        achieved_goal = np.array((velocity[0]))
-        # achieved_goal = np.array((position[0], velocity[0]))
-        desired_goal = np.array((self.ep_goal_velocity))
-
-        min_goal = np.array((0.8, 0.5))
-        max_goal = np.array((2, 0.9))
-
+        achieved_goal = np.array((position[0], velocity[0]))
+        achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.ep_desired_goal, INTERVAL_SAMPLE_GOALS[0], INTERVAL_SAMPLE_GOALS[1])
+        # print(achieved_goal)
 
         obs = dict(
                 observation=observation,
-                achieved_goal=achieved_goal,
-                desired_goal=desired_goal,
+                achieved_goal=achieved_goal_norm,
+                desired_goal=desired_goal_norm,
             )
 
         return obs
+    
 
-    def _normalize(self, achieved_goal, desired_goal):
+    def _normalize(self, achieved_goal, desired_goal, min_goal, max_goal):
         # manual normalization (obs fairness)
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
         achieved_goal = (achieved_goal - min_goal) / (max_goal - min_goal)
-        achieved_goal[achieved_goal < 0] = 0
-        achieved_goal[achieved_goal > 1] = 1
         desired_goal = (desired_goal - min_goal) / (max_goal - min_goal)
-        desired_goal[desired_goal < 0] = 0
-        desired_goal[desired_goal > 1] = 1
+        
+        return achieved_goal, desired_goal
 
 
     def compute_reward(
@@ -88,7 +88,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         goal_diff = np.array([achieved_goal - desired_goal])
         # distance/accuracy (~min-max, != logical_and(), > at-least-only (needs control from both sides))
         accuracy = np.linalg.norm(goal_diff, axis=-1)
-        reward = (accuracy < THRESHOLD_ACCURACY).astype(np.float64)
+        reward = (accuracy < self.ep_threshold_accuracy).astype(np.float64)
         return reward
 
 
@@ -96,27 +96,31 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.do_simulation(action, self.frame_skip)
 
         info = {}
-        obs = self._get_obs()
-        
-        n_contact = self.data.ncon
-
+        obs = self._get_obs()     
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
 
+        if reward and self.ep_first_reward_step < 0:
+            self.ep_first_reward_step = self.ep_num_steps
+
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
-        self.ep_achieved_goal_mean = ((self.ep_num_steps * self.ep_achieved_goal_mean) + obs['achieved_goal']) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
-        
-        # difficult
+
+        if ADAPTIVE_ACCURACY_THRESHOLD:
+            if self.ep_rewards_mean > ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN:
+                self.ep_threshold_accuracy -= ADAPTIVE_ACCURACY_THRESHOLD_STEP
+            else:
+                self.ep_threshold_accuracy += ADAPTIVE_ACCURACY_THRESHOLD_STEP
+
+        # too difficult
         terminated = False
-        # easy
+        # too easy
         truncated = False
 
         # decrease search/interaction space (find essential terminations)
         # imitation vs. direction (guidance, experience)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
-
         height = obs['observation'][0]
-        if height < 0.3:
+        if height < 0.7:
             print('height too low! ', height)
             terminated = True
             reward = 0
@@ -127,54 +131,44 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             terminated = True
             reward = 0
 
-        mean_action = np.mean(np.abs(action))
-        if mean_action < 0.001:
-            print('non-activity!', mean_action)
+        mean_velocity_all = np.mean(np.abs(obs['observation']))
+        if mean_velocity_all < 0.15:
+            print('no movement!', mean_velocity_all)
             terminated = True
             reward = 0
 
-        if self.ep_num_steps > 1500:
+        if self.ep_num_steps > 1000:
             print('truncated!')
             truncated = True
 
         # ---------
 
-        if reward and self.ep_first_reward_step < 0:
-            self.ep_first_reward_step = self.ep_num_steps
-
-            if not self.first_reward_state:
-                self.first_reward_state = (self.data.qpos.ravel().copy(), self.data.qvel.ravel().copy())
-
         if self.render_mode == "human":
             self.render()
 
+        self.ep_obs_cur = obs
         result = obs, reward, terminated, truncated, info
         return result
  
 
     def reset_model(self):
-        obs_end = self._get_obs()
-        print('ep_num_steps', self.ep_num_steps)
-        print('ep_desired_goal', obs_end['desired_goal'])
-        print('ep_achieved_goal_end', obs_end['achieved_goal'])
-        print('ep_achieved_goal_mean', self.ep_achieved_goal_mean)
-        print('ep_rewards_mean', self.ep_rewards_mean)
-        print('first_reward_step', self.ep_first_reward_step)
-        print('\n')
+        if self.ep_obs_cur:
+            print('ep_first_reward_step', self.ep_first_reward_step)
+            print('ep_num_steps', self.ep_num_steps)
+            print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
+            print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
+            print('ep_rewards_mean', self.ep_rewards_mean)
+            print('ep_threshold_accuracy', self.ep_threshold_accuracy)
+            print('\n')
 
-        if False and self.first_reward_state:
-            # new promising init state
-            # TODO need noise?
-            self.set_state(self.first_reward_state[0], self.first_reward_state[1])
-            obs_end = self._get_obs()
+        ep_obs_init = super().reset_model()
+        self._reset_kpi()
+        return ep_obs_init
+    
 
-        else:
-            obs_init = super().reset_model()
-
-        self.ep_goal_velocity = np.random.uniform(INTERVAL_SAMPLE_GOAL_VELOCITY[0], INTERVAL_SAMPLE_GOAL_VELOCITY[1])
-        self.ep_num_steps = 0
-        self.ep_achieved_goal_mean = 0
-        self.ep_rewards_mean = 0
-        self.ep_first_reward_step = -1
-
-        return obs_init
+    def _reset_kpi(self):
+        self.ep_rewards_mean: float = 0
+        self.ep_num_steps: int = 0
+        self.ep_first_reward_step: int = -1
+        self.ep_desired_goal = np.random.uniform(INTERVAL_SAMPLE_GOALS[0], INTERVAL_SAMPLE_GOALS[1])
+        self.ep_obs_cur = None
