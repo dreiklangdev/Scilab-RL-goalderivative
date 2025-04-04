@@ -4,7 +4,7 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
 import numpy as np
 
-TRAJECTORY_HALVING = True
+TRAJECTORY_HALVING = False
 
 THRESHOLD_ACCURACY = 0.1 # wont be less
 ADAPTIVE_ACCURACY_THRESHOLD = True
@@ -12,13 +12,14 @@ ADAPTIVE_ACCURACY_THRESHOLD = True
 ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY HYPER PARAM - adapts threshold for specific rewards mean (hold constant difficulty level)
 ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # how fast it adapts (how well it holds the rewards mean (=sparsity)) 
 
-# recognize impossible goal comps?
+# TODO how to find perfect practice goalspace? (watch (at the start)! eg. too strict vs. too lax)
 # practice/train goalspace
-# = same as all possible/unconstrained states (esp. incl. start-state!)
+# = same as all(!) possible/unconstrained states (incl. start-state)
+# similar/transferable?
 INTERVAL_SAMPLE_GOALS_PRACTICE = np.array([
     # height, velocity
-    [0.8, 0.0], # min
-    [1.5, 1.5], # max
+    [0.8, -1.5], # min
+    [2.0, 3.0], # max
 ])
 
 
@@ -77,6 +78,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
     def _normalize(self, achieved_goal, desired_goal, min_goal, max_goal):
         # manual normalization (obs fairness)
+        # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
         achieved_goal = (achieved_goal - min_goal) / (max_goal - min_goal)
         desired_goal = (desired_goal - min_goal) / (max_goal - min_goal)
@@ -115,17 +117,17 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 self.ep_threshold_accuracy += ADAPTIVE_ACCURACY_THRESHOLD_STEP
             self.ep_threshold_accuracy = max(THRESHOLD_ACCURACY, self.ep_threshold_accuracy)
 
-        # too difficult
+        # outside practice
         terminated = False
-        # too easy
+        # no progress
         truncated = False
 
         # faster learning: decrease search/interaction space (find terminations (=constraints))
         # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
-        height = obs['observation'][0]
-        if height < 0.7:
-            print('height too low! ', height)
+        # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
+        if (obs['achieved_goal'] < 0).any() or (obs['achieved_goal'] > 1).any():
+            print('leaving practice space! ', obs['achieved_goal'])
             terminated = True
             reward = 0
 
@@ -135,21 +137,18 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             terminated = True
             reward = 0
 
-        velocity = obs['observation'][8]
-        if self.ep_num_steps > 300 and velocity < 0.3:
-            print('not forward!', velocity)
-            terminated = True
-            reward = 0
-
-
         mean_velocity_all = np.mean(np.abs(obs['observation']))
-        if mean_velocity_all < 0.2:
-            print('standing still!', mean_velocity_all)
-            terminated = True
-            reward = 0
+        # if mean_velocity_all < 0.2:
+        #     print('standing still!', mean_velocity_all)
+        #     terminated = True
+        #     reward = 0
 
         if self.ep_num_steps > 1000:
             print('truncated!')
+            truncated = True
+
+        height = obs['observation'][0]
+        if height < 0.3:
             truncated = True
 
         # ---------
