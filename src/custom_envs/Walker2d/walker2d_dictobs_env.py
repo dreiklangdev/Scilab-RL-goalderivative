@@ -4,19 +4,21 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
 import numpy as np
 
-THRESHOLD_ACCURACY = 0.1 # wont be less
+TRAJECTORY_HALVING = True
 
+THRESHOLD_ACCURACY = 0.1 # wont be less
 ADAPTIVE_ACCURACY_THRESHOLD = True
 # TODO how to find perfect sparsity? (only manually?)
 ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY HYPER PARAM - adapts threshold for specific rewards mean (hold constant difficulty level)
 ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # how fast it adapts (how well it holds the rewards mean (=sparsity)) 
 
-# TODO include neg. backwards? (similar enough?)
 # recognize impossible goal comps?
-INTERVAL_SAMPLE_GOALS = np.array([
-     # height, velocity
-    [0.8, 0.3], # min
-    [2.0, 2.0], # max
+# practice/train goalspace
+# = same as all possible/unconstrained states (esp. incl. start-state!)
+INTERVAL_SAMPLE_GOALS_PRACTICE = np.array([
+    # height, velocity
+    [0.8, 0.0], # min
+    [1.5, 1.5], # max
 ])
 
 
@@ -30,11 +32,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
 
     def __init__(self):
-
         Walker2dEnv.__init__(self, exclude_current_positions_from_observation=True)
 
         orig_obspace = self.observation_space
-        obspace = spaces.Box(-np.inf, np.inf, shape=(INTERVAL_SAMPLE_GOALS.shape[1],), dtype='float64')
+        obspace = spaces.Box(-np.inf, np.inf, shape=(INTERVAL_SAMPLE_GOALS_PRACTICE.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -46,14 +47,15 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         self.ep_threshold_accuracy = THRESHOLD_ACCURACY
+        self.last_ep_rewards_mean: float = 0
         self._reset_kpi()
         print('le-walker-2d initialized.')
 
 
     def _get_obs(self):
-
         position = self.data.qpos.flat.copy()
         velocity = np.clip(self.data.qvel.flat.copy(), -10, 10)
+        self.ep_states.append((position, velocity))
 
         if self._exclude_current_positions_from_observation:
             position = position[1:]
@@ -61,7 +63,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         observation = np.concatenate((position, velocity)).ravel()
 
         achieved_goal = np.array((position[0], velocity[0]))
-        achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.ep_desired_goal, INTERVAL_SAMPLE_GOALS[0], INTERVAL_SAMPLE_GOALS[1])
+        achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.ep_desired_goal, INTERVAL_SAMPLE_GOALS_PRACTICE[0], INTERVAL_SAMPLE_GOALS_PRACTICE[1])
         # print(achieved_goal)
 
         obs = dict(
@@ -118,7 +120,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         # too easy
         truncated = False
 
-        # faster learning: decrease search/interaction space (find terminations)
+        # faster learning: decrease search/interaction space (find terminations (=constraints))
         # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         height = obs['observation'][0]
@@ -134,10 +136,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             reward = 0
 
         velocity = obs['observation'][8]
-        # if velocity < -0.3:
-        #     print('negative velocity! ', velocity)
-        #     terminated = True
-        #     reward = 0
         if self.ep_num_steps > 300 and velocity < 0.3:
             print('not forward!', velocity)
             terminated = True
@@ -149,12 +147,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             print('standing still!', mean_velocity_all)
             terminated = True
             reward = 0
-
-        n_contact = self.data.ncon
-        # if self.ep_num_steps > 150 and n_contact == 0:
-        #     print('jumping!')
-        #     terminated = True
-        #     reward = 0
 
         if self.ep_num_steps > 1000:
             print('truncated!')
@@ -180,7 +172,19 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             print('ep_threshold_accuracy', self.ep_threshold_accuracy)
             print('\n')
 
-        ep_obs_init = super().reset_model()
+        if TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
+            # TODO add noise?
+            print('halving!')
+            self.last_ep_rewards_mean = self.ep_rewards_mean
+            # state_halfway = self.ep_states[len(self.ep_states)//2]
+            qpos, qvel = self.ep_states[len(self.ep_states)//2]
+            self.set_state(qpos, qvel)
+            ep_obs_init = self._get_obs()
+
+        else:
+            self.last_ep_rewards_mean = 0
+            ep_obs_init = super().reset_model()
+            
         self._reset_kpi()
         return ep_obs_init
     
@@ -189,5 +193,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_rewards_mean: float = 0
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
-        self.ep_desired_goal = np.random.uniform(INTERVAL_SAMPLE_GOALS[0], INTERVAL_SAMPLE_GOALS[1])
+        self.ep_desired_goal = np.random.uniform(INTERVAL_SAMPLE_GOALS_PRACTICE[0], INTERVAL_SAMPLE_GOALS_PRACTICE[1])
         self.ep_obs_cur = None
+        self.ep_states = []
