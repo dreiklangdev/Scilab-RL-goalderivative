@@ -4,7 +4,8 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
 import numpy as np
 
-THRESHOLD_ACCURACY_START = 0.1
+THRESHOLD_ACCURACY = 0.1 # wont be less
+
 ADAPTIVE_ACCURACY_THRESHOLD = True
 # TODO how to find perfect sparsity? (only manually?)
 ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY HYPER PARAM - adapts threshold for specific rewards mean (hold constant difficulty level)
@@ -14,7 +15,7 @@ ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # how fast it adapts (how well it holds t
 # recognize impossible goal comps?
 INTERVAL_SAMPLE_GOALS = np.array([
      # height, velocity
-    [0.8, 1.0], # min
+    [0.8, 0.3], # min
     [2.0, 2.0], # max
 ])
 
@@ -44,7 +45,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             )
         )
 
-        self.ep_threshold_accuracy = THRESHOLD_ACCURACY_START
+        self.ep_threshold_accuracy = THRESHOLD_ACCURACY
         self._reset_kpi()
         print('le-walker-2d initialized.')
 
@@ -110,14 +111,15 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 self.ep_threshold_accuracy -= ADAPTIVE_ACCURACY_THRESHOLD_STEP
             else:
                 self.ep_threshold_accuracy += ADAPTIVE_ACCURACY_THRESHOLD_STEP
+            self.ep_threshold_accuracy = max(THRESHOLD_ACCURACY, self.ep_threshold_accuracy)
 
         # too difficult
         terminated = False
         # too easy
         truncated = False
 
-        # decrease search/interaction space (find essential terminations)
-        # imitation vs. direction (guidance, experience)
+        # faster learning: decrease search/interaction space (find terminations)
+        # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         height = obs['observation'][0]
         if height < 0.7:
@@ -125,17 +127,34 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             terminated = True
             reward = 0
 
-        velocity = obs['observation'][1]
-        if velocity < -0.3:
-            print('negative velocity! ', velocity)
+        angle = obs['observation'][1]
+        if not (-1 < angle < 1):
+            print('illegal angle! ', angle)
             terminated = True
             reward = 0
 
-        mean_velocity_all = np.mean(np.abs(obs['observation']))
-        if mean_velocity_all < 0.15:
-            print('no movement!', mean_velocity_all)
+        velocity = obs['observation'][8]
+        # if velocity < -0.3:
+        #     print('negative velocity! ', velocity)
+        #     terminated = True
+        #     reward = 0
+        if self.ep_num_steps > 300 and velocity < 0.3:
+            print('not forward!', velocity)
             terminated = True
             reward = 0
+
+
+        mean_velocity_all = np.mean(np.abs(obs['observation']))
+        if mean_velocity_all < 0.2:
+            print('standing still!', mean_velocity_all)
+            terminated = True
+            reward = 0
+
+        n_contact = self.data.ncon
+        # if self.ep_num_steps > 150 and n_contact == 0:
+        #     print('jumping!')
+        #     terminated = True
+        #     reward = 0
 
         if self.ep_num_steps > 1000:
             print('truncated!')
