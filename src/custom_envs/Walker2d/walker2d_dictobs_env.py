@@ -20,19 +20,20 @@ IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
 # practice/train space
 # = same as all(!) reasonable/possible/unconstrained states (incl. start-state) (transfer-learning?)
 GOAL_SPACE_DESIRED = np.array([
-    # height, velocity, angle
-    [0.8, -1.0, -1.0], # min
-    [2.0, 3.0, 1.5], # max
-    [1.1, 1.0, 0.5], # mode
+    # height, velocity, angle, contact
+    [0.7, -2.0, -1.0, 0], # min
+    [2.0, 3.0, 1.0, 3], # max
+    [1.1, 1.0, 0.5, 1], # mode
+    [1.0, 2.0, 1.0, 1.0] # weight
 ])
 
 IS_TRAJECTORY_HALVING = IS_PRACTICE_MODE
 
-THRESHOLD_ACCURACY = 0.3 # wont be less, needs scaling with dims.
+THRESHOLD_ACCURACY = 0.3 # REWARD TOLERANCE - wont be less, needs some scaling with dims.?
 IS_ADAPTIVE_ACCURACY_THRESHOLD = IS_PRACTICE_MODE
-# TODO how to find perfect sparsity? (only manually?)
-ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY HYPER PARAM - adapts threshold for specific rewards mean (hold constant difficulty level)
-ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # how fast it adapts (how well it holds the rewards mean (=sparsity)) 
+# "breadcrumbing"
+ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
+ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # REWARD ADAPTABILITY - how fast it adapts (~how well it holds the rewards mean (=sparsity)) 
 
 
 # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
@@ -77,9 +78,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             qpos = qpos[1:]
 
         observation = np.concatenate((qpos, qvel)).ravel()
-        height, angle, velocity = qpos[0], qpos[1], qvel[1]
+        height, velocity, angle = qpos[0], qvel[0], qpos[1]
+        n_contact = self.data.ncon
 
-        achieved_goal = np.array((height, angle, velocity))
+        achieved_goal = np.array((height, velocity, angle, n_contact))
         achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.desired_goal, GOAL_SPACE_DESIRED[0], GOAL_SPACE_DESIRED[1])
         # print(achieved_goal)
 
@@ -106,7 +108,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        goal_diff = np.array([achieved_goal - desired_goal])
+        goal_diff = np.array([achieved_goal - desired_goal]) * GOAL_SPACE_DESIRED[3]
         # distance/accuracy (~min-max, != logical_and(), > at-least-only (needs control from both sides))
         accuracy = np.linalg.norm(goal_diff, axis=-1)
         reward = (accuracy < self.threshold_accuracy).astype(np.float64)
