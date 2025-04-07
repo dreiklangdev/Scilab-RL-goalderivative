@@ -3,37 +3,49 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
 import numpy as np
 
+# records
+# record 1.0    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aab0ae/le-walker2d-v4/17-58-22/rl_model_finished
+#   400k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/231edcb/le-walker2d-v4/21-10-43/rl_model_finished
+#   500k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/231edcb/le-walker2d-v4/21-10-43_restored/rl_model_finished
+
+# forming: goal + termination
+# reward-trickling ("breadcrumbing")
+
 # glossar
 # GOALSPACE_DESIRED := goalstate -+ threshold
 # (GOAL-)STATE_ACHIEVED := current state of step
 # PRACTICE-/TRAINSPACE := all reasonable states to act from
 
-# TODO leave local minima ("left-leaners")
-# (eg. goal: angle-dim.? single contact?)
-# greater accuracy threshold?
 
 IS_PRACTICE_MODE = True
 
 IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
-# TODO how to find perfect practice space? (watch/oversee (at the start)! eg. too strict vs. too lax, also learn to (slightly) recover?)
-# what if "widerspruechliche" goals?
+# what if contradictory goals?
 # practice/train space
 # = same as all(!) reasonable/possible/unconstrained states (incl. start-state) (transfer-learning?)
+# TODO how to find perfect practice space? (watch/oversee (at the start)! eg. too strict vs. too lax, also learn to (slightly) recover?)
+# intervals
+#   smaller => faster, focussed
+#   larger => slower, more universal
+# generally: the more goal dims., the better? ("more experienced coach")
+# TODO goal analysis (eg. most failed dim.) on eval
 GOAL_SPACE_DESIRED = np.array([
     # height, velocity, angle, contact
-    [0.7, -2.0, -1.0, 0], # min
-    [2.0, 3.0, 1.0, 3], # max
+    [0.7, -1.0, -1.0, 0], # min
+    [2.0, 2.0, 1.0, 3], # max
     [1.1, 1.0, 0.5, 1], # mode
-    [1.0, 2.0, 1.0, 1.0] # weight
+    [1.0, 2.0, 1.0, 1.0] # weight (TODO any impact?)
 ])
 
+# TODO no halving on truncation
 IS_TRAJECTORY_HALVING = IS_PRACTICE_MODE
 
-THRESHOLD_ACCURACY = 0.3 # REWARD TOLERANCE - wont be less, needs some scaling with dims.?
+# TODO as rel. factor?
+THRESHOLD_ACCURACY_ABS = 0.3 # REWARD TOLERANCE - wont be less, needs some scaling with dims.?
 IS_ADAPTIVE_ACCURACY_THRESHOLD = IS_PRACTICE_MODE
 # "breadcrumbing"
 ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
-ADAPTIVE_ACCURACY_THRESHOLD_STEP = 0.1 # REWARD ADAPTABILITY - how fast it adapts (~how well it holds the rewards mean (=sparsity)) 
+ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS = 0.1 # REWARD ADAPTABILITY - how fast it adapts (~how well it holds the rewards mean (=sparsity)) 
 
 
 # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
@@ -61,7 +73,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.threshold_accuracy = THRESHOLD_ACCURACY
+        self.threshold_accuracy = THRESHOLD_ACCURACY_ABS
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         # every ep
@@ -131,10 +143,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         if IS_ADAPTIVE_ACCURACY_THRESHOLD:
             if self.ep_rewards_mean > ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN:
-                self.threshold_accuracy -= ADAPTIVE_ACCURACY_THRESHOLD_STEP
+                self.threshold_accuracy -= ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
             else:
-                self.threshold_accuracy += ADAPTIVE_ACCURACY_THRESHOLD_STEP
-            self.threshold_accuracy = max(THRESHOLD_ACCURACY, self.threshold_accuracy)
+                self.threshold_accuracy += ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
+            self.threshold_accuracy = max(THRESHOLD_ACCURACY_ABS, self.threshold_accuracy)
 
         terminated = False
         truncated = False
