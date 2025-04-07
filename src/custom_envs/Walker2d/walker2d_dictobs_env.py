@@ -3,10 +3,13 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
 import numpy as np
 
+# ref https://www.youtube.com/watch?v=irkXnpZP89s
 # records
 # record 1.0    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aab0ae/le-walker2d-v4/17-58-22/rl_model_finished
-#   400k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/231edcb/le-walker2d-v4/21-10-43/rl_model_finished
-#   500k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/231edcb/le-walker2d-v4/21-10-43_restored/rl_model_finished
+#   400k, velo1 /home/t14/Documents/tuhh/dsf/Scilab-RL/data/231edcb/le-walker2d-v4/21-10-43/rl_model_finished
+#   500k, velo1 /home/t14/Documents/tuhh/dsf/Scilab-RL/data/231edcb/le-walker2d-v4/21-10-43_restored/rl_model_finished
+
+#   400k, velo2, no practicemode    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/48779a8/le-walker2d-v4/00-14-47/rl_model_finished
 
 # forming: goal + termination
 # reward-trickling ("breadcrumbing")
@@ -16,6 +19,7 @@ import numpy as np
 # (GOAL-)STATE_ACHIEVED := current state of step
 # PRACTICE-/TRAINSPACE := all reasonable states to act from
 
+# TODO goal: time-dim. vs. infinite (non-episodic), stand-up? 
 
 IS_PRACTICE_MODE = True
 
@@ -31,9 +35,9 @@ IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
 # TODO goal analysis (eg. most failed dim.) on eval
 GOAL_SPACE_DESIRED = np.array([
     # height, velocity, angle, contact
-    [0.7, -1.0, -1.0, 0], # min
-    [2.0, 2.0, 1.0, 3], # max
-    [1.1, 1.0, 0.5, 1], # mode
+    [0.7, -2.0, -1.0, 0], # min
+    [2.0, 3.5, 1.0, 3], # max
+    [1.1, 2.5, 0.5, 1], # mode
     [1.0, 2.0, 1.0, 1.0] # weight (TODO any impact?)
 ])
 
