@@ -38,7 +38,7 @@ IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
 #   larger => slower, more universal
 # generally: the more goal dims., the better? ("more experienced coach")
 # TODO goal analysis (eg. most failed dim.) on eval
-GOAL_SPACE_DESIRED = np.array([
+PRACTICE_SPACE = np.array([
     # distance, height, velocity, angle, contact
     [-1,    0.7,    -2.0,   -1.0,   0], # min
     [5,     2.0,    3.5,    1.0,    3], # max
@@ -47,17 +47,19 @@ GOAL_SPACE_DESIRED = np.array([
 ])
 
 # hard term: learn to REACH goalspace fast
-IS_HARD_TERMINATION_ON_GOAL_LIMIT = False
+# decreased search space ("dont even possibly do/imagine/experience wrong things" -> no need to recover, if never done?)
+IS_HARD_TERMINATION_ON_LEAVING_PRACTICE_SPACE = False
 
 # soft term: learn to RECOVER goalspace (and hold?)
-IS_SOFT_TERMINATION_ON_GOAL_DIVERGENCE = True
-GOAL_DIVERGENCE_STEPS_MAX = 50
+# infinite search space? (too many more possible (recovery) states) -> recovery training must be INSIDE practice space? 
+IS_SOFT_TERMINATION_ON_LEAVING_PRACTICE_SPACE = True
+PRACTICE_SPACE_OUTSIDE_STEPS_MAX = 50
 
 # TODO no halving on truncation
 IS_TRAJECTORY_HALVING = IS_PRACTICE_MODE
 
 # TODO as rel. factor? (already kinda is due normalization?)
-THRESHOLD_ACCURACY_ABS = 0.3 # REWARD TOLERANCE - wont be less, needs some scaling with dims.? (how much?)
+THRESHOLD_ACCURACY_NORMED_ABS = 0.3 # REWARD TOLERANCE - wont be less, needs some scaling with dims.? (how much?)
 IS_ADAPTIVE_ACCURACY_THRESHOLD = IS_PRACTICE_MODE
 # "breadcrumbing"
 ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN = 0.1 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
@@ -77,7 +79,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         Walker2dEnv.__init__(self, exclude_current_positions_from_observation=False)
 
         orig_obspace = self.observation_space
-        obspace = spaces.Box(-np.inf, np.inf, shape=(GOAL_SPACE_DESIRED.shape[1],), dtype='float64')
+        obspace = spaces.Box(-np.inf, np.inf, shape=(PRACTICE_SPACE.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -89,7 +91,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.threshold_goaldistance = THRESHOLD_ACCURACY_ABS
+        self.threshold_goaldistance = THRESHOLD_ACCURACY_NORMED_ABS
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         # every ep
@@ -107,7 +109,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         n_contact = self.data.ncon
 
         achieved_goal = np.array((distance, height, velocity, angle, n_contact))
-        achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.desired_goal, GOAL_SPACE_DESIRED[0], GOAL_SPACE_DESIRED[1])
+        achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.desired_goal, PRACTICE_SPACE[0], PRACTICE_SPACE[1])
         # print(achieved_goal)
 
         obs = dict(
@@ -133,7 +135,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        goaldiff_weighted = GOAL_SPACE_DESIRED[3] * np.array([achieved_goal - desired_goal])
+        goaldiff_weighted = PRACTICE_SPACE[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (~min-max, != logical_and(), > at-least-only (needs control from both sides))
         goaldistance = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goal_distances.append(np.mean(goaldistance))
@@ -165,7 +167,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 self.threshold_goaldistance -= ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
             else:
                 self.threshold_goaldistance += ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
-            self.threshold_goaldistance = max(THRESHOLD_ACCURACY_ABS, self.threshold_goaldistance)
+            self.threshold_goaldistance = max(THRESHOLD_ACCURACY_NORMED_ABS, self.threshold_goaldistance)
 
         terminated = False
         truncated = False
@@ -177,14 +179,20 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
         if (obs['achieved_goal'] < 0).any() or (obs['achieved_goal'] > 1).any():
-            # step outside practice space
-            terminated = IS_HARD_TERMINATION_ON_GOAL_LIMIT
+            # soft step outside practice space
+            terminated = IS_HARD_TERMINATION_ON_LEAVING_PRACTICE_SPACE
+            self.ep_num_steps_outside += 1
             reward = 0
+            if self.ep_num_steps_outside > PRACTICE_SPACE_OUTSIDE_STEPS_MAX:
+                # hard step outside practice space
+                print('max. steps outside practice space! ', self.ep_num_steps_outside)
+                terminated = IS_SOFT_TERMINATION_ON_LEAVING_PRACTICE_SPACE
+                reward = 0
 
-        if self.ep_stepcount_goal_divergence >= GOAL_DIVERGENCE_STEPS_MAX:
-            # max. diverging steps reached
-            terminated = IS_SOFT_TERMINATION_ON_GOAL_DIVERGENCE
-            reward = 0
+        # if self.ep_stepcount_goal_divergence >= GOAL_DIVERGENCE_STEPS_MAX:
+        #     # max. diverging steps reached
+        #     terminated = IS_SOFT_TERMINATION_ON_GOAL_DIVERGENCE
+        #     reward = 0
 
         # velocity = obs['observation'][9]
         # if self.ep_num_steps > 300 and velocity < 0.3:
@@ -209,6 +217,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         if self.ep_obs_cur:
             print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_num_steps', self.ep_num_steps)
+            print('ep_num_steps_outside', self.ep_num_steps_outside)
             print('ep_num_steps_converging', self.ep_num_steps - self.ep_stepcount_goal_divergence)
             print('ep_goal_distance_converged', max(self.ep_goal_distances) - min(self.ep_goal_distances))
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
@@ -239,14 +248,15 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
     def _get_goal(self):
         if IS_RAND_SAMPLING_GOAL:
             # https://en.wikipedia.org/wiki/Triangular_distribution
-            return np.random.triangular(GOAL_SPACE_DESIRED[0], GOAL_SPACE_DESIRED[2], GOAL_SPACE_DESIRED[1])
+            return np.random.triangular(PRACTICE_SPACE[0], PRACTICE_SPACE[2], PRACTICE_SPACE[1])
         else:
-            return GOAL_SPACE_DESIRED[2]
+            return PRACTICE_SPACE[2]
 
 
     def _reset_episode(self):
         self.ep_rewards_mean: float = 0
         self.ep_num_steps: int = 0
+        self.ep_num_steps_outside: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
         self.ep_goal_distances = []
