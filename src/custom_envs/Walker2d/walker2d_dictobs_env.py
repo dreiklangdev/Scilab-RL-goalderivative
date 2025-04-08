@@ -41,10 +41,17 @@ GOAL_SPACE_DESIRED = np.array([
     [1.0, 2.0, 1.0, 1.0] # weight (TODO any impact?)
 ])
 
+# hard: learn to REACH (hold?)
+IS_TERMINATION_ON_GOAL_LIMIT = True
+
+# soft: learn to RECOVER back
+IS_TERMINATION_ON_GOAL_DIVERGENCE = True
+GOAL_DIVERGENCE_STEPS_MAX = 50
+
 # TODO no halving on truncation
 IS_TRAJECTORY_HALVING = IS_PRACTICE_MODE
 
-# TODO as rel. factor?
+# TODO as rel. factor? (already kinda is due normalization?)
 THRESHOLD_ACCURACY_ABS = 0.3 # REWARD TOLERANCE - wont be less, needs some scaling with dims.?
 IS_ADAPTIVE_ACCURACY_THRESHOLD = IS_PRACTICE_MODE
 # "breadcrumbing"
@@ -77,7 +84,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.threshold_accuracy = THRESHOLD_ACCURACY_ABS
+        self.threshold_goaldistance = THRESHOLD_ACCURACY_ABS
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         # every ep
@@ -124,10 +131,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        goal_diff = np.array([achieved_goal - desired_goal]) * GOAL_SPACE_DESIRED[3]
+        goaldiff_weighted = GOAL_SPACE_DESIRED[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (~min-max, != logical_and(), > at-least-only (needs control from both sides))
-        accuracy = np.linalg.norm(goal_diff, axis=-1)
-        reward = (accuracy < self.threshold_accuracy).astype(np.float64)
+        goaldistance = np.linalg.norm(goaldiff_weighted, axis=-1)
+        self.ep_goal_distances.append(np.mean(goaldistance))
+        reward = (goaldistance < self.threshold_goaldistance).astype(np.float64)
         return reward
 
 
@@ -147,10 +155,14 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         if IS_ADAPTIVE_ACCURACY_THRESHOLD:
             if self.ep_rewards_mean > ADAPTIVE_ACCURACY_THRESHOLD_TARGET_REWARDS_MEAN:
-                self.threshold_accuracy -= ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
+                self.threshold_goaldistance -= ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
             else:
-                self.threshold_accuracy += ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
-            self.threshold_accuracy = max(THRESHOLD_ACCURACY_ABS, self.threshold_accuracy)
+                self.threshold_goaldistance += ADAPTIVE_ACCURACY_THRESHOLD_STEP_ABS
+            self.threshold_goaldistance = max(THRESHOLD_ACCURACY_ABS, self.threshold_goaldistance)
+
+        if self.ep_goal_distances[-1] <= self.ep_goal_distances[-2]:
+            # not moving closer (not improving)
+            self.ep_stepcount_goal_divergence += 1
 
         terminated = False
         truncated = False
@@ -161,16 +173,17 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
-        if (obs['achieved_goal'] < 0).any() or (obs['achieved_goal'] > 1).any():
-            print('left practice space! ', obs['achieved_goal'])
-            terminated = True
-            reward = 0
+        if IS_TERMINATION_ON_GOAL_LIMIT:
+            if (obs['achieved_goal'] < 0).any() or (obs['achieved_goal'] > 1).any():
+                print('left practice space! ', obs['achieved_goal'])
+                terminated = True
+                reward = 0
 
-        velocity = obs['observation'][8]
-        if self.ep_num_steps > 300 and velocity < 0.3:
-            print('not forward!', velocity)
-            terminated = True
-            reward = 0
+        # velocity = obs['observation'][8]
+        # if self.ep_num_steps > 300 and velocity < 0.3:
+        #     print('not forward!', velocity)
+        #     terminated = True
+        #     reward = 0
 
         # mean_velocity_all = np.mean(np.abs(obs['observation']))
         # if mean_velocity_all < 0.2:
@@ -178,6 +191,12 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         #     terminated = True
         #     reward = 0
 
+        if IS_TERMINATION_ON_GOAL_DIVERGENCE:
+            if self.ep_stepcount_goal_divergence >= GOAL_DIVERGENCE_STEPS_MAX:
+                print('max. steps in divergence!', self.ep_stepcount_goal_divergence)
+                terminated = True
+                reward = 0
+        
         if self.ep_num_steps > 1000:
             print('truncated.')
             truncated = True
@@ -195,10 +214,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         if self.ep_obs_cur:
             print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_num_steps', self.ep_num_steps)
+            print('ep_num_steps_converging', self.ep_num_steps - self.ep_stepcount_goal_divergence)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
             print('ep_rewards_mean', self.ep_rewards_mean)
-            print('ep_threshold_accuracy', self.threshold_accuracy)
+            print('ep_threshold_accuracy', self.threshold_goaldistance)
             print('\n')
 
         if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
@@ -233,5 +253,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
+        self.ep_goal_distances = [np.inf]
+        self.ep_stepcount_goal_divergence = 0
         self.ep_states = []
         print('desired_goal ', self.desired_goal)
