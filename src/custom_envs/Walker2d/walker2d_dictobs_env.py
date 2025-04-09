@@ -40,11 +40,11 @@ IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
 # generally: the more goal dims., the better? ("more experienced coach")
 # TODO goal analysis (eg. most failed dim.) on eval
 PRACTICE_SPACE = np.array([
-    # distance, height, velocity, angle, contact, angle_thigh
-    [-1,    0.8,    -2.0,   -0.3,   0,      -2.0], # min
-    [5,     2.0,    3.5,    1.5,    3,      2.0], # max
-    [3,     1.1,    2.5,    0.5,    1,      0], # mode
-    [1.0,   1.0,    2.0,    1.0,    1.0,    1.0] # weight (TODO any impact?)
+    # distance, height, velocity,   angle,  contact,    angle_thigh
+    [-1,        0.8,    -2.0,       -1.0,   0,          -2.0],  # min
+    [5,         2.0,    3.5,        1.5,    3,          2.0],   # max
+    [3,         1.1,    2.5,        0.5,    1,          0],     # mode
+    [0.0,       1.0,    2.0,        1.0,    1.0,        1.0]    # weight
 ])
 
 IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE = True
@@ -88,6 +88,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.threshold_goaldistance = THRESHOLD_ACCURACY_NORMED_ABS
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
+        self.last_ep_goal_distance_min: float = np.inf
         # every ep
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -132,7 +133,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         goaldiff_weighted = PRACTICE_SPACE[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (~min-max, != logical_and(), > at-least-only (needs control from both sides))
         goaldistance = np.linalg.norm(goaldiff_weighted, axis=-1)
-        self.ep_goal_distances.append(np.mean(goaldistance))
+        if goaldistance.shape[-1] == 1:
+            # single step (no replay)
+            self.ep_goal_distances.append(goaldistance[0])
+
         reward = (goaldistance < self.threshold_goaldistance).astype(np.float64)
         return reward
 
@@ -148,10 +152,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         if reward:
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
-        else:
-            if len(self.ep_goal_distances) > 1 and (self.ep_goal_distances[-1] <= self.ep_goal_distances[-2]):
-                # not moving closer (not improving)
-                self.ep_stepcount_goal_divergence += 1
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
@@ -192,15 +192,18 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         if self.render_mode == "human":
             self.render()
 
-        result = obs, reward, terminated, truncated, info
+        result = obs, float(reward), terminated, truncated, info
         return result
  
 
     def reset_model(self):
+        obs_init = None
+
         if self.ep_obs_cur:
+            # print(self.ep_goal_distances)
             print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_num_steps', self.ep_num_steps)
-            print('ep_num_steps_converging', self.ep_num_steps - self.ep_stepcount_goal_divergence)
+            print('ep_goal_distance_min', min(self.ep_goal_distances))
             print('ep_goal_distance_converged', max(self.ep_goal_distances) - min(self.ep_goal_distances))
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
@@ -208,23 +211,32 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             print('ep_threshold_accuracy', self.threshold_goaldistance)
             print('\n')
 
-        if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
-            # TODO add noise?
-            print('halving!')
-            self.last_ep_rewards_mean = self.ep_rewards_mean
-            # state_halfway = self.ep_states[len(self.ep_states)//2]
-            qpos, qvel = self.ep_states[len(self.ep_states)//2]
-            self.set_state(qpos, qvel)
-            ep_obs_init = self._get_obs()
+        if self.ep_num_steps > 1:
+            ep_goal_distance_min = min(self.ep_goal_distances)
 
-        else:
+            # if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
+            if IS_TRAJECTORY_HALVING and (ep_goal_distance_min < self.last_ep_goal_distance_min):
+                # TODO add noise?
+                print('halving!')
+                self.last_ep_rewards_mean = self.ep_rewards_mean
+                self.last_ep_goal_distance_min = ep_goal_distance_min
+                idx_highest_goaldivergence = np.argmax(np.gradient(self.ep_goal_distances))
+                idx_highest_goalconvergence = np.argmin(np.gradient(self.ep_goal_distances))
+                idx_halving = idx_highest_goalconvergence
+                # qpos, qvel = self.ep_states[len(self.ep_states)//2]
+                qpos, qvel = self.ep_states[idx_halving]
+                self.set_state(qpos, qvel)
+                obs_init = self._get_obs()
+
+        if not obs_init:
             # new goal
             self.desired_goal = self._get_goal()
+            self.last_ep_goal_distance_min = np.inf
             self.last_ep_rewards_mean = 0
-            ep_obs_init = super().reset_model()
-            
+            obs_init = super().reset_model()
+
         self._reset_episode()
-        return ep_obs_init
+        return obs_init
 
 
     def _get_goal(self):
@@ -241,6 +253,5 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
         self.ep_goal_distances = []
-        self.ep_stepcount_goal_divergence = 0
         self.ep_states = []
         print('desired_goal ', self.desired_goal)
