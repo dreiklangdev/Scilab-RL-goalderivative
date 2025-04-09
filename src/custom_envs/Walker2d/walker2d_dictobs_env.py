@@ -15,19 +15,20 @@ import numpy as np
 #   400k, soft-term-only    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fbbe332/le-walker2d-v4/16-28-54/rl_model_finished
 #   400k, hard-term-only    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fbbe332/le-walker2d-v4/17-15-35/rl_model_finished
 
-# forming: goal + termination
+# forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")
 
 # glossar
 # GOALSPACE_DESIRED := goalstate -+ threshold
 # (GOAL-)STATE_ACHIEVED := current state of step
-# PRACTICE-/TRAINSPACE := all reasonable states to act from
+# PRACTICE-/TRAINSPACE := all reasonable states to learn from
 
 # TODO goal: time-dim. vs. infinite (non-episodic), stand-up? 
 
 IS_PRACTICE_MODE = True
 
 IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
+# every training must be inside practice space (reach, hold, recover, etc.)
 # what if contradictory goals?
 # practice/train space
 # = same as all(!) reasonable/possible/unconstrained states (incl. start-state) (transfer-learning?)
@@ -39,21 +40,14 @@ IS_RAND_SAMPLING_GOAL = IS_PRACTICE_MODE
 # generally: the more goal dims., the better? ("more experienced coach")
 # TODO goal analysis (eg. most failed dim.) on eval
 PRACTICE_SPACE = np.array([
-    # distance, height, velocity, angle, contact
-    [-1,    0.7,    -2.0,   -1.0,   0], # min
-    [5,     2.0,    3.5,    1.0,    3], # max
-    [3,     1.1,    2.5,    0.5,    1], # mode
-    [0.0,   1.0,    2.0,    1.0,    1.0] # weight (TODO any impact?)
+    # distance, height, velocity, angle, contact, angle_thigh
+    [-1,    0.8,    -2.0,   -0.3,   0,      -2.0], # min
+    [5,     2.0,    3.5,    1.5,    3,      2.0], # max
+    [3,     1.1,    2.5,    0.5,    1,      0], # mode
+    [1.0,   1.0,    2.0,    1.0,    1.0,    1.0] # weight (TODO any impact?)
 ])
 
-# hard term: learn to REACH goalspace fast
-# decreased search space ("dont even possibly do/imagine/experience wrong things" -> no need to recover, if never done?)
-IS_HARD_TERMINATION_ON_LEAVING_PRACTICE_SPACE = False
-
-# soft term: learn to RECOVER goalspace (and hold?)
-# infinite search space? (too many more possible (recovery) states) -> recovery training must be INSIDE practice space? 
-IS_SOFT_TERMINATION_ON_LEAVING_PRACTICE_SPACE = True
-PRACTICE_SPACE_OUTSIDE_STEPS_MAX = 50
+IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE = True
 
 # TODO no halving on truncation
 IS_TRAJECTORY_HALVING = IS_PRACTICE_MODE
@@ -107,11 +101,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         observation = np.concatenate((qpos, qvel)).ravel()
         distance, height, velocity, angle = qpos[0], qpos[1], qvel[0], qpos[2]
         n_contact = self.data.ncon
+        angle_thigh = max(qpos[3], qpos[6])
 
-        achieved_goal = np.array((distance, height, velocity, angle, n_contact))
+        achieved_goal = np.array((distance, height, velocity, angle, n_contact, angle_thigh))
         achieved_goal_norm, desired_goal_norm = self._normalize(achieved_goal, self.desired_goal, PRACTICE_SPACE[0], PRACTICE_SPACE[1])
-        # print(achieved_goal)
-
+        
         obs = dict(
                 observation=observation,
                 achieved_goal=achieved_goal_norm,
@@ -179,20 +173,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
         if (obs['achieved_goal'] < 0).any() or (obs['achieved_goal'] > 1).any():
-            # soft step outside practice space
-            terminated = IS_HARD_TERMINATION_ON_LEAVING_PRACTICE_SPACE
-            self.ep_num_steps_outside += 1
+            print('outside practice space! ', obs['achieved_goal'])
+            terminated = IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE
             reward = 0
-            if self.ep_num_steps_outside > PRACTICE_SPACE_OUTSIDE_STEPS_MAX:
-                # hard step outside practice space
-                print('max. steps outside practice space! ', self.ep_num_steps_outside)
-                terminated = IS_SOFT_TERMINATION_ON_LEAVING_PRACTICE_SPACE
-                reward = 0
-
-        # if self.ep_stepcount_goal_divergence >= GOAL_DIVERGENCE_STEPS_MAX:
-        #     # max. diverging steps reached
-        #     terminated = IS_SOFT_TERMINATION_ON_GOAL_DIVERGENCE
-        #     reward = 0
 
         # velocity = obs['observation'][9]
         # if self.ep_num_steps > 300 and velocity < 0.3:
@@ -217,7 +200,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         if self.ep_obs_cur:
             print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_num_steps', self.ep_num_steps)
-            print('ep_num_steps_outside', self.ep_num_steps_outside)
             print('ep_num_steps_converging', self.ep_num_steps - self.ep_stepcount_goal_divergence)
             print('ep_goal_distance_converged', max(self.ep_goal_distances) - min(self.ep_goal_distances))
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
@@ -256,7 +238,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
     def _reset_episode(self):
         self.ep_rewards_mean: float = 0
         self.ep_num_steps: int = 0
-        self.ep_num_steps_outside: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
         self.ep_goal_distances = []
