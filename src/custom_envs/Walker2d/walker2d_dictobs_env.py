@@ -1,3 +1,4 @@
+from enum import Enum
 from gymnasium import utils
 from gymnasium import spaces
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
@@ -25,50 +26,62 @@ import numpy as np
 
 # TODO goal: time-dim. vs. infinite (non-episodic), stand-up? 
 
-# every training must be inside practice space (reach, hold, recover, etc.)
-# what if contradictory goals?
-# practice/train space
-# = same as all(!) reasonable/possible/unconstrained states (incl. start-state) (transfer-learning?)
-# TODO how to find perfect practice space? (watch/oversee (at the start)! eg. too strict vs. too lax, also learn to (slightly) recover?)
-# TODO how to find (near-)impossible goals? (eg. distance vs. velocity)
-# intervals
-#   smaller => faster, focussed
-#   larger => slower, more universal
-# generally: the more goal dims., the better? ("more experienced coach")
-# TODO goal analysis (eg. most failed dim.) on eval
-# sample int (float), if int (float)?
-PRACTICE_SPACE_LABELS = np.array([
-    'height',   'velocity',  'angle',   'contact_after', 'angle_thigh',  'is_moving_forward',
-])
-PRACTICE_SPACE = np.array([
-    [0.8,        -2.0,       -1.0,       1,              -2.0,           1],     # min
-    [2.0,        3.0,        1.5,        3,              2.0,            1.1],   # max
-    [1.1,        2.0,        0.5,        1,              0,              1],     # mode
-    [1.0,        2.0,        0.5,        0.5,            0.0,            1.0]    # weight
-])
-PRACTICE_SPACE_DIAMETER = np.linalg.norm(PRACTICE_SPACE[1] - PRACTICE_SPACE[0])
-PRACTICE_SPACE_DIAMETER_NORMED = np.sqrt(PRACTICE_SPACE.shape[1])
-PRACTICE_SPACE_MODE = np.linalg.norm(PRACTICE_SPACE[2])
-PRACTICE_SPACE_MODE_RATIO = PRACTICE_SPACE_MODE / PRACTICE_SPACE_DIAMETER
-PRACTICE_SPACE_RADIUS_RATIO = max(PRACTICE_SPACE_MODE_RATIO, 1 - PRACTICE_SPACE_MODE_RATIO)
+class Cfg:
+    # every training must be inside practice space (reach, hold, recover, etc.)
+    # what if contradictory goals?
+    # practice/train space
+    # = same as all(!) reasonable/possible/unconstrained states (incl. start-state) (transfer-learning?)
+    # TODO how to find perfect practice space? (watch/oversee (at the start)! eg. too strict vs. too lax, also learn to (slightly) recover?)
+    # TODO how to find (near-)impossible goals? (eg. distance vs. velocity)
+    # intervals
+    #   smaller => faster, focussed
+    #   larger => slower, more universal
+    # generally: the more goal dims., the better? ("more experienced coach")
+    # TODO goal analysis (eg. most failed dim.) on eval
+    # sample int (float), if int (float)?
+    PRACTICE_SPACE_LABELS = np.array([
+        'height',   'velocity',  'angle',   'contact_after', 'angle_thigh',  'is_moving_forward',
+    ])
+    PRACTICE_SPACE = np.array([
+        [0.8,        -2.0,       -1.0,       1,              -2.0,           1],     # min
+        [2.0,        3.0,        1.5,        3,              2.0,            1.1],   # max
+        [1.1,        2.0,        0.5,        1,              0,              1],     # mode
+        [1.0,        2.0,        0.5,        0.5,            0.0,            1.0]    # weight
+    ])
+    PRACTICE_SPACE_DIAMETER = np.linalg.norm(PRACTICE_SPACE[1] - PRACTICE_SPACE[0])
+    PRACTICE_SPACE_DIAMETER_NORMED = np.sqrt(PRACTICE_SPACE.shape[1])
+    PRACTICE_SPACE_MODE = np.linalg.norm(PRACTICE_SPACE[2])
+    PRACTICE_SPACE_MODE_RATIO = PRACTICE_SPACE_MODE / PRACTICE_SPACE_DIAMETER
+    PRACTICE_SPACE_RADIUS_RATIO = max(PRACTICE_SPACE_MODE_RATIO, 1 - PRACTICE_SPACE_MODE_RATIO)
 
-IS_RAND_SAMPLING_GOAL = False # learn to generalize in whole (noisy) practice-space
-IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE = True # radically decrease state-/searchspace
-IS_TRAJECTORY_HALVING = True # further attempts to re-improve current trajectory
+    IS_RAND_SAMPLING_GOAL = False # learn to generalize in whole (noisy) practice-space
+    IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE = True # radically decrease state-/searchspace
+    IS_TRAJECTORY_HALVING = True # further attempts to re-improve current trajectory
+    IS_GOAL_REWARD_ADAPTIVE_THRESHOLD = True
 
-# TODO no halving on truncation?
+    # TODO no halving on truncation?
+    class TrajectoryHalving:
+        ENABLED = True
+        class Strat(Enum):
+            HALF = 0
+            HIGHEST_GOAL_CONVERGENCE = 1
+            LOWEST_GOAL_DISTANCE = 2
 
-# "breadcrumbing"
-# rewards:
-#   too frequent => no movement (idleness, fast-narrow conv.)
-#   too sparse => no improvement (randomness, slow-broad conv.)
-#   too painful => no courage (fearful, no conv.)
-IS_GOAL_REWARD_ADAPTIVE_THRESHOLD = True
-GOAL_REWARD_THRESHOLD_MIN = 0.0 * PRACTICE_SPACE_RADIUS_RATIO * PRACTICE_SPACE_DIAMETER_NORMED # REWARD TOLERANCE
-GOAL_REWARD_THRESHOLD_MAX = 1.0 * PRACTICE_SPACE_RADIUS_RATIO * PRACTICE_SPACE_DIAMETER_NORMED
+    TRAJECTORY_HALVING_STRAT = TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
-GOAL_ADAPTIVE_REWARD_THRESHOLD_MEAN = 0.05 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
-GOAL_ADAPTIVE_REWARD_THRESHOLD_RATE = 0.05 # REWARD ADAPTABILITY - how fast it adapts per step (~how well it holds the rewards mean (=sparsity)) 
+    # "breadcrumbing"
+    # rewards: (sparse > freq.)
+    #   too frequent => no movement (idleness, fast-narrow conv.)
+    #   too sparse => no improvement (randomness, slow-broad conv.)
+    #   too painful => no courage (fearful, no conv.)
+    GOAL_REWARD_THRESHOLD_MIN = 0.0 * PRACTICE_SPACE_RADIUS_RATIO * PRACTICE_SPACE_DIAMETER_NORMED # REWARD TOLERANCE
+    GOAL_REWARD_THRESHOLD_MAX = 1.0 * PRACTICE_SPACE_RADIUS_RATIO * PRACTICE_SPACE_DIAMETER_NORMED
+
+    GOAL_ADAPTIVE_REWARD_THRESHOLD_MEAN = 0.001 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
+    # [1/ep_total_steps] to still reach reward zone in a worst episode?
+    GOAL_ADAPTIVE_REWARD_THRESHOLD_RATE = 0.001 * PRACTICE_SPACE_DIAMETER_NORMED # REWARD ADAPTABILITY - how fast it adapts per step (~how well it holds the rewards mean (=sparsity)) 
+
+    EPISODE_TRUNCATION_STEPS_MAX = 1000
 
 # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
 # https://gymnasium.farama.org/environments/mujoco/walker2d/
@@ -83,7 +96,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         Walker2dEnv.__init__(self, exclude_current_positions_from_observation=False)
 
         orig_obspace = self.observation_space
-        obspace = spaces.Box(-np.inf, np.inf, shape=(PRACTICE_SPACE.shape[1],), dtype='float64')
+        obspace = spaces.Box(-np.inf, np.inf, shape=(Cfg.PRACTICE_SPACE.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -95,7 +108,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.goal_reward_threshold = GOAL_REWARD_THRESHOLD_MIN
+        self.goal_reward_threshold = Cfg.GOAL_REWARD_THRESHOLD_MIN
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min: float = np.inf
@@ -117,8 +130,8 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
 
         achieved_goal = np.array((height, velocity, angle, n_contact_after, angle_thigh, is_moving_forward))
-        achieved_goal_norm = self._normalize(achieved_goal, PRACTICE_SPACE[0], PRACTICE_SPACE[1])
-        desired_goal_norm = self._normalize(self.desired_goal, PRACTICE_SPACE[0], PRACTICE_SPACE[1])
+        achieved_goal_norm = self._normalize(achieved_goal, Cfg.PRACTICE_SPACE[0], Cfg.PRACTICE_SPACE[1])
+        desired_goal_norm = self._normalize(self.desired_goal, Cfg.PRACTICE_SPACE[0], Cfg.PRACTICE_SPACE[1])
 
         obs = dict(
                 observation=observation,
@@ -140,7 +153,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        goaldiff_weighted = PRACTICE_SPACE[3] * np.array([achieved_goal - desired_goal])
+        goaldiff_weighted = Cfg.PRACTICE_SPACE[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (> at-least-only (needs control from both sides))
         goaldistance = np.linalg.norm(goaldiff_weighted, axis=-1)
         if goaldistance.shape[-1] == 1:
@@ -166,13 +179,13 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
 
-        if IS_GOAL_REWARD_ADAPTIVE_THRESHOLD:
-            if self.ep_rewards_mean > GOAL_ADAPTIVE_REWARD_THRESHOLD_MEAN:
-                self.goal_reward_threshold -= GOAL_ADAPTIVE_REWARD_THRESHOLD_RATE
+        if Cfg.IS_GOAL_REWARD_ADAPTIVE_THRESHOLD:
+            if self.ep_rewards_mean > Cfg.GOAL_ADAPTIVE_REWARD_THRESHOLD_MEAN:
+                self.goal_reward_threshold -= Cfg.GOAL_ADAPTIVE_REWARD_THRESHOLD_RATE
             else:
-                self.goal_reward_threshold += GOAL_ADAPTIVE_REWARD_THRESHOLD_RATE
-            self.goal_reward_threshold = max(GOAL_REWARD_THRESHOLD_MIN, self.goal_reward_threshold)
-            self.goal_reward_threshold = min(GOAL_REWARD_THRESHOLD_MAX, self.goal_reward_threshold)
+                self.goal_reward_threshold += Cfg.GOAL_ADAPTIVE_REWARD_THRESHOLD_RATE
+            self.goal_reward_threshold = max(Cfg.GOAL_REWARD_THRESHOLD_MIN, self.goal_reward_threshold)
+            self.goal_reward_threshold = min(Cfg.GOAL_REWARD_THRESHOLD_MAX, self.goal_reward_threshold)
 
         terminated = False
         truncated = False
@@ -185,11 +198,10 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         dims_outside, = np.where(np.logical_or(obs['achieved_goal'] < 0, obs['achieved_goal'] > 1))
         
         if len(dims_outside) > 0:
-            print('outside practice space!', PRACTICE_SPACE_LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
-            terminated = IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE
+            print('outside practice space!', Cfg.PRACTICE_SPACE_LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
+            terminated = Cfg.IS_TERMINATION_ON_LEAVING_PRACTICE_SPACE
             reward = 0
-
-        if self.ep_num_steps > 1000:
+        if self.ep_num_steps > Cfg.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
             truncated = True
 
@@ -221,13 +233,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             ep_goal_distance_min = min(self.ep_goal_distances)
 
             # if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
-            if IS_TRAJECTORY_HALVING and (ep_goal_distance_min < self.last_ep_goal_distance_min):
+            if Cfg.TrajectoryHalving.ENABLED and (ep_goal_distance_min < self.last_ep_goal_distance_min):
                 print('halving!')
-                # idx_half = len(self.ep_states)//2
-                # idx_highest_goalconvergence = np.argmin(np.gradient(self.ep_goal_distances))
-                idx_lowest_goaldistance = np.argmin(self.ep_goal_distances)
-
-                idx_halving = idx_lowest_goaldistance
+                idx_halving = self._get_idx_for_trajectory_halving(Cfg.TRAJECTORY_HALVING_STRAT)
                 qpos, qvel = self.ep_states[idx_halving]
                 qpos, qvel = self._add_noise(qpos, qvel)
                 
@@ -248,11 +256,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
     
 
     def _get_goal(self):
-        if IS_RAND_SAMPLING_GOAL:
+        if Cfg.IS_RAND_SAMPLING_GOAL:
             # https://en.wikipedia.org/wiki/Triangular_distribution
-            return np.random.triangular(PRACTICE_SPACE[0], PRACTICE_SPACE[2], PRACTICE_SPACE[1])
+            return np.random.triangular(Cfg.PRACTICE_SPACE[0], Cfg.PRACTICE_SPACE[2], Cfg.PRACTICE_SPACE[1])
         else:
-            return PRACTICE_SPACE[2]
+            return Cfg.PRACTICE_SPACE[2]
 
 
     def _add_noise(self, qpos, qvel):
@@ -275,5 +283,16 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_goal_distances = []
         self.ep_states = []
         # adaptive threshold: per episode vs. per training
+        
         # self.threshold_goaldistance = THRESHOLD_ACCURACY_NORMED_ABS
         print('desired_goal ', self.desired_goal)
+
+
+    def _get_idx_for_trajectory_halving(self, strat: Cfg.TrajectoryHalving.Strat):
+        match strat:
+            case Cfg.TrajectoryHalving.Strat.HALF:
+                return len(self.ep_states) // 2
+            case Cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
+                return np.argmin(np.gradient(self.ep_goal_distances))
+            case Cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
+                return np.argmin(self.ep_goal_distances)
