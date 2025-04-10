@@ -54,7 +54,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.goal_reward_threshold = cfg.GoalRewardThreshold.MIN
+        self.ep_goal_reward_threshold = cfg.GoalRewardThreshold.MIN
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min: float = np.inf
@@ -106,7 +106,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             # single step (no replay)
             self.ep_goal_distances.append(goaldistance[0])
 
-        reward = (goaldistance < self.goal_reward_threshold).astype(np.float64)
+        reward = (goaldistance < self.ep_goal_reward_threshold).astype(np.float64)
         return reward
 
 
@@ -127,11 +127,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         if cfg.GoalRewardThreshold.IS_ADAPTIVE:
             if self.ep_rewards_mean > cfg.GoalRewardThreshold.ADAPTIVE_REWARD_MEAN:
-                self.goal_reward_threshold -= cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
+                self.ep_goal_reward_threshold -= cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
             else:
-                self.goal_reward_threshold += cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
-            self.goal_reward_threshold = max(cfg.GoalRewardThreshold.MIN, self.goal_reward_threshold)
-            self.goal_reward_threshold = min(cfg.GoalRewardThreshold.MAX, self.goal_reward_threshold)
+                self.ep_goal_reward_threshold += cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
+            self.ep_goal_reward_threshold = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold)
+            self.ep_goal_reward_threshold = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold)
 
         terminated = False
         truncated = False
@@ -151,8 +151,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             print('truncated.')
             truncated = True
 
-        # ---------
-
         if self.render_mode == "human":
             self.render()
 
@@ -165,14 +163,14 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         if self.ep_obs_cur:
             # print(self.ep_goal_distances)
-            print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_num_steps', self.ep_num_steps)
+            print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_goal_distance_min', min(self.ep_goal_distances))
             print('ep_goal_convergence_per_step', (max(self.ep_goal_distances) - min(self.ep_goal_distances)) / self.ep_num_steps)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
+            print('ep_goal_reward_threshold', self.ep_goal_reward_threshold)
             print('ep_rewards_mean', self.ep_rewards_mean)
-            print('goal_reward_threshold', self.goal_reward_threshold)
             print('\n')
 
         if self.ep_num_steps > 1:
@@ -229,15 +227,17 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_goal_distances = []
         self.ep_states = []
         if cfg.GoalRewardThreshold.IS_RESET_PER_EPISODE:
-            self.goal_reward_threshold = cfg.GoalRewardThreshold.MIN
+            self.ep_goal_reward_threshold = cfg.GoalRewardThreshold.MIN
         print('desired_goal ', self.desired_goal)
 
 
     def _get_idx_for_trajectory_halving(self, strat: cfg.TrajectoryHalving.Strat):
+        idx_step = -1
         match strat:
             case cfg.TrajectoryHalving.Strat.HALF:
-                return len(self.ep_states) // 2
+                idx_step = len(self.ep_states) // 2
             case cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
-                return np.argmin(np.gradient(self.ep_goal_distances))
+                idx_step = np.argmin(np.gradient(self.ep_goal_distances))
             case cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
-                return np.argmin(self.ep_goal_distances)
+                idx_step = np.argmin(self.ep_goal_distances)
+        return idx_step
