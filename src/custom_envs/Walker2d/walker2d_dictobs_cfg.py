@@ -29,7 +29,7 @@ class PracticeSpace:
         [2.0,        3.0,        1.5,        3,              2.0,            1.1],   # max
         [1.1,        2.0,        0.5,        1,              0,              1],     # mode
         [1.0,        2.0,        0.5,        0.5,            0.0,            1.0]    # weight
-    ])
+    ])[:,[0,1,2,4,5]]
     DIAMETER = np.linalg.norm(D[1] - D[0])
     DIAMETER_NORMED = np.sqrt(D.shape[1])
     MODE = np.linalg.norm(D[2])
@@ -45,13 +45,13 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
     IS_ADAPTIVE = True
-    IS_RESET_PER_EPISODE = True # else per training
+    IS_RESET_PER_EPISODE = False # else per training
 
-    MIN = 0.0 * PracticeSpace.RADIUS_NORMED # [0,1] REWARD TOLERANCE
+    MIN = 0.0 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
     MAX = 1.0 * PracticeSpace.RADIUS_NORMED
     ADAPTIVE_REWARD_MEAN = 0.001 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
     # [1/ep_total_steps] to still reach reward zone in a worst episode?
-    ADAPTIVE_REWARD_CHANGE = 0.001 * PracticeSpace.DIAMETER_NORMED # [0,1] REWARD ADAPTABILITY - how fast it adapts per step (~how well it holds the rewards mean (=sparsity)) 
+    ADAPTIVE_REWARD_CHANGE = 0.001 * PracticeSpace.DIAMETER_NORMED # REWARD ADAPTABILITY - how fast it adapts per step (~how well it holds the rewards mean (=sparsity)) 
 
 
 class TrajectoryHalving:
@@ -63,4 +63,3 @@ class TrajectoryHalving:
         HIGHEST_GOAL_CONVERGENCE = 1
         LOWEST_GOAL_DISTANCE = 2
     STRAT = Strat.HIGHEST_GOAL_CONVERGENCE
-

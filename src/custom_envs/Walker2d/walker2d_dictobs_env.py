@@ -75,7 +75,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         angle_thigh = max(qpos[3], qpos[6])
         is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
 
-        achieved_goal = np.array((height, velocity, angle, n_contact_after, angle_thigh, is_moving_forward))
+        achieved_goal = np.array((height, velocity, angle, angle_thigh, is_moving_forward))
         achieved_goal_norm = self._normalize(achieved_goal, cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[1])
         desired_goal_norm = self._normalize(self.desired_goal, cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[1])
 
