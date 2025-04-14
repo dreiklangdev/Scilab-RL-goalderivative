@@ -26,6 +26,10 @@ from . import walker2d_dictobs_cfg as cfg
 #   400k, adaptive[0,0.5]   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/09-57-22_restored_restored/rl_model_finished
 #   120k, noAdapt   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/11-06-36_restored/rl_model_finished
 
+# v4.0 - strong weight diff.
+#   120k, bidir. adaptive   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/19-31-37_restored_restored_restored/rl_model_finished
+
+
 # forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")
 
@@ -61,7 +65,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.ep_goal_reward_threshold = cfg.GoalRewardThreshold.MIN
+        self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MIN
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min: float = np.inf
@@ -108,12 +112,12 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         goaldiff_weighted = cfg.PracticeSpace.D[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (> at-least-only (needs control from both sides))
-        goaldistance = np.linalg.norm(goaldiff_weighted, axis=-1)
-        if goaldistance.shape[-1] == 1:
+        goaldistance_normed = np.linalg.norm(goaldiff_weighted, axis=-1)
+        if goaldistance_normed.shape[-1] == 1:
             # single step (no replay)
-            self.ep_goal_distances.append(goaldistance[0])
+            self.ep_goal_distances_normed.append(goaldistance_normed[0])
 
-        reward = (goaldistance < self.ep_goal_reward_threshold).astype(np.float64)
+        reward = (goaldistance_normed < self.ep_goal_reward_threshold_normed).astype(np.float64)
         # try reward if pos. goal convergence? (non-sparse)
         return reward
 
@@ -134,12 +138,18 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_num_steps += 1
 
         if cfg.GoalRewardThreshold.IS_ADAPTIVE:
-            if self.ep_rewards_mean > cfg.GoalRewardThreshold.ADAPTIVE_REWARD_MEAN:
-                self.ep_goal_reward_threshold -= cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
-            else:
-                self.ep_goal_reward_threshold += cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
-            self.ep_goal_reward_threshold = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold)
-            self.ep_goal_reward_threshold = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold)
+            # if self.ep_rewards_mean > cfg.GoalRewardThreshold.ADAPTIVE_REWARD_MEAN:
+            #     self.ep_goal_reward_threshold_normed -= cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
+            # else:
+            #     self.ep_goal_reward_threshold_normed += cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
+
+            if reward and len(self.ep_goal_distances_normed) > 1:
+                shrink = self.ep_goal_distances_normed[-1] - self.ep_goal_distances_normed[-2]
+                self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] + shrink
+                print('adaptive threshold ', self.ep_goal_reward_threshold_normed)
+
+            self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
+            self.ep_goal_reward_threshold_normed = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold_normed)
             # self.ep_goal_reward_threshold = min(cfg.GoalRewardThreshold.max_periodic(self.ep_num_steps), self.ep_goal_reward_threshold)
 
         terminated = False
@@ -175,16 +185,16 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min_normed', min(self.ep_goal_distances) / cfg.PracticeSpace.RADIUS_NORMED)
-            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances) - min(self.ep_goal_distances)) / self.ep_num_steps) / cfg.PracticeSpace.RADIUS_NORMED)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / cfg.PracticeSpace.RADIUS_NORMED)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / cfg.PracticeSpace.RADIUS_NORMED)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold / cfg.PracticeSpace.RADIUS_NORMED)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS_NORMED)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('\n')
 
         if self.ep_num_steps > 1:
-            ep_goal_distance_min = min(self.ep_goal_distances)
+            ep_goal_distance_min = min(self.ep_goal_distances_normed)
 
             # if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
             if cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min < self.last_ep_goal_distance_min):
@@ -234,10 +244,12 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
-        self.ep_goal_distances = []
+        self.ep_goal_distances_normed = []
         self.ep_states = []
-        if cfg.GoalRewardThreshold.IS_RESET_PER_EPISODE:
-            self.ep_goal_reward_threshold = cfg.GoalRewardThreshold.MIN
+        # if cfg.GoalRewardThreshold.IS_RESET_PER_EPISODE:
+        #     self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MIN
+        self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
+
         print('desired_goal ', self.desired_goal)
 
 
@@ -247,7 +259,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             case cfg.TrajectoryHalving.Strat.HALF:
                 idx_step = len(self.ep_states) // 2
             case cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
-                idx_step = np.argmin(np.gradient(self.ep_goal_distances))
+                idx_step = np.argmin(np.gradient(self.ep_goal_distances_normed))
             case cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
-                idx_step = np.argmin(self.ep_goal_distances)
+                idx_step = np.argmin(self.ep_goal_distances_normed)
         return idx_step
