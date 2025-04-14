@@ -18,8 +18,9 @@ class PracticeSpace:
     # generally: the more goal dims., the better? ("more experienced coach")
     # TODO goal analysis (eg. most failed dim.) on eval
     # sample int (float), if int (float)?
-    IS_TERMINATION_ON_LEAVING = True # radically decrease state-/searchspace
-    IS_RAND_GOAL_SAMPLING = False # learn to generalize in whole (noisy) practice-space
+    IS_RAND_GOAL_SAMPLING = False # learn to generalize in (noisy) practice-space
+    IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
+    REWARD_IF_OUTSIDE = 0
 
     LABELS = np.array([
         'height',   'velocity',  'angle',   'contact_after', 'angle_thigh',  'is_moving_forward',
@@ -28,8 +29,8 @@ class PracticeSpace:
         [0.8,        -2.0,       -1.0,       1,              -2.0,           1],     # min
         [2.0,        3.0,        1.5,        3,              2.0,            1.1],   # max
         [1.1,        2.0,        0.5,        1,              0,              1],     # mode
-        [1.0,        2.0,        0.5,        0.5,            0.0,            1.0]    # weight
-    ])[:,[0,1,2,4,5]]
+        [0.1,        2.0,        0.1,        0,              0.0,            1.0]    # weight
+    ])[:,[0,1,2,4,5]] # filter
     DIAMETER = np.linalg.norm(D[1] - D[0])
     DIAMETER_NORMED = np.sqrt(D.shape[1])
     MODE = np.linalg.norm(D[2])
@@ -44,13 +45,23 @@ class GoalRewardThreshold:
     #   too frequent => no movement (idleness, fast-narrow conv.)
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
-    IS_ADAPTIVE = True
-    IS_RESET_PER_EPISODE = False # else per training
+
+    # adaptive threshold abuse/loophole: intentionally worsen performance with time for consistent reward?
+    # TODO improve after strong beginning
+    IS_ADAPTIVE = True # REWARD ACCOMODATION - better beginning
+    IS_RESET_PER_EPISODE = False # takeover performance accomodation from last episode(s); else per training
 
     MIN = 0.0 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
-    MAX = 1.0 * PracticeSpace.RADIUS_NORMED
+    MAX = 1.0 * PracticeSpace.RADIUS_NORMED # TODO needs decay (default decreasing zone: attraction)
+    # need to earn adaption (only bad performance => no rewards!)
+
+    # pulsating zone (attraction)
+    # TODO unidirectional? (only "leading in")
+    def max_periodic(step):
+        return GoalRewardThreshold.MAX * (np.sin((step + (np.random.rand(1) * 2 * np.pi)) / 10) * 0.5 + 0.5)
+
     ADAPTIVE_REWARD_MEAN = 0.001 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
-    # [1/ep_total_steps] to still reach reward zone in a worst episode?
+    # [1/ep_total_steps] * diam_ps
     ADAPTIVE_REWARD_CHANGE = 0.001 * PracticeSpace.DIAMETER_NORMED # REWARD ADAPTABILITY - how fast it adapts per step (~how well it holds the rewards mean (=sparsity)) 
 
 

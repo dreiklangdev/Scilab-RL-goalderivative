@@ -19,6 +19,13 @@ from . import walker2d_dictobs_cfg as cfg
 #   400k, soft-term-only    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fbbe332/le-walker2d-v4/16-28-54/rl_model_finished
 #   400k, hard-term-only    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fbbe332/le-walker2d-v4/17-15-35/rl_model_finished
 
+# v3.0 - refactored, very sparse
+#   200k, reset threshold per ep.   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/19-50-45_restored_restored/rl_model_finished
+#   300k, neg. reward       /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/08-07-14_restored_restored_restored_restored/rl_model_finished
+#   400k, adaptive[0,1]     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/09-03-13_restored/rl_model_finished
+#   400k, adaptive[0,0.5]   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/09-57-22_restored_restored/rl_model_finished
+#   120k, noAdapt   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/11-06-36_restored/rl_model_finished
+
 # forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")
 
@@ -107,6 +114,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             self.ep_goal_distances.append(goaldistance[0])
 
         reward = (goaldistance < self.ep_goal_reward_threshold).astype(np.float64)
+        # try reward if pos. goal convergence? (non-sparse)
         return reward
 
 
@@ -132,6 +140,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 self.ep_goal_reward_threshold += cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
             self.ep_goal_reward_threshold = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold)
             self.ep_goal_reward_threshold = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold)
+            # self.ep_goal_reward_threshold = min(cfg.GoalRewardThreshold.max_periodic(self.ep_num_steps), self.ep_goal_reward_threshold)
 
         terminated = False
         truncated = False
@@ -145,8 +154,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         
         if len(dims_outside) > 0:
             print('outside practice space!', cfg.PracticeSpace.LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
-            terminated = cfg.PracticeSpace.IS_TERMINATION_ON_LEAVING
-            reward = 0
+            terminated = cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
+            reward = cfg.PracticeSpace.REWARD_IF_OUTSIDE
+
         if self.ep_num_steps > cfg.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
             truncated = True
@@ -165,11 +175,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min', min(self.ep_goal_distances))
-            print('ep_goal_convergence_per_step', (max(self.ep_goal_distances) - min(self.ep_goal_distances)) / self.ep_num_steps)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances) / cfg.PracticeSpace.RADIUS_NORMED)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances) - min(self.ep_goal_distances)) / self.ep_num_steps) / cfg.PracticeSpace.RADIUS_NORMED)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold', self.ep_goal_reward_threshold)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold / cfg.PracticeSpace.RADIUS_NORMED)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('\n')
 
