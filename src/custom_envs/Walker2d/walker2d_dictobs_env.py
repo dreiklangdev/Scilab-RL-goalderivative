@@ -29,6 +29,14 @@ from . import walker2d_dictobs_cfg as cfg
 # v4.0 - strong weight diff.
 #   120k, bidir. adaptive   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/19-31-37_restored_restored_restored/rl_model_finished
 
+# v5.0 - shrinking adapt.
+#   200k, minmax[0,1]   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/13-16-01/rl_model_finished
+#                       /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21/rl_model_finished
+#   400k,               /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21_restored/rl_model_finished
+#   400k, strongweight, halfAtHighestConv   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/15-38-32/rl_model_finished
+#   400k, strongweight, halfAtHighestConv,initShrink    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/18-16-05/rl_model_finished
+#   400k, strongweight, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
+
 
 # forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")
@@ -65,10 +73,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MIN
+        # self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min: float = np.inf
+        self.ep_goal_distances_normed = []
 
         # every ep
         self._reset_episode()
@@ -144,8 +153,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             #     self.ep_goal_reward_threshold_normed += cfg.GoalRewardThreshold.ADAPTIVE_REWARD_CHANGE
 
             if reward and len(self.ep_goal_distances_normed) > 1:
-                shrink = self.ep_goal_distances_normed[-1] - self.ep_goal_distances_normed[-2]
-                self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] + shrink
+                goaldistance_shrink = self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1]
+                goaldistance_shrink = max(0, goaldistance_shrink)
+                self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
                 print('adaptive threshold ', self.ep_goal_reward_threshold_normed)
 
             self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
@@ -240,15 +250,21 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
 
     def _reset_episode(self):
+
+        # if cfg.GoalRewardThreshold.IS_RESET_PER_EPISODE:
+        #     self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MIN
+        # TODO shrink to initial goaldistance? eg. ep_goal_distances_normed[0]
+        if self.ep_goal_distances_normed:
+            self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[0]
+        else:
+            self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
+
         self.ep_rewards_mean: float = 0
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
         self.ep_goal_distances_normed = []
         self.ep_states = []
-        # if cfg.GoalRewardThreshold.IS_RESET_PER_EPISODE:
-        #     self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MIN
-        self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
 
         print('desired_goal ', self.desired_goal)
 
