@@ -34,8 +34,13 @@ from . import walker2d_dictobs_cfg as cfg
 #                       /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21/rl_model_finished
 #   400k,               /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21_restored/rl_model_finished
 #   400k, strongweight, halfAtHighestConv   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/15-38-32/rl_model_finished
-#   400k, strongweight, halfAtHighestConv,initShrink    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/18-16-05/rl_model_finished
-#   400k, strongweight, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
+#   400k,               halfAtHighestConv,initShrink    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/18-16-05/rl_model_finished
+#   400k,               halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
+#   400k,               noAdaptive, no trajhalv     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/21-02-44/rl_model_finished
+#   400k,               noAdaptive, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/20-06-07/rl_model_finished
+# adaptive threshold results in overall jerky, unsecure movements (unclear rewarding!), possibly better for universal training (rand. goals)?
+# need strongly different goal weighting!
+# great improvement with trajHalv
 
 
 # forming: goal + termination ("coaching")

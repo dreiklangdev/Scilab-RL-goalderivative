@@ -46,10 +46,10 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
-    IS_ADAPTIVE = True
+    IS_ADAPTIVE = False
 
-    MIN = 0.0 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
-    MAX = 1.0 * PracticeSpace.RADIUS_NORMED # decaying
+    MIN = 0.2 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
+    MAX = 0.2 * PracticeSpace.RADIUS_NORMED # decaying
     # need to earn adaption (only bad performance => no rewards!)
 
 class TrajectoryHalving:
