@@ -29,18 +29,27 @@ from . import walker2d_dictobs_cfg as cfg
 # v4.0 - strong weight diff.
 #   120k, bidir. adaptive   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2a19989/le-walker2d-v4/19-31-37_restored_restored_restored/rl_model_finished
 
-# v5.0 - shrinking adapt.
-#   200k, minmax[0,1]   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/13-16-01/rl_model_finished
-#                       /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21/rl_model_finished
-#   400k,               /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21_restored/rl_model_finished
-#   400k, strongweight, halfAtHighestConv   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/15-38-32/rl_model_finished
-#   400k,               halfAtHighestConv,initShrink    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/18-16-05/rl_model_finished
-#   400k,               halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
-#   400k,               noAdaptive, no trajhalv     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/21-02-44/rl_model_finished
-#   400k,               noAdaptive, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/20-06-07/rl_model_finished
-# adaptive threshold results in overall jerky, unsecure movements (unclear rewarding!), possibly better for universal training (rand. goals)?
+# v5 - shrinking adapt.
+#   1.  200k, minmax[0,1]   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/13-16-01/rl_model_finished
+#                        /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21/rl_model_finished
+#   2.  400k,               /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/14-12-21_restored/rl_model_finished
+#   3.  400k, strongweight, halfAtHighestConv   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/15-38-32/rl_model_finished
+#   4.  400k,               halfAtHighestConv,initShrink    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/18-16-05/rl_model_finished
+#   5.  400k,               halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
+#   6.  400k,               noAdaptive, no trajhalv     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/21-02-44/rl_model_finished
+#   7.  400k,               noAdaptive, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/20-06-07/rl_model_finished
+# adaptive threshold results in overall jerky, unsecure movements (unclear rewarding!), possibly better for universal training (rand. goals)? - no!
+# adaptive threshold also leads to large actor-/critic-losses
 # need strongly different goal weighting!
 # great improvement with trajHalv
+
+# v6 - random goals, no adapt
+#   1.  400k, randomAllDimsNoWeights,Th0.2    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/21-57-09/rl_model_finished
+#   2.  400k, randomWeightedDims,Th0.2        /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/23-35-09/rl_model_finished
+#   3.  400k, randomWeightedDims,adaptiveTh   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/00-34-57/rl_model_finished
+# random: slower, but generalizing (single dim, ie. velocity)
+
+# best: v5.7    noAdaptive, th-halfAtLowestDist
 
 
 # forming: goal + termination ("coaching")
@@ -225,12 +234,14 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
         self._reset_episode()
         return obs_init
-    
+
 
     def _get_goal(self):
         if cfg.PracticeSpace.IS_RAND_GOAL_SAMPLING:
             # https://en.wikipedia.org/wiki/Triangular_distribution
-            return np.random.triangular(cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[2], cfg.PracticeSpace.D[1])
+            goal_randomized = np.random.triangular(cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[2], cfg.PracticeSpace.D[1])
+            goal_randomized_weighted = cfg.PracticeSpace.D[3] * goal_randomized + (1 - cfg.PracticeSpace.D[3]) * cfg.PracticeSpace.D[2]
+            return goal_randomized_weighted
         else:
             return cfg.PracticeSpace.D[2]
 

@@ -18,7 +18,8 @@ class PracticeSpace:
     # generally: the more goal dims., the better? ("more experienced coach")
     # TODO goal analysis (eg. most failed dim.) on eval
     # sample int (float), if int (float)?
-    IS_RAND_GOAL_SAMPLING = False # learn to generalize in (noisy) practice-space
+    # TODO only randomize specific dims?
+    IS_RAND_GOAL_SAMPLING = True # learn to generalize in (noisy) practice-space
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
 
@@ -29,7 +30,7 @@ class PracticeSpace:
         [0.8,        -2.0,       -1.0,       1,              -2.0,           1],     # min
         [2.0,        3.0,        1.5,        3,              2.0,            1.1],   # max
         [1.1,        2.0,        0.5,        1,              0,              1],     # mode
-        [0.1,        2.0,        0.1,        0,              0.0,            1.0]    # weight
+        [0.05,       1.0,        0.05,       0,              0.0,            0.5]    # weight [0,1]
     ])[:,[0,1,2,4,5]] # filter
     DIAMETER = np.linalg.norm(D[1] - D[0])
     DIAMETER_NORMED = np.sqrt(D.shape[1])
@@ -46,10 +47,11 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
-    IS_ADAPTIVE = False
+    IS_ADAPTIVE = True
 
-    MIN = 0.2 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
-    MAX = 0.2 * PracticeSpace.RADIUS_NORMED # decaying
+    # 0.2
+    MIN = 0.0 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
+    MAX = 1.0 * PracticeSpace.RADIUS_NORMED # decaying
     # need to earn adaption (only bad performance => no rewards!)
 
 class TrajectoryHalving:
