@@ -46,24 +46,11 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
-    # adaptive threshold abuse/loophole: intentionally worsen performance with time for consistent reward?
-    # TODO improve after strong beginning
-    IS_ADAPTIVE = True # REWARD ACCOMODATION - better beginning
-    IS_RESET_PER_EPISODE = False # takeover performance accomodation from last episode(s); else per training
+    IS_ADAPTIVE = True
 
     MIN = 0.0 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
-    MAX = 1.0 * PracticeSpace.RADIUS_NORMED # TODO needs decay (default decreasing zone: attraction)
+    MAX = 1.0 * PracticeSpace.RADIUS_NORMED # decaying
     # need to earn adaption (only bad performance => no rewards!)
-
-    # pulsating zone (attraction)
-    # TODO unidirectional? (only "leading in")
-    def max_periodic(step):
-        return GoalRewardThreshold.MAX * (np.sin((step + (np.random.rand(1) * 2 * np.pi)) / 10) * 0.5 + 0.5)
-
-    ADAPTIVE_REWARD_MEAN = 0.001 # [0,1] REWARD SPARSITY - adapts threshold for specific rewards mean (hold constant difficulty level)
-    # [1/ep_total_steps] * diam_ps
-    ADAPTIVE_REWARD_CHANGE = 0.001 * PracticeSpace.DIAMETER_NORMED # REWARD ADAPTABILITY - how fast it adapts per step (~how well it holds the rewards mean (=sparsity)) 
-
 
 class TrajectoryHalving:
     # further attempts to re-improve current trajectory
@@ -73,4 +60,4 @@ class TrajectoryHalving:
         HALF = 0
         HIGHEST_GOAL_CONVERGENCE = 1
         LOWEST_GOAL_DISTANCE = 2
-    STRAT = Strat.HIGHEST_GOAL_CONVERGENCE
+    STRAT = Strat.LOWEST_GOAL_DISTANCE
