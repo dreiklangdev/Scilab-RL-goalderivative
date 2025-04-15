@@ -47,10 +47,9 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
-    IS_ADAPTIVE = False
+    IS_ADAPTIVE = True
 
-    # 0.2
-    MIN = 0.0 * PracticeSpace.RADIUS # REWARD TOLERANCE
+    MIN = 0.05 * PracticeSpace.RADIUS # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
     MAX = 0.2 * PracticeSpace.RADIUS # decaying
     # need to earn adaption (only bad performance => no rewards!)
 

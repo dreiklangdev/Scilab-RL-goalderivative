@@ -36,13 +36,16 @@ from . import walker2d_dictobs_cfg as cfg
 #   3.  400k, strongweight, halfAtHighestConv   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/15-38-32/rl_model_finished
 #   4.  400k,               halfAtHighestConv,initShrink    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/18-16-05/rl_model_finished
 #   5.  400k,               halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
-#   6.  400k,               noAdaptive, no trajhalv     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/21-02-44/rl_model_finished
-#   7.  400k,               noAdaptive, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/20-06-07/rl_model_finished
+#   6.  400k, 0.2           noAdaptive, no trajhalv     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/21-02-44/rl_model_finished
+#   7.  400k, 0.2           noAdaptive, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/20-06-07/rl_model_finished
 #   8.  400k, minmax[0,0.2], strongweight, halfAtLowestDist     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8d73cee/le-walker2d-v4/08-38-24/rl_model_finished              
-# adaptive threshold results in overall jerky, unsecure movements (unclear rewarding!), possibly better for universal training (rand. goals)? - no!
-# adaptive threshold also leads to large actor-/critic-losses
+#   9.  400k, minmax[0.05,0.2], strongweight, halfAtLowestDist     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/638089b/le-walker2d-v4/09-46-08/rl_model_finished             
+#   10.  400k, minmax[0.01,0.2], strongweight, halfAtLowestDist     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/638089b/le-walker2d-v4/10-49-20/rl_model_finished             
+# adaptive threshold (high max.) results in overall jerky, unsecure movements (unclear rewarding!), possibly better for universal training (rand. goals)? - no!
+# adaptive threshold (high max.) also leads to large actor-/critic-losses
 # need strongly different goal weighting!
 # great improvement with trajHalv
+# adapt. threshold: "perfecting" inside goal zone ("finetune", sufficient goal zone vs. perfect goal zone)
 
 # v6 - random goals, no adapt
 #   1.  400k, randomAllDimsNoWeights,Th0.2    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/21-57-09/rl_model_finished
@@ -50,8 +53,8 @@ from . import walker2d_dictobs_cfg as cfg
 #   3.  400k, randomWeightedDims,adaptiveTh   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/00-34-57/rl_model_finished
 # random: slower, but generalizing (single dim, ie. velocity)
 
-# best: v5.7    noAdaptive, th-halfAtLowestDist
-
+# best: v7    0.2, noAdaptive, th-halfAtLowestDist
+# best: v9    minmax[0.05,0.2], th-halfAtLowestDist
 
 # forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")
@@ -167,7 +170,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
                 self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
                 self.ep_goal_reward_threshold_normed = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold_normed)
-                print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+                if not self.ep_is_perfect and self.ep_goal_reward_threshold_normed == cfg.GoalRewardThreshold.MIN:
+                    print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+                    self.ep_is_perfect = True
+                else:
+                    print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
 
         terminated = False
         truncated = False
@@ -208,6 +215,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
             print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
             print('ep_rewards_mean', self.ep_rewards_mean)
+            print('ep_is_perfect', self.ep_is_perfect)
             print('\n')
 
         if self.ep_num_steps > 1:
@@ -266,6 +274,7 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_goal_distances_normed = []
         self.ep_states = []
         self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
+        self.ep_is_perfect = False
 
         print('desired_goal ', self.desired_goal)
 
