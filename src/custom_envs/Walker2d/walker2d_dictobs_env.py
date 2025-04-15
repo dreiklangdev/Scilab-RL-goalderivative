@@ -170,11 +170,12 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
                 self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
                 self.ep_goal_reward_threshold_normed = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold_normed)
-                if not self.ep_is_perfect and self.ep_goal_reward_threshold_normed == cfg.GoalRewardThreshold.MIN:
-                    print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
-                    self.ep_is_perfect = True
-                else:
-                    print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+                if not self.ep_is_perfect:
+                    if self.ep_goal_reward_threshold_normed == cfg.GoalRewardThreshold.MIN:
+                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+                        self.ep_is_perfect = True
+                    else:
+                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
 
         terminated = False
         truncated = False

@@ -4,6 +4,9 @@ import numpy as np
 
 EPISODE_TRUNCATION_STEPS_MAX = 1000
 
+# remote
+# ssh t500@192.168.178.36
+# sudo sshfs -o allow_other,default_permissions t500@192.168.178.36:/home/t500 /mnt/t500
 
 class PracticeSpace:
     # every training must be inside practice space (reach, hold, recover, etc.)
