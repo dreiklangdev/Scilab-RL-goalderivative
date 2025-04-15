@@ -19,7 +19,7 @@ class PracticeSpace:
     # TODO goal analysis (eg. most failed dim.) on eval
     # sample int (float), if int (float)?
     # TODO only randomize specific dims?
-    IS_RAND_GOAL_SAMPLING = True # learn to generalize in (noisy) practice-space
+    IS_RAND_GOAL_SAMPLING = False # learn to generalize in (noisy) practice-space
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
 
@@ -37,7 +37,7 @@ class PracticeSpace:
     MODE = np.linalg.norm(D[2])
     MODE_RATIO = MODE / DIAMETER
     RADIUS_RATIO = max(MODE_RATIO, 1 - MODE_RATIO)
-    RADIUS_NORMED = RADIUS_RATIO * DIAMETER_NORMED
+    RADIUS = RADIUS_RATIO * DIAMETER_NORMED
 
 
 class GoalRewardThreshold:
@@ -47,11 +47,11 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
-    IS_ADAPTIVE = True
+    IS_ADAPTIVE = False
 
     # 0.2
-    MIN = 0.0 * PracticeSpace.RADIUS_NORMED # REWARD TOLERANCE
-    MAX = 1.0 * PracticeSpace.RADIUS_NORMED # decaying
+    MIN = 0.0 * PracticeSpace.RADIUS # REWARD TOLERANCE
+    MAX = 0.2 * PracticeSpace.RADIUS # decaying
     # need to earn adaption (only bad performance => no rewards!)
 
 class TrajectoryHalving:

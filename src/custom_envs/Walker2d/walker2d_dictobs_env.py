@@ -38,6 +38,7 @@ from . import walker2d_dictobs_cfg as cfg
 #   5.  400k,               halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a38f6f0/le-walker2d-v4/17-25-07/rl_model_finished
 #   6.  400k,               noAdaptive, no trajhalv     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/21-02-44/rl_model_finished
 #   7.  400k,               noAdaptive, halfAtLowestDist    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/592a508/le-walker2d-v4/20-06-07/rl_model_finished
+#   8.  400k, minmax[0,0.2], strongweight, halfAtLowestDist     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8d73cee/le-walker2d-v4/08-38-24/rl_model_finished              
 # adaptive threshold results in overall jerky, unsecure movements (unclear rewarding!), possibly better for universal training (rand. goals)? - no!
 # adaptive threshold also leads to large actor-/critic-losses
 # need strongly different goal weighting!
@@ -68,6 +69,7 @@ from . import walker2d_dictobs_cfg as cfg
 # https://scilab-rl.github.io/Scilab-RL/wiki/Restore-a-saved-policy.html
 # https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/mujoco/walker2d_v4.py
 # extend (vs wrapper)
+# TODO create (abstract?) base class
 class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
 
 
@@ -87,7 +89,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         )
 
         # once
-        # self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
         self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min: float = np.inf
@@ -164,10 +165,9 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
                 goaldistance_shrink = self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1]
                 goaldistance_shrink = max(0, goaldistance_shrink)
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
-                print('adaptive threshold ', self.ep_goal_reward_threshold_normed)
-
-            self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
-            self.ep_goal_reward_threshold_normed = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = min(cfg.GoalRewardThreshold.MAX, self.ep_goal_reward_threshold_normed)
+                print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
 
         terminated = False
         truncated = False
@@ -202,11 +202,11 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / cfg.PracticeSpace.RADIUS_NORMED)
-            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / cfg.PracticeSpace.RADIUS_NORMED)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / cfg.PracticeSpace.RADIUS)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / cfg.PracticeSpace.RADIUS)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS_NORMED)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('\n')
 
@@ -265,7 +265,6 @@ class Walker2dDictObsEnv(Walker2dEnv, utils.EzPickle):
         self.ep_obs_cur = None
         self.ep_goal_distances_normed = []
         self.ep_states = []
-
         self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX
 
         print('desired_goal ', self.desired_goal)
