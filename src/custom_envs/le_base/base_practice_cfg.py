@@ -2,11 +2,15 @@
 from enum import Enum
 import numpy as np
 
-EPISODE_TRUNCATION_STEPS_MAX = 1000
-
 # remote
 # ssh t500@192.168.178.36
 # sudo sshfs -o allow_other,default_permissions t500@192.168.178.36:/home/t500 /mnt/t500
+
+
+class General:
+    EPISODE_TRUNCATION_STEPS_MAX = 1000
+    EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN = 0.95
+
 
 class PracticeSpace:
     # every training must be inside practice space (reach, hold, recover, etc.)
@@ -50,6 +54,7 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
+    # rewarding :static, predictable > adaptive, dynamic?
     IS_ADAPTIVE = False
 
     # smaller: faster reach
@@ -57,6 +62,7 @@ class GoalRewardThreshold:
     MIN = 0.05 * PracticeSpace.RADIUS # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
     MAX_DEFAULT = 0.2 * PracticeSpace.RADIUS # decaying?
     # need to earn adaption (only bad performance => no rewards!)
+
 
 class TrajectoryHalving:
     # further attempts to re-improve current trajectory

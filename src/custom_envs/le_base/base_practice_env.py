@@ -1,20 +1,17 @@
 
 import numpy as np
-
-from gymnasium import utils
 from gymnasium import spaces
-from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
-from . import walker2d_dictobs_cfg as cfg
+from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
+from ..le_base import base_practice_cfg
 
 
-class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
+class BasePracticeEnv(BaseMujocoEnv):
 
 
-    def __init__(self):
-        Walker2dEnv.__init__(self, exclude_current_positions_from_observation=False)
-
+    def __init__(self, cfg: base_practice_cfg):
+        self.cfg: base_practice_cfg = cfg
         orig_obspace = self.observation_space
-        obspace = spaces.Box(-np.inf, np.inf, shape=(cfg.PracticeSpace.D.shape[1],), dtype='float64')
+        obspace = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.D.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -39,7 +36,7 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        goaldiff_weighted = cfg.PracticeSpace.D[3] * np.array([achieved_goal - desired_goal])
+        goaldiff_weighted = self.cfg.PracticeSpace.D[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (> at-least-only (needs control from both sides))
         goaldistance_normed = np.linalg.norm(goaldiff_weighted, axis=-1)
         if goaldistance_normed.shape[-1] == 1:
@@ -55,8 +52,13 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
         self.do_simulation(action, self.frame_skip)
 
         info = {}
+        info['success'] = False
         obs = self._get_obs()
         self.ep_obs_cur = obs
+
+        qpos = self.data.qpos.flat.copy()
+        qvel = self.data.qvel.flat.copy()
+        self.ep_states.append((qpos, qvel))
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
         if reward:
@@ -66,19 +68,19 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
 
-        if cfg.GoalRewardThreshold.IS_ADAPTIVE:
+        if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
             if reward and len(self.ep_goal_distances_normed) > 1:
                 goaldistance_shrink = self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1]
                 goaldistance_shrink = max(0, goaldistance_shrink)
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
-                self.ep_goal_reward_threshold_normed = max(cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
-                self.ep_goal_reward_threshold_normed = min(cfg.GoalRewardThreshold.MAX_DEFAULT, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT, self.ep_goal_reward_threshold_normed)
                 if not self.ep_is_perfect:
-                    if self.ep_goal_reward_threshold_normed == cfg.GoalRewardThreshold.MIN:
-                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN:
+                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
                         self.ep_is_perfect = True
                     else:
-                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
 
         terminated = False
         truncated = False
@@ -91,12 +93,13 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
         dims_outside, = np.where(np.logical_or(obs['achieved_goal'] < 0, obs['achieved_goal'] > 1))
         
         if len(dims_outside) > 0:
-            print('outside practice space!', cfg.PracticeSpace.LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
-            terminated = cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
-            reward = cfg.PracticeSpace.REWARD_IF_OUTSIDE
+            print('outside practice space!', self.cfg.PracticeSpace.LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
+            terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
+            reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
-        if self.ep_num_steps > cfg.EPISODE_TRUNCATION_STEPS_MAX:
+        if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
+            info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             truncated = True
 
         if self.render_mode == "human":
@@ -113,11 +116,11 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / cfg.PracticeSpace.RADIUS)
-            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / cfg.PracticeSpace.RADIUS)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.RADIUS)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.RADIUS)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / cfg.PracticeSpace.RADIUS)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('ep_is_perfect', self.ep_is_perfect)
             print('\n')
@@ -126,9 +129,9 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
             ep_goal_distance_min = min(self.ep_goal_distances_normed)
 
             # if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
-            if cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min < self.last_ep_goal_distance_min):
-                print('halving!')
-                idx_halving = self._get_idx_for_trajectory_halving(cfg.TrajectoryHalving.STRAT)
+            if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min < self.last_ep_goal_distance_min):
+                idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
+                print('halving! ', idx_halving)
                 qpos, qvel = self.ep_states[idx_halving]
                 qpos, qvel = self._add_noise(qpos, qvel)
 
@@ -149,13 +152,13 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
 
 
     def _get_goal(self):
-        if cfg.PracticeSpace.IS_RAND_GOAL_SAMPLING:
+        if self.cfg.PracticeSpace.IS_RAND_GOAL_SAMPLING:
             # https://en.wikipedia.org/wiki/Triangular_distribution
-            goal_randomized = np.random.triangular(cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[2], cfg.PracticeSpace.D[1])
-            goal_randomized_weighted = cfg.PracticeSpace.D[3] * goal_randomized + (1 - cfg.PracticeSpace.D[3]) * cfg.PracticeSpace.D[2]
+            goal_randomized = np.random.triangular(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2], self.cfg.PracticeSpace.D[1])
+            goal_randomized_weighted = self.cfg.PracticeSpace.D[3] * goal_randomized + (1 - self.cfg.PracticeSpace.D[3]) * self.cfg.PracticeSpace.D[2]
             return goal_randomized_weighted
         else:
-            return cfg.PracticeSpace.D[2]
+            return self.cfg.PracticeSpace.D[2]
 
 
     def _add_noise(self, qpos, qvel):
@@ -177,20 +180,20 @@ class BasePracticeEnv(Walker2dEnv, utils.EzPickle):
         self.ep_obs_cur = None
         self.ep_goal_distances_normed = []
         self.ep_states = []
-        self.ep_goal_reward_threshold_normed = cfg.GoalRewardThreshold.MAX_DEFAULT
+        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT
         self.ep_is_perfect = False
 
         print('desired_goal ', self.desired_goal)
 
 
-    def _get_idx_for_trajectory_halving(self, strat: cfg.TrajectoryHalving.Strat):
+    def _get_idx_for_trajectory_halving(self, strat):
         idx_step = -1
         match strat:
-            case cfg.TrajectoryHalving.Strat.HALF:
+            case self.cfg.TrajectoryHalving.Strat.HALF:
                 idx_step = len(self.ep_states) // 2
-            case cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
+            case self.cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
                 idx_step = np.argmin(np.gradient(self.ep_goal_distances_normed))
-            case cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
+            case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
                 idx_step = np.argmin(self.ep_goal_distances_normed)
         return idx_step
 

@@ -158,7 +158,13 @@ def register_custom_envs():
 
     register(
         id="le-walker2d-v4",
-        entry_point='custom_envs.Walker2d.walker2d_dictobs_env:Walker2dDictObsEnv',
+        entry_point='custom_envs.le_walker2d.walker2d_dictobs_env:Walker2dDictObsEnv',
+        max_episode_steps=1500,
+    )
+
+    register(
+        id="le-humanoid-v4",
+        entry_point='custom_envs.le_humanoid.humanoid_dictobs_env:HumanoidDictObsEnv',
         max_episode_steps=1500,
     )
 

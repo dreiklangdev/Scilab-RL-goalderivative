@@ -1,8 +1,8 @@
 
 import numpy as np
 
-from gymnasium import utils
-from . import base_practice_env
+from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
+from ..le_base import base_practice_env
 from . import walker2d_dictobs_cfg as cfg
 
 
@@ -52,9 +52,12 @@ from . import walker2d_dictobs_cfg as cfg
 #   3.  400k, randomWeightedDims,adaptiveTh   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/00-34-57/rl_model_finished
 # random: slower, but generalizing (single dim, ie. velocity)
 
-# best: v7    0.2, noAdaptive, th-halfAtLowestDist 
 # best: v9    minmax[0.05,0.2], th-halfAtLowestDist
-#   1M    /home/t500/tuhh/dsf/Scilab-RL/data/8425c48/le-walker2d-v4/15-41-58/rl_model_finished
+#   1M    /home/t500/tuhh/dsf/Scilab-RL/data/8425c48/le-walker2d-v4/15-41-58/
+#       no goal-holding...
+# best: v7    0.2, noAdaptive, th-halfAtLowestDist
+#   1M      /home/t500/tuhh/dsf/Scilab-RL/data/4779276/le-walker2d-v4/19-35-53/rl_model_finished
+#       success!
 
 
 # forming: goal + termination ("coaching")
@@ -74,23 +77,27 @@ from . import walker2d_dictobs_cfg as cfg
 # https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/mujoco/walker2d_v4.py
 # extend (vs wrapper)
 # TODO create (abstract?) base class
-class Walker2dDictObsEnv(base_practice_env.BasePracticeEnv, utils.EzPickle):
+class Walker2dDictObsEnv(base_practice_env.BasePracticeEnv, Walker2dEnv):
+
+
+    def __init__(self):
+        Walker2dEnv.__init__(self, exclude_current_positions_from_observation=False)
+        base_practice_env.BasePracticeEnv.__init__(self, cfg)
 
 
     def _get_obs(self):
         qpos = self.data.qpos.flat.copy()
         qvel = np.clip(self.data.qvel.flat.copy(), -10, 10)
-        self.ep_states.append((qpos, qvel))
-
         observation = np.concatenate((qpos, qvel)).ravel()
+        
         distance, height, velocity, angle = qpos[0], qpos[1], qvel[0], qpos[2]
         n_contact_after = self.data.ncon if self.ep_num_steps > 300 else 1
         angle_thigh = max(qpos[3], qpos[6])
         is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
 
         achieved_goal = np.array((height, velocity, angle, angle_thigh, is_moving_forward))
-        achieved_goal_norm = self._normalize(achieved_goal, cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[1])
-        desired_goal_norm = self._normalize(self.desired_goal, cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[1])
+        achieved_goal_norm = self._normalize(achieved_goal, self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[1])
+        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[1])
 
         obs = dict(
                 observation=observation,
