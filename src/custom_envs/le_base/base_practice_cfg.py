@@ -31,21 +31,28 @@ class PracticeSpace:
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
 
-    LABELS = np.array([
-        'height',   'velocity'])
-    D = np.array([[0,0], [0,0], [0,0], [0,0]])
-    # = np.array([ # example
-    #     [0.8,        -2.0,  ],   # min
-    #     [2.0,        3.0,   ],   # max
-    #     [1.1,        2.0,   ],   # mode
-    #     [0.05,       1.0,   ]    # weight [0,1]
-    # ])
-    DIAMETER = np.linalg.norm(D[1] - D[0])
-    DIAMETER_NORMED = np.sqrt(D.shape[1])
-    MODE = np.linalg.norm(D[2])
-    MODE_RATIO = MODE / DIAMETER
-    RADIUS_RATIO = max(MODE_RATIO, 1 - MODE_RATIO)
-    RADIUS = RADIUS_RATIO * DIAMETER_NORMED
+    d = None
+    labels = None
+
+    def init_dims(dims, labels):
+        PracticeSpace.d = np.array(dims)
+        PracticeSpace.labels = np.array(labels)
+
+        diameter = np.linalg.norm(PracticeSpace.d[1] - PracticeSpace.d[0])
+        diameter_normed = np.sqrt(PracticeSpace.d.shape[1])
+        mode = np.linalg.norm(PracticeSpace.d[2])
+        mode_ratio = mode / diameter
+        radius_ratio = max(mode_ratio, 1 - mode_ratio)
+        PracticeSpace.radius = radius_ratio * diameter_normed
+
+    # example
+    # base.PracticeSpace.init_dims([
+    #     [1.0,        -2.0],  # min
+    #     [2.0,        3.0],   # max
+    #     [1.3,        -1.0],  # mode
+    #     [0.05,       1.0]    # weight [0,1]
+    # ], ['height',   'velocity'])
+
 
     class RandomGoalSampling:
         class Strat(Enum):
@@ -67,8 +74,8 @@ class GoalRewardThreshold:
 
     # smaller: faster reach
     # too small: will never hold?
-    MIN = 0.05 * PracticeSpace.RADIUS # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
-    MAX_DEFAULT = 0.2 * PracticeSpace.RADIUS # decaying?
+    MIN_FAC = 0.05 # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
+    MAX_DEFAULT_FAC = 0.2 # decaying?
     # need to earn adaption (only bad performance => no rewards!)
 
 

@@ -12,13 +12,13 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.cfg: base_practice_cfg = cfg
 
         if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            obspace_shape = (self.observation_space.shape[0] + self.cfg.PracticeSpace.D.shape[1],)
+            obspace_shape = (self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1],)
         else:
             obspace_shape = (self.observation_space.shape[0],)
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=obspace_shape, dtype='float64')
         
-        practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.D.shape[1],), dtype='float64')
+        practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.d.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -43,7 +43,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        goaldiff_weighted = self.cfg.PracticeSpace.D[3] * np.array([achieved_goal - desired_goal])
+        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (> at-least-only (needs control from both sides))
         goaldistance_normed = np.linalg.norm(goaldiff_weighted, axis=-1)
         if goaldistance_normed.shape[-1] == 1:
@@ -87,14 +87,14 @@ class BasePracticeEnv(BaseMujocoEnv):
                 goaldistance_shrink = self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1]
                 goaldistance_shrink = max(0, goaldistance_shrink)
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
-                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
-                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius, self.ep_goal_reward_threshold_normed)
                 if not self.ep_is_perfect:
-                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN:
-                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
+                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius:
+                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS())
                         self.ep_is_perfect = True
                     else:
-                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
+                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS())
 
         terminated = False
         truncated = False
@@ -107,7 +107,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         dims_outside, = np.where(np.logical_or(obs['achieved_goal'] < 0, obs['achieved_goal'] > 1))
         
         if len(dims_outside) > 0:
-            print('outside practice space!', self.cfg.PracticeSpace.LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
+            print('outside practice space!', self.cfg.PracticeSpace.labels[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
             terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
             reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
@@ -130,11 +130,11 @@ class BasePracticeEnv(BaseMujocoEnv):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.RADIUS)
-            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.RADIUS)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.radius)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.radius)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('ep_is_perfect', self.ep_is_perfect)
             print('\n')
@@ -170,16 +170,16 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         match self.cfg.PracticeSpace.RandomGoalSampling.STRAT:
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.GENERALIST:
-                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[1])
+                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.CONFORMIST:
                 # https://en.wikipedia.org/wiki/Triangular_distribution
-                goal_randomized = np.random.triangular(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2], self.cfg.PracticeSpace.D[1])
+                goal_randomized = np.random.triangular(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[2], self.cfg.PracticeSpace.d[1])
 
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST:
-                goal_randomized = self.cfg.PracticeSpace.D[2]
+                goal_randomized = self.cfg.PracticeSpace.d[2]
         
-        goal_randomized_weighted = self.cfg.PracticeSpace.D[3] * goal_randomized + (1 - self.cfg.PracticeSpace.D[3]) * self.cfg.PracticeSpace.D[2]
+        goal_randomized_weighted = self.cfg.PracticeSpace.d[3] * goal_randomized + (1 - self.cfg.PracticeSpace.d[3]) * self.cfg.PracticeSpace.d[2]
 
         return goal_randomized_weighted
 
@@ -203,7 +203,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = None
         self.ep_goal_distances_normed = []
         self.ep_states = []
-        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT
+        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius
         self.ep_is_perfect = False
 
         print('desired_goal ', self.desired_goal)

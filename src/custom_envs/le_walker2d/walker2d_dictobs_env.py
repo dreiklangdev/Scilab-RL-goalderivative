@@ -2,7 +2,7 @@
 import numpy as np
 
 from gymnasium.envs.mujoco.walker2d_v4 import Walker2dEnv
-from ..le_base import base_practice_env
+from ..le_base.base_practice_env import BasePracticeEnv
 from . import walker2d_dictobs_cfg as cfg
 
 
@@ -76,31 +76,28 @@ from . import walker2d_dictobs_cfg as cfg
 # https://scilab-rl.github.io/Scilab-RL/wiki/Restore-a-saved-policy.html
 # https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/mujoco/walker2d_v4.py
 # extend (vs wrapper)
-# TODO create (abstract?) base class
-class Walker2dDictObsEnv(base_practice_env.BasePracticeEnv, Walker2dEnv):
+class Walker2dDictObsEnv(BasePracticeEnv, Walker2dEnv):
 
 
     def __init__(self):
         Walker2dEnv.__init__(self, exclude_current_positions_from_observation=False)
-        base_practice_env.BasePracticeEnv.__init__(self, cfg)
+        BasePracticeEnv.__init__(self, cfg)
 
 
     def _get_obs(self):
-        qpos = self.data.qpos.flat.copy()
-        qvel = np.clip(self.data.qvel.flat.copy(), -10, 10)
-        observation = np.concatenate((qpos, qvel)).ravel()
+        obs = BasePracticeEnv._get_obs(self)
         
-        distance, height, velocity, angle = qpos[0], qpos[1], qvel[0], qpos[2]
-        n_contact_after = self.data.ncon if self.ep_num_steps > 300 else 1
-        angle_thigh = max(qpos[3], qpos[6])
+        distance, height, velocity, angle = obs[0], obs[1], obs[9], obs[2]
+        # n_contact_after = self.data.ncon if self.ep_num_steps > 300 else 1
+        angle_thigh = max(obs[3], obs[6])
         is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
 
         achieved_goal = np.array((height, velocity, angle, angle_thigh, is_moving_forward))
-        achieved_goal_norm = self._normalize(achieved_goal, self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[1])
-        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[1])
+        achieved_goal_norm = self._normalize(achieved_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
         obs = dict(
-                observation=observation,
+                observation=obs,
                 achieved_goal=achieved_goal_norm,
                 desired_goal=desired_goal_norm,
             )

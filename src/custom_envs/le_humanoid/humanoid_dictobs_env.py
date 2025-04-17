@@ -20,16 +20,16 @@ class HumanoidDictObsEnv(BasePracticeEnv, HumanoidEnv):
 
 
     def _get_obs(self):
-        observation_goalext = BasePracticeEnv._get_obs(self)
-        height = observation_goalext[0]
-        x_velocity = observation_goalext[22]
+        observation = BasePracticeEnv._get_obs(self)
+        height = observation[0]
+        x_velocity = observation[22]
 
         achieved_goal = np.array((height, x_velocity))
-        achieved_goal_norm = self._normalize(achieved_goal, cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[1])
-        desired_goal_norm = self._normalize(self.desired_goal, cfg.PracticeSpace.D[0], cfg.PracticeSpace.D[1])
+        achieved_goal_norm = self._normalize(achieved_goal, cfg.PracticeSpace.d[0], cfg.PracticeSpace.d[1])
+        desired_goal_norm = self._normalize(self.desired_goal, cfg.PracticeSpace.d[0], cfg.PracticeSpace.d[1])
 
         dictobs = dict(
-                observation=observation_goalext,
+                observation=observation,
                 achieved_goal=achieved_goal_norm,
                 desired_goal=desired_goal_norm,
             )
