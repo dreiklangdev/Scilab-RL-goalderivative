@@ -14,7 +14,7 @@ class PracticeSpace(base.PracticeSpace):
     base.PracticeSpace.init_dims([
         [1.0,        -2.0],  # min
         [2.0,        3.0],   # max
-        [1.3,        -1.0],  # mode
+        [1.3,        1.5],  # mode
         [0.05,       1.0]    # weight [0,1]
     ], ['height',   'velocity'])
 

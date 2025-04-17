@@ -45,6 +45,8 @@ class PracticeSpace:
         radius_ratio = max(mode_ratio, 1 - mode_ratio)
         PracticeSpace.radius = radius_ratio * diameter_normed
 
+    # closer to edge => less (surrounding) exposure => less mastery (ie. wont learn practice limits at all)
+    # mode: always at midpoint? 
     # example
     # base.PracticeSpace.init_dims([
     #     [1.0,        -2.0],  # min
