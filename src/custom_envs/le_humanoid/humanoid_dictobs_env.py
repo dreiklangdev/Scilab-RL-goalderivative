@@ -9,6 +9,7 @@ from . import humanoid_dictobs_cfg as cfg
 #       holds goal reliably if forward walk (cant move backwards at all: needs different policy?) 
 #   1M,            +rand.Goals(conformist)                         +goal-ext.obs. (goal-conscious)     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/31915dc/le-humanoid-v4/12-24-27/rl_model_finished
 #       holds goal reliably, can walk backwards some time
+#   1M,            +rand.Goals(generalist)
 
 class HumanoidDictObsEnv(BasePracticeEnv, HumanoidEnv):
 

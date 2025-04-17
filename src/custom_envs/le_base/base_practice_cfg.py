@@ -33,12 +33,13 @@ class PracticeSpace:
 
     LABELS = np.array([
         'height',   'velocity'])
-    D = np.array([ # example
-        [0.8,        -2.0,  ],   # min
-        [2.0,        3.0,   ],   # max
-        [1.1,        2.0,   ],   # mode
-        [0.05,       1.0,   ]    # weight [0,1]
-    ])[:,[0]] # filter
+    D = np.array([[0,0], [0,0], [0,0], [0,0]])
+    # = np.array([ # example
+    #     [0.8,        -2.0,  ],   # min
+    #     [2.0,        3.0,   ],   # max
+    #     [1.1,        2.0,   ],   # mode
+    #     [0.05,       1.0,   ]    # weight [0,1]
+    # ])
     DIAMETER = np.linalg.norm(D[1] - D[0])
     DIAMETER_NORMED = np.sqrt(D.shape[1])
     MODE = np.linalg.norm(D[2])

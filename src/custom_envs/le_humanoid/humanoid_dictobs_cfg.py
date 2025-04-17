@@ -17,9 +17,12 @@ class PracticeSpace(base.PracticeSpace):
     D = np.array([
         [1.0,        -2.0],  # min
         [2.0,        3.0],   # max
-        [1.3,        1.0],  # mode
+        [1.3,        -1.0],  # mode
         [0.05,       1.0]    # weight [0,1]
     ])
+
+    class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
+        STRAT = base.PracticeSpace.RandomGoalSampling.Strat.GENERALIST
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
