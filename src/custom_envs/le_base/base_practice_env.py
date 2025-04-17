@@ -170,7 +170,7 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         match self.cfg.PracticeSpace.RandomGoalSampling.STRAT:
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.GENERALIST:
-                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2])
+                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[1])
 
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.CONFORMIST:
                 # https://en.wikipedia.org/wiki/Triangular_distribution
