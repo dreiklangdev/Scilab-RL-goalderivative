@@ -7,9 +7,7 @@ class General(base.General):
     EPISODE_TRUNCATION_STEPS_MAX = 5000
     
 
-class PracticeSpace(base.PracticeSpace):
-    
-    IS_RAND_GOAL_SAMPLING = False
+class PracticeSpace(base.PracticeSpace):    
     IS_TERMINATION_IF_OUTSIDE = True
     
     LABELS = np.array([

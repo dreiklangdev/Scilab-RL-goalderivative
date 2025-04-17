@@ -10,6 +10,7 @@ import numpy as np
 class General:
     EPISODE_TRUNCATION_STEPS_MAX = 1000
     EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN = 0.95
+    IS_OBSERVATION_GOAL_EXTENDED = True
 
 
 class PracticeSpace:
@@ -27,24 +28,30 @@ class PracticeSpace:
     # sample int (float), if int (float)?
     # only works for similar goals (same dim., same sign)
     # jack-of-all-trades (but non perfectly) vs. perfectionist
-    IS_RAND_GOAL_SAMPLING = False # learn to generalize in (noisy) practice-space
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
 
     LABELS = np.array([
         'height',   'velocity'])
-    D = np.array([
+    D = np.array([ # example
         [0.8,        -2.0,  ],   # min
         [2.0,        3.0,   ],   # max
         [1.1,        2.0,   ],   # mode
         [0.05,       1.0,   ]    # weight [0,1]
-    ])[:,[0,1,2,4,5]] # filter
+    ])[:,[0]] # filter
     DIAMETER = np.linalg.norm(D[1] - D[0])
     DIAMETER_NORMED = np.sqrt(D.shape[1])
     MODE = np.linalg.norm(D[2])
     MODE_RATIO = MODE / DIAMETER
     RADIUS_RATIO = max(MODE_RATIO, 1 - MODE_RATIO)
     RADIUS = RADIUS_RATIO * DIAMETER_NORMED
+
+    class RandomGoalSampling:
+        class Strat(Enum):
+            GENERALIST = 0
+            CONFORMIST = 1
+            SPECIALIST = 2 # mode only (non-random)
+        STRAT = Strat.GENERALIST
 
 
 class GoalRewardThreshold:

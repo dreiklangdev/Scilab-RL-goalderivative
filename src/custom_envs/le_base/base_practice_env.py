@@ -10,15 +10,22 @@ class BasePracticeEnv(BaseMujocoEnv):
 
     def __init__(self, cfg: base_practice_cfg):
         self.cfg: base_practice_cfg = cfg
-        orig_obspace = self.observation_space
-        obspace = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.D.shape[1],), dtype='float64')
+
+        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
+            obspace_shape = (self.observation_space.shape[0] + self.cfg.PracticeSpace.D.shape[1],)
+        else:
+            obspace_shape = (self.observation_space.shape[0],)
+
+        observation_space = spaces.Box(-np.inf, np.inf, shape=obspace_shape, dtype='float64')
+        
+        practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.D.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
-                desired_goal=obspace,
-                achieved_goal=obspace,
-                observation=orig_obspace,
+                observation=observation_space,
+                desired_goal=practice_space,
+                achieved_goal=practice_space,
             )
         )
 
@@ -46,6 +53,13 @@ class BasePracticeEnv(BaseMujocoEnv):
         reward = (goaldistance_normed < self.ep_goal_reward_threshold_normed).astype(np.float64)
         # try reward if pos. goal convergence? (non-sparse)
         return reward
+    
+
+    def _get_obs(self):
+        observation = super()._get_obs()
+        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
+            observation = np.concatenate((observation, self.desired_goal))
+        return observation # not a dictobs yet
 
 
     def step(self, action):
@@ -152,13 +166,22 @@ class BasePracticeEnv(BaseMujocoEnv):
 
 
     def _get_goal(self):
-        if self.cfg.PracticeSpace.IS_RAND_GOAL_SAMPLING:
-            # https://en.wikipedia.org/wiki/Triangular_distribution
-            goal_randomized = np.random.triangular(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2], self.cfg.PracticeSpace.D[1])
-            goal_randomized_weighted = self.cfg.PracticeSpace.D[3] * goal_randomized + (1 - self.cfg.PracticeSpace.D[3]) * self.cfg.PracticeSpace.D[2]
-            return goal_randomized_weighted
-        else:
-            return self.cfg.PracticeSpace.D[2]
+        goal_randomized = None
+
+        match self.cfg.PracticeSpace.RandomGoalSampling.STRAT:
+            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.GENERALIST:
+                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2])
+
+            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.CONFORMIST:
+                # https://en.wikipedia.org/wiki/Triangular_distribution
+                goal_randomized = np.random.triangular(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2], self.cfg.PracticeSpace.D[1])
+
+            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST:
+                goal_randomized = self.cfg.PracticeSpace.D[2]
+        
+        goal_randomized_weighted = self.cfg.PracticeSpace.D[3] * goal_randomized + (1 - self.cfg.PracticeSpace.D[3]) * self.cfg.PracticeSpace.D[2]
+
+        return goal_randomized_weighted
 
 
     def _add_noise(self, qpos, qvel):
