@@ -25,19 +25,19 @@ class PracticeSpace:
     # generally: the more goal dims., the better? ("more experienced coach")
     # TODO goal analysis (eg. most failed dim.) on eval
     # sample int (float), if int (float)?
-    # TODO only randomize specific dims?
+    # only works for similar goals (same dim., same sign)
+    # jack-of-all-trades (but non perfectly) vs. perfectionist
     IS_RAND_GOAL_SAMPLING = False # learn to generalize in (noisy) practice-space
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
 
     LABELS = np.array([
-        'height',   'velocity',  'angle',   'contact_after', 'angle_thigh',  'is_moving_forward',
-    ])
+        'height',   'velocity'])
     D = np.array([
-        [0.8,        -2.0,       -1.0,       1,              -2.0,           1],     # min
-        [2.0,        3.0,        1.5,        3,              2.0,            1.1],   # max
-        [1.1,        2.0,        0.5,        1,              0,              1],     # mode
-        [0.05,       1.0,        0.05,       0,              0.0,            0.5]    # weight [0,1]
+        [0.8,        -2.0,  ],   # min
+        [2.0,        3.0,   ],   # max
+        [1.1,        2.0,   ],   # mode
+        [0.05,       1.0,   ]    # weight [0,1]
     ])[:,[0,1,2,4,5]] # filter
     DIAMETER = np.linalg.norm(D[1] - D[0])
     DIAMETER_NORMED = np.sqrt(D.shape[1])

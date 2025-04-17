@@ -1,5 +1,4 @@
 
-from enum import Enum
 import numpy as np
 from ..le_base import base_practice_cfg as base
 
@@ -9,7 +8,6 @@ class General(base.General):
 
 
 class PracticeSpace(base.PracticeSpace):
-    
     IS_RAND_GOAL_SAMPLING = True
     IS_TERMINATION_IF_OUTSIDE = True
     REWARD_IF_OUTSIDE = 0
@@ -26,14 +24,9 @@ class PracticeSpace(base.PracticeSpace):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-
-    IS_ADAPTIVE = False
-
-    MIN = 0.05 * PracticeSpace.RADIUS
     MAX_DEFAULT = 0.2 * PracticeSpace.RADIUS
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
-
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
