@@ -61,6 +61,7 @@ class PracticeSpace:
             GENERALIST = 0
             CONFORMIST = 1
             SPECIALIST = 2 # mode only (non-random)
+            INCREMENTALIST = 3
         STRAT = Strat.GENERALIST
 
 

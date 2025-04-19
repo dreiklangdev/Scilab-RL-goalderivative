@@ -84,23 +84,11 @@ class Walker2dDictObsEnv(BasePracticeEnv, Walker2dEnv):
         BasePracticeEnv.__init__(self, cfg)
 
 
-    def _get_obs(self):
-        obs = BasePracticeEnv._get_obs(self)
-        
-        distance, height, velocity, angle = obs[0], obs[1], obs[9], obs[2]
+    def get_achieved_goal(self, superobs):        
+        distance, height, velocity, angle = superobs[0], superobs[1], superobs[9], superobs[2]
         # n_contact_after = self.data.ncon if self.ep_num_steps > 300 else 1
-        angle_thigh = max(obs[3], obs[6])
+        angle_thigh = max(superobs[3], superobs[6])
         is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
 
-        achieved_goal = np.array((height, velocity, angle, angle_thigh, is_moving_forward))
-        achieved_goal_norm = self._normalize(achieved_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-
-        obs = dict(
-                observation=obs,
-                achieved_goal=achieved_goal_norm,
-                desired_goal=desired_goal_norm,
-            )
-
-        return obs
-    
+        return np.array((height, velocity, angle, angle_thigh, is_moving_forward))
+        

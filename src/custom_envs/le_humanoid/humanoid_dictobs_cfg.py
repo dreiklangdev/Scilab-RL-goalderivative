@@ -19,7 +19,7 @@ class PracticeSpace(base.PracticeSpace):
     ], ['height',   'velocity'])
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
-        STRAT = base.PracticeSpace.RandomGoalSampling.Strat.GENERALIST
+        STRAT = base.PracticeSpace.RandomGoalSampling.Strat.INCREMENTALIST
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):

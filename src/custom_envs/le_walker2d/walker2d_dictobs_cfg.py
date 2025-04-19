@@ -17,6 +17,9 @@ class PracticeSpace(base.PracticeSpace):
         [0.05,       1.0,           0.05,       0.0,            0.5]    # weight [0,1]
     ],  ['height',   'velocity',    'angle',   'angle_thigh',   'is_moving_forward',])
 
+    class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
+        STRAT = base.PracticeSpace.RandomGoalSampling.Strat.INCREMENTALIST
+
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
     IS_ADAPTIVE = False

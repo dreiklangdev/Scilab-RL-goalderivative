@@ -10,7 +10,8 @@ from . import humanoid_dictobs_cfg as cfg
 #   1M,            +rand.Goals(conformist)                         +goal-ext.obs. (goal-conscious)     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/31915dc/le-humanoid-v4/12-24-27/rl_model_finished
 #       holds goal reliably, can walk backwards some time
 #   1M,            +rand.Goals(generalist)     /mnt/t500/tuhh/dsf/Scilab-RL/data/e51f87f/le-humanoid-v4/20-17-14/rl_model_finished
-#       wont learn equally, but reliably, even backwards (less mastery at closer to edges/limits) (naturally)
+#       wont learn equally, but reliably, even backwards (less mastery naturally at closer to edges/limits)
+
 
 class HumanoidDictObsEnv(BasePracticeEnv, HumanoidEnv):
 
@@ -20,21 +21,7 @@ class HumanoidDictObsEnv(BasePracticeEnv, HumanoidEnv):
         BasePracticeEnv.__init__(self, cfg)
 
 
-    def _get_obs(self):
-        observation = BasePracticeEnv._get_obs(self)
-        height = observation[0]
-        x_velocity = observation[22]
-
-        achieved_goal = np.array((height, x_velocity))
-        achieved_goal_norm = self._normalize(achieved_goal, cfg.PracticeSpace.d[0], cfg.PracticeSpace.d[1])
-        desired_goal_norm = self._normalize(self.desired_goal, cfg.PracticeSpace.d[0], cfg.PracticeSpace.d[1])
-
-        dictobs = dict(
-                observation=observation,
-                achieved_goal=achieved_goal_norm,
-                desired_goal=desired_goal_norm,
-            )
-        
-        return dictobs
-
-    
+    def get_achieved_goal(self, superobs):
+        height = superobs[0]
+        x_velocity = superobs[22]
+        return np.array((height, x_velocity))
