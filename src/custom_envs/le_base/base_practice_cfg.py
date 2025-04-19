@@ -30,6 +30,8 @@ class PracticeSpace:
     # jack-of-all-trades (but non perfectly) vs. perfectionist
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
+    # TODO adapting? (increase/decrease waypoint distances depending on training timesteps left)
+    GOALS_ROADMAP_TOTAL_WAYPOINTS = 100
 
     d = None
     labels = None
@@ -62,7 +64,7 @@ class PracticeSpace:
             CONFORMIST = 1
             SPECIALIST = 2 # mode only (non-random)
             INCREMENTALIST = 3
-        STRAT = Strat.GENERALIST
+        STRAT = Strat.INCREMENTALIST
 
 
 class GoalRewardThreshold:

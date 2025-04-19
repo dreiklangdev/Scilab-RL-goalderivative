@@ -5,10 +5,6 @@ from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
 from ..le_base import base_practice_cfg
 
 
-# TODO adapting? (increase/decrease waypoint distances depending on training timesteps left)
-GOALS_ROADMAP_TOTAL_WAYPOINTS = 100
-
-
 class BasePracticeEnv(BaseMujocoEnv):
 
 
@@ -34,36 +30,18 @@ class BasePracticeEnv(BaseMujocoEnv):
         )
 
         # once
-        self.desired_goal = self.cfg.PracticeSpace.d[2]
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
         self.ep_goal_roadmap_waypoint_idx: int = 0
 
         superobs = super()._get_obs()
-        self.goals_roadmap = np.linspace(self.get_achieved_goal(superobs), self.desired_goal, num=GOALS_ROADMAP_TOTAL_WAYPOINTS)
-        print('goals_roadmap ', self.goals_roadmap)
+        self.desired_goal = self.cfg.PracticeSpace.d[2]
+        self.goals_roadmap = np.linspace(self.get_achieved_goal(superobs), self.desired_goal, num=self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS)
+        print('goals_roadmap', self.goals_roadmap)
 
         self._reset_episode()
-
         print('le-walker-2d initialized.')
-
-
-    def _get_obs(self):
-        superobs = super()._get_obs()
-        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            superobs = np.concatenate((superobs, self.desired_goal))
-
-        achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-
-        dictobs = dict(
-                observation=superobs,
-                achieved_goal=achieved_goal_norm,
-                desired_goal=desired_goal_norm,
-            )
-        
-        return dictobs
 
 
     def get_achieved_goal(superobs):
@@ -115,10 +93,10 @@ class BasePracticeEnv(BaseMujocoEnv):
                 self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius, self.ep_goal_reward_threshold_normed)
                 if not self.ep_is_perfect:
                     if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius:
-                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
+                        print('perfect goal zone reached!', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
                         self.ep_is_perfect = True
                     else:
-                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
+                        print('adaptive threshold ratio', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
 
         terminated = False
         truncated = False
@@ -131,7 +109,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         dims_outside, = np.where(np.logical_or(obs['achieved_goal'] < 0, obs['achieved_goal'] > 1))
         
         if len(dims_outside) > 0:
-            print('outside practice space!', self.cfg.PracticeSpace.labels[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
+            print('outside practice space!', self.cfg.PracticeSpace.labels[dims_outside], obs['achieved_goal'][dims_outside])
             terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
             reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
@@ -159,7 +137,7 @@ class BasePracticeEnv(BaseMujocoEnv):
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
             print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
-            print('ep_goal_roadmap_waypoint_idx', self.ep_goal_roadmap_waypoint_idx)
+            print('ep_goal_roadmap_waypoint_idx', self.ep_goal_roadmap_waypoint_idx, 'of', self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS - 1)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('\n')
@@ -169,16 +147,12 @@ class BasePracticeEnv(BaseMujocoEnv):
 
             # if self.last_ep_rewards_mean > 0.9: # hold
             if not self.ep_traj_is_halved and ep_goal_distance_min_normed < self.ep_goal_reward_threshold_normed: # only reach, no hold!
-                print('goal roadmap waypoint reached ', self.ep_goal_roadmap_waypoint_idx)
-                # waypoint check per step vs. per episode (more learning freedom)
-                # hold final waypoint
-                self.ep_goal_roadmap_waypoint_idx = min(self.ep_goal_roadmap_waypoint_idx + 1, GOALS_ROADMAP_TOTAL_WAYPOINTS - 1)
-                # vs. reset roadmap and repeat?
-                # self.ep_goal_roadmap_waypoint_idx = (self.ep_goal_roadmap_waypoint_idx + 1) % GOALS_ROADMAP_TOTAL_WAYPOINTS
+                print('waypoint reached!', self.ep_goal_roadmap_waypoint_idx)
+                self.ep_goal_roadmap_waypoint_idx = min(self.ep_goal_roadmap_waypoint_idx + 1, self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS - 1)
 
             if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min_normed < self.last_ep_goal_distance_min_normed):
                 idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
-                print('halving! ', idx_halving)
+                print('halving!', idx_halving)
                 qpos, qvel = self.ep_states[idx_halving]
                 qpos, qvel = self._add_noise(qpos, qvel)
 
@@ -198,6 +172,23 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         self._reset_episode()
         return obs_init
+    
+
+    def _get_obs(self):
+        superobs = super()._get_obs()
+        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
+            superobs = np.concatenate((superobs, self.desired_goal))
+
+        achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+
+        dictobs = dict(
+                observation=superobs,
+                achieved_goal=achieved_goal_norm,
+                desired_goal=desired_goal_norm,
+            )
+        
+        return dictobs
 
 
     def _new_goal(self):
@@ -218,7 +209,6 @@ class BasePracticeEnv(BaseMujocoEnv):
                 goal_randomized = self.goals_roadmap[self.ep_goal_roadmap_waypoint_idx]
 
         goal_randomized_weighted = self.cfg.PracticeSpace.d[3] * goal_randomized + (1 - self.cfg.PracticeSpace.d[3]) * self.cfg.PracticeSpace.d[2]
-
         return goal_randomized_weighted
 
 
@@ -243,8 +233,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_states = []
         self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius
         self.ep_is_perfect = False
-
-        print('desired_goal ', self.desired_goal)
+        print('desired_goal', self.desired_goal)
 
 
     def _get_idx_for_trajectory_halving(self, strat):
