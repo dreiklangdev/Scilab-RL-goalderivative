@@ -37,6 +37,8 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         superobs = super()._get_obs()
         self.desired_goal = self.cfg.PracticeSpace.d[2]
+        # TODO roadmap from imitation/reference?
+        # incremental roadmap
         self.goals_roadmap = np.linspace(self.get_achieved_goal(superobs), self.desired_goal, num=self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS)
         print('goals_roadmap', self.goals_roadmap)
 
@@ -123,7 +125,7 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         result = obs, float(reward), terminated, truncated, info
         return result
- 
+
 
     def reset_model(self):
         obs_init = None

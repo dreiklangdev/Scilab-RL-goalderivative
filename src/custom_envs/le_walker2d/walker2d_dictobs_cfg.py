@@ -4,7 +4,7 @@ from ..le_base import base_practice_cfg as base
 
 
 class General(base.General):
-    EPISODE_TRUNCATION_STEPS_MAX = 5000
+    EPISODE_TRUNCATION_STEPS_MAX = 1000
     
 
 class PracticeSpace(base.PracticeSpace):    

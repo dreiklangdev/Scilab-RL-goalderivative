@@ -52,11 +52,17 @@ from . import walker2d_dictobs_cfg as cfg
 #   3.  400k, randomWeightedDims,adaptiveTh   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/00-34-57/rl_model_finished
 # random: slower, but generalizing (single dim, ie. velocity)
 
+# v7 - incrementalist
+        # incremental roadmap
+#   1.  1M  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/9eb139a/le-walker2d-v4/18-04-17/rl_model_finished
+#           reliable goal holding, faster initial learning (for more difficult goals)?
+
+
 # best: v9    minmax[0.05,0.2], th-halfAtLowestDist
-#   1M    /home/t500/tuhh/dsf/Scilab-RL/data/8425c48/le-walker2d-v4/15-41-58/
+#   1M  /home/t500/tuhh/dsf/Scilab-RL/data/8425c48/le-walker2d-v4/15-41-58/rl_model_finished
 #       no goal-holding...
 # best: v7    0.2, noAdaptive, th-halfAtLowestDist
-#   1M      /home/t500/tuhh/dsf/Scilab-RL/data/4779276/le-walker2d-v4/19-35-53/rl_model_finished
+#   1M  /home/t500/tuhh/dsf/Scilab-RL/data/4779276/le-walker2d-v4/19-35-53/rl_model_finished
 #       success!
 
 
