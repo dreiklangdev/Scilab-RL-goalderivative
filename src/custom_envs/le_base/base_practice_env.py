@@ -33,14 +33,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
-        self.ep_goal_roadmap_waypoint_idx: int = 0
-
-        superobs = super()._get_obs()
         self.desired_goal = self.cfg.PracticeSpace.d[2]
-        # TODO roadmap from imitation/reference?
-        # incremental roadmap
-        self.goals_roadmap = np.linspace(self.get_achieved_goal(superobs), self.desired_goal, num=self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS)
-        print('goals_roadmap', self.goals_roadmap)
 
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -91,14 +84,14 @@ class BasePracticeEnv(BaseMujocoEnv):
                 goaldistance_shrink = self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1]
                 goaldistance_shrink = max(0, goaldistance_shrink)
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
-                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius, self.ep_goal_reward_threshold_normed)
-                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius_normed, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius_normed, self.ep_goal_reward_threshold_normed)
                 if not self.ep_is_perfect:
-                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius:
-                        print('perfect goal zone reached!', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
+                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius_normed:
+                        print('perfect goal zone reached!', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
                         self.ep_is_perfect = True
                     else:
-                        print('adaptive threshold ratio', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
+                        print('adaptive threshold ratio', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
 
         terminated = False
         truncated = False
@@ -134,23 +127,17 @@ class BasePracticeEnv(BaseMujocoEnv):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.radius)
-            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.radius)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.radius_normed)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.radius_normed)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius)
-            print('ep_goal_roadmap_waypoint_idx', self.ep_goal_roadmap_waypoint_idx, 'of', self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS - 1)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('\n')
 
         if self.ep_num_steps > 1:
             ep_goal_distance_min_normed = min(self.ep_goal_distances_normed)
-
-            # if self.last_ep_rewards_mean > 0.9: # hold
-            if not self.ep_traj_is_halved and ep_goal_distance_min_normed < self.ep_goal_reward_threshold_normed: # only reach, no hold!
-                print('waypoint reached!', self.ep_goal_roadmap_waypoint_idx)
-                self.ep_goal_roadmap_waypoint_idx = min(self.ep_goal_roadmap_waypoint_idx + 1, self.cfg.PracticeSpace.GOALS_ROADMAP_TOTAL_WAYPOINTS - 1)
 
             if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min_normed < self.last_ep_goal_distance_min_normed):
                 idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
@@ -166,7 +153,6 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         if not obs_init:
             obs_init = super().reset_model()
-
             self.desired_goal = self._new_goal()
             self.last_ep_goal_distance_min_normed = np.inf
             self.last_ep_rewards_mean = 0
@@ -207,9 +193,6 @@ class BasePracticeEnv(BaseMujocoEnv):
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST:
                 goal_randomized = self.cfg.PracticeSpace.d[2]
 
-            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.INCREMENTALIST:
-                goal_randomized = self.goals_roadmap[self.ep_goal_roadmap_waypoint_idx]
-
         goal_randomized_weighted = self.cfg.PracticeSpace.d[3] * goal_randomized + (1 - self.cfg.PracticeSpace.d[3]) * self.cfg.PracticeSpace.d[2]
         return goal_randomized_weighted
 
@@ -233,9 +216,10 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = None
         self.ep_goal_distances_normed = []
         self.ep_states = []
-        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius
+        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius_normed
         self.ep_is_perfect = False
         print('desired_goal', self.desired_goal)
+        print('goal tolerance', self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius)
 
 
     def _get_idx_for_trajectory_halving(self, strat):

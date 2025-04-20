@@ -13,6 +13,7 @@ class General:
     IS_OBSERVATION_GOAL_EXTENDED = True
 
 
+# as general basic training? (base policy)
 class PracticeSpace:
     # every training must be inside practice space (reach, hold, recover, etc.)
     # what if contradictory goals?
@@ -45,7 +46,8 @@ class PracticeSpace:
         mode = np.linalg.norm(PracticeSpace.d[2])
         mode_ratio = mode / diameter
         radius_ratio = max(mode_ratio, 1 - mode_ratio)
-        PracticeSpace.radius = radius_ratio * diameter_normed
+        PracticeSpace.radius = radius_ratio * diameter
+        PracticeSpace.radius_normed = radius_ratio * diameter_normed
 
     # closer to edge => less (surrounding) exposure => less mastery (ie. wont learn practice limits at all)
     # mode: always at midpoint? 
@@ -63,8 +65,7 @@ class PracticeSpace:
             GENERALIST = 0
             CONFORMIST = 1
             SPECIALIST = 2 # mode only (non-random)
-            INCREMENTALIST = 3
-        STRAT = Strat.INCREMENTALIST
+        STRAT = Strat.GENERALIST
 
 
 class GoalRewardThreshold:
@@ -80,7 +81,7 @@ class GoalRewardThreshold:
     # smaller: faster reach
     # too small: will never hold?
     MIN_FAC = 0.05 # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
-    MAX_DEFAULT_FAC = 0.2 # decaying?
+    MAX_DEFAULT_FAC = 0.1 # decaying?
     # need to earn adaption (only bad performance => no rewards!)
 
 

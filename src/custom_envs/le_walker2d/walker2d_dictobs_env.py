@@ -65,9 +65,13 @@ from . import walker2d_dictobs_cfg as cfg
 
 #   specialist
 #       500k    home/t14/Documents/tuhh/dsf/Scilab-RL/data/9eb139a/le-walker2d-v4/20-31-35/rl_model_finished
+#               fast targetted learning
 #   incrementalist
 #       500k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8ee9dc2/le-walker2d-v4/21-04-47/rl_model_finished
-#               goal not reached TODO (goal-seq per step?)
+#               goal not reached
+#   generalist
+#       500k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a903811/le-walker2d-v4/15-12-18/rl_model_finished
+#               slower learing
 
 # forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")
@@ -97,7 +101,7 @@ class Walker2dDictObsEnv(BasePracticeEnv, Walker2dEnv):
         distance, height, velocity, angle = superobs[0], superobs[1], superobs[9], superobs[2]
         # n_contact_after = self.data.ncon if self.ep_num_steps > 300 else 1
         angle_thigh = max(superobs[3], superobs[6])
-        is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
+        # is_moving_forward = velocity > 0.3 if self.ep_num_steps > 300 else 1
 
-        return np.array((height, velocity, angle, angle_thigh, is_moving_forward))
+        return np.array((height, velocity, angle, angle_thigh))
         
