@@ -4,6 +4,15 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
 from ..le_base import base_practice_cfg
 
+import matplotlib.pyplot as plt
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from mediapipe import solutions
+from mediapipe.framework.formats import landmark_pb2
+
+
+# https://chuoling.github.io/mediapipe/solutions/pose.html
 
 class BasePracticeEnv(BaseMujocoEnv):
 
@@ -34,6 +43,19 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
         self.desired_goal = self.cfg.PracticeSpace.d[2]
+
+        BaseOptions = mp.tasks.BaseOptions
+        PoseLandmarker = mp.tasks.vision.PoseLandmarker
+        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
+
+        # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
+        options = PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_full.task'),
+            running_mode=VisionRunningMode.IMAGE,
+            min_pose_detection_confidence=0.1,
+            min_pose_presence_confidence=0.1)
+        self.landmarker = PoseLandmarker.create_from_options(options)
 
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -113,9 +135,6 @@ class BasePracticeEnv(BaseMujocoEnv):
             info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             truncated = True
 
-        if self.render_mode == "human":
-            self.render()
-
         result = obs, float(reward), terminated, truncated, info
         return result
 
@@ -164,6 +183,22 @@ class BasePracticeEnv(BaseMujocoEnv):
 
     def _get_obs(self):
         superobs = super()._get_obs()
+
+        #if self.render_mode == "human":
+        self.render_mode = 'rgb_array'
+        cam_img = self.render().copy()
+        
+        cam_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cam_img)
+
+        pose = self.landmarker.detect(cam_img)
+        
+        print(pose)
+        cam_img_annotated = self._draw_landmarks_on_image(cam_img.numpy_view(), pose)
+        plt.imshow(cam_img_annotated)
+        plt.show()
+
+
+
         if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
             superobs = np.concatenate((superobs, self.desired_goal))
 
@@ -239,3 +274,24 @@ class BasePracticeEnv(BaseMujocoEnv):
         # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
         return (val - min_val) / (max_val - min_val)
+
+
+    def _draw_landmarks_on_image(self, rgb_image, detection_result):
+        pose_landmarks_list = detection_result.pose_landmarks
+        annotated_image = np.copy(rgb_image)
+
+        # Loop through the detected poses to visualize.
+        for idx in range(len(pose_landmarks_list)):
+            pose_landmarks = pose_landmarks_list[idx]
+
+            # Draw the pose landmarks.
+            pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+            pose_landmarks_proto.landmark.extend([
+            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in pose_landmarks
+            ])
+            solutions.drawing_utils.draw_landmarks(
+            annotated_image,
+            pose_landmarks_proto,
+            solutions.pose.POSE_CONNECTIONS,
+            solutions.drawing_styles.get_default_pose_landmarks_style())
+        return annotated_image
