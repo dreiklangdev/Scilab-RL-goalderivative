@@ -1,6 +1,7 @@
 
 import numpy as np
-import skimage.measure
+import time
+from mpl_toolkits.mplot3d import Axes3D
 from gymnasium import spaces
 from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
 from ..le_base import base_practice_cfg
@@ -9,15 +10,36 @@ from ..le_base import base_practice_cfg
 from types import SimpleNamespace
 
 import matplotlib.pyplot as plt
+from matplotlib import image
+
 import mediapipe as mp
-import time
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 
+TOTAL_OBSERVATION_FEATURES = 99
+
+LANDMARK_GROUPS = [
+    [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
+    [10, 9],                       # mouth
+    [11, 13, 15, 17, 19, 15, 21],  # right arm
+    [11, 23, 25, 27, 29, 31, 27],  # right body side
+    [12, 14, 16, 18, 20, 16, 22],  # left arm
+    [12, 24, 26, 28, 30, 32, 28],  # left body side
+    [11, 12],                      # shoulder
+    [23, 24],                      # waist
+]
 
 # https://chuoling.github.io/mediapipe/solutions/pose.html
+# https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
+# https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
+
+# TODO do we need 3d body-relative (world) landmarks? (instead of 2d canvas-relative image coords (normalized))
+# https://github.com/google-ai-edge/mediapipe/issues/5325
+# https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
+# TODO reduce goal features?
+# TODO 3d plot of landmarks in pyplot (instead of overlay)?
 
 class BasePracticeEnv(BaseMujocoEnv):
 
@@ -25,7 +47,27 @@ class BasePracticeEnv(BaseMujocoEnv):
     def __init__(self, cfg: base_practice_cfg):
         
         self.cfg: base_practice_cfg = cfg
-        
+        self.desired_img = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
+        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_img.copy())
+
+        BaseOptions = mp.tasks.BaseOptions
+        PoseLandmarker = mp.tasks.vision.PoseLandmarker
+        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
+
+        # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
+        options = PoseLandmarkerOptions(
+            base_options=BaseOptions(
+                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_full.task',            
+                # cpu vs gpu
+                delegate=BaseOptions.Delegate.CPU),
+            # TODO use video mode (more efficient)
+            running_mode=VisionRunningMode.IMAGE,
+            min_pose_detection_confidence=0.1,
+            min_pose_presence_confidence=0.1)
+        self.landmarker = PoseLandmarker.create_from_options(options)
+
+
         if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
             obspace_shape = (self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1],)
         else:
@@ -34,7 +76,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         observation_space = spaces.Box(-np.inf, np.inf, shape=obspace_shape, dtype='float64')
         
         # practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.d.shape[1],), dtype='float64')
-        practice_space = spaces.Box(-np.inf, np.inf, shape=(99,), dtype='float64')
+        practice_space = spaces.Box(-np.inf, np.inf, shape=(TOTAL_OBSERVATION_FEATURES,), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -50,20 +92,11 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
         self.desired_goal = self.cfg.PracticeSpace.d[2]
+        self.last_detected_pose_achieved = np.full(TOTAL_OBSERVATION_FEATURES, 1)
+        self.last_detected_pose_desired = np.full(TOTAL_OBSERVATION_FEATURES, 1)
+
         self.implot = None
-
-        BaseOptions = mp.tasks.BaseOptions
-        PoseLandmarker = mp.tasks.vision.PoseLandmarker
-        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-        VisionRunningMode = mp.tasks.vision.RunningMode
-
-        # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
-        options = PoseLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_full.task'),
-            running_mode=VisionRunningMode.IMAGE,
-            min_pose_detection_confidence=0.1,
-            min_pose_presence_confidence=0.1)
-        self.landmarker = PoseLandmarker.create_from_options(options)
+        self.extplot = None
 
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -140,6 +173,11 @@ class BasePracticeEnv(BaseMujocoEnv):
         #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
         #     reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
+        nose_y = obs['achieved_goal'][1] # inverted height (nose)
+        if nose_y > -0.4:
+            print('fell down.', nose_y)
+            terminated = True
+
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
             info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
@@ -197,57 +235,105 @@ class BasePracticeEnv(BaseMujocoEnv):
     def _get_obs(self):
         superobs = super()._get_obs()
 
-        # detect only every nth frame
+        # render/detect pose only every nth frame
         # TODO may already with self.frame_skip param?
         if self.ep_num_steps % 1 == 0:
             render_mode_tmp = self.render_mode
             self.render_mode = 'rgb_array'
             # bottleneck
-            cam_img = self.render().copy()
-            cam_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cam_img)
-            pose = self.landmarker.detect(cam_img)
+            achieved_img = self.render().copy()
+            achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
+            achieved_pose = self.landmarker.detect(achieved_img)
+            desired_pose = self.landmarker.detect(self.desired_img)
             self.render_mode = render_mode_tmp
 
-            # render only every kth-nth
-            if self.ep_num_steps % 10 == 0:
+            # plot?
+            if False:
 
-                cam_img_annotated = self._draw_landmarks_on_image(cam_img.numpy_view(), pose)
+                achieved_img_annotated = self._draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
                 if not self.implot:
                     plt.figure()
-                    self.implot = plt.imshow(cam_img_annotated)
+                    _, (ax1, ax2) = plt.subplots(2)
+                    self.implot = ax1.imshow(achieved_img_annotated)
+                    # TODO once (image) vs. every step (video)
+                    desired_pose = self.landmarker.detect(self.desired_img)
+                    desired_img_annotated = self._draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
+                    ax2.imshow(desired_img_annotated)
                 else:
-                    self.implot.set_data(cam_img_annotated)
+                    self.implot.set_data(achieved_img_annotated)
                     self.implot.draw(self.implot.get_figure().canvas.get_renderer())
                     plt.pause(0.000001)
 
-        else:
-            # TODO take last pose? interpolate from last poses?
-            pose = SimpleNamespace(pose_landmarks=[])
 
-        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            superobs = np.concatenate((superobs, self.desired_goal))
+        else:
+            # TODO take last valid pose? extrapolate from last valid poses?
+            achieved_pose = SimpleNamespace(pose_world_landmarks=[])
+            desired_pose = SimpleNamespace(pose_world_landmarks=[])
 
         # achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
         # desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
         achieved_goal_norm = []
-        if pose.pose_landmarks:
+        if achieved_pose.pose_world_landmarks:
             # multiple poses found? only first
-            # TODO normalize to actual defined practice space (instead of image borders)
-            # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
-            for landmark in pose.pose_landmarks[0]:
+            for landmark in achieved_pose.pose_world_landmarks[0]:
                 achieved_goal_norm.append(landmark.x)
                 achieved_goal_norm.append(landmark.y)
                 achieved_goal_norm.append(landmark.z)
-        else:
-            achieved_goal_norm = np.full(99, 1)
+            self.last_detected_pose_achieved = achieved_goal_norm
+            
+        desired_goal_norm = []
+        if desired_pose.pose_world_landmarks:
+            # multiple poses found? only first
+            for landmark in desired_pose.pose_world_landmarks[0]:
+                desired_goal_norm.append(landmark.x)
+                desired_goal_norm.append(landmark.y)
+                desired_goal_norm.append(landmark.z)
+            self.last_detected_pose_desired = desired_goal_norm
+
+        # both must be detected, else fallback
+        if not achieved_pose.pose_world_landmarks or not desired_pose.pose_world_landmarks:
+            achieved_goal_norm = self.last_detected_pose_achieved
+            desired_goal_norm = self.last_detected_pose_desired
+
+
+        if not self.extplot:
+            fig = plt.figure()
+            self.extplot = fig.add_subplot(111, projection="3d")
+
+        # plot topology connections
+        # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
+        self.extplot.clear()
+
+         # had to flip the z axis
+        self.extplot.set_xlim3d(-1, 1)
+        self.extplot.set_ylim3d(-1, 1)
+        self.extplot.set_zlim3d(1, -1)
+
+        # get coordinates for each group and plot
+        for group in LANDMARK_GROUPS:
+            plotX, plotY, plotZ = [], [], []
+
+            plotX = [desired_pose.pose_world_landmarks.landmark[i].x for i in group]
+            plotY = [desired_pose.pose_world_landmarks.landmark[i].y for i in group]
+            plotZ = [desired_pose.pose_world_landmarks.landmark[i].z for i in group]
+
+            self.extplot.plot(plotX, plotZ, plotY)
+        
+        self.extplot.draw(self.extplot.get_figure().canvas.get_renderer())
+        plt.pause(0.000001)
+
+        
+        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
+            # TODO hash from desired_pose landmarks?
+            superobs = np.concatenate((superobs, self.desired_goal))
 
         dictobs = dict(
                 observation=superobs,
                 achieved_goal=np.array(achieved_goal_norm),
-                desired_goal=np.array(achieved_goal_norm),
+                desired_goal=np.array(desired_goal_norm),
             )
-        
+
         return dictobs
 
 
@@ -327,8 +413,8 @@ class BasePracticeEnv(BaseMujocoEnv):
                 landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z)
                 for landmark in pose_landmarks])
             solutions.drawing_utils.draw_landmarks(
-            annotated_image,
-            pose_landmarks_proto,
-            solutions.pose.POSE_CONNECTIONS,
-            solutions.drawing_styles.get_default_pose_landmarks_style())
+                annotated_image,
+                pose_landmarks_proto,
+                solutions.pose.POSE_CONNECTIONS,
+                solutions.drawing_styles.get_default_pose_landmarks_style())
         return annotated_image
