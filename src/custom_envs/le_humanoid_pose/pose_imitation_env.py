@@ -39,11 +39,16 @@ LANDMARK_GROUPS = [
 # https://saiwa.ai/blog/openpose-vs-mediapipe/
 # https://jetson-docs.com/libraries/mediapipe/overview
 
+# https://pytorch.org/rl/0.6/reference/generated/knowledge_base/MUJOCO_INSTALLATION.html
+# https://colab.research.google.com/github/deepmind/mujoco/blob/main/python/tutorial.ipynb
+
 # TODO do we need 3d body-relative (world) landmarks? (instead of 2d canvas-relative image coords (normalized))
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
 # TODO reduce goal features?
 # TODO 3d plot of landmarks in pyplot (instead of overlay)?
+# TODO fix pose landmarker memory leak
+
 
 class PoseImitationEnv(HumanoidEnv):
 
@@ -63,12 +68,13 @@ class PoseImitationEnv(HumanoidEnv):
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = PoseLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_full.task',            
+                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_lite.task',            
                 # cpu vs gpu
                 # https://forums.developer.nvidia.com/t/how-to-install-opengl-libs-of-nvidia/175409
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
                 # prime-select nvidia
                 # glxinfo | grep -i opengl
+                # MUJOCO_GL=egl %python ...% (faster than Delegate.GPU)
                 delegate=BaseOptions.Delegate.CPU),
             running_mode=VisionRunningMode.VIDEO,
             min_pose_detection_confidence=0.1,
@@ -76,8 +82,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.landmarker_options_desired = PoseLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_full.task',            
-                # cpu vs gpu
+                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_lite.task',            
                 delegate=BaseOptions.Delegate.CPU),
             running_mode=VisionRunningMode.IMAGE,
             min_pose_detection_confidence=0.1,
@@ -112,7 +117,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_achieved = None
         self.landmarker_desired = None
 
-        self.implot = None
         self.extplot = None
 
         self._reset_episode()
