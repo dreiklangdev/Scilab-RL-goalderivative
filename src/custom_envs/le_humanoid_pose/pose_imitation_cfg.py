@@ -1,5 +1,4 @@
 
-import numpy as np
 from ..le_base import base_practice_cfg as base
 
 
@@ -10,17 +9,9 @@ class General(base.General):
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATION_IF_OUTSIDE = True
     REWARD_IF_OUTSIDE = 0
-    
-    base.PracticeSpace.init_dims([
-        [1.0,        -2.0],  # min
-        [2.0,        3.0],   # max
-        [1.3,        1.5],  # mode
-        [0.05,       1.0]    # weight [0,1]
-    ], ['height',   'velocity'])
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
-        STRAT = base.PracticeSpace.RandomGoalSampling.Strat.GENERALIST
-
+        pass
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
     MAX_FAC_DEFAULT = 0.3

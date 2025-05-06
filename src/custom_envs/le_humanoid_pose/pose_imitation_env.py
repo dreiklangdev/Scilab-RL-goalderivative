@@ -3,8 +3,8 @@ import numpy as np
 import time
 from mpl_toolkits.mplot3d import Axes3D
 from gymnasium import spaces
-from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
-from ..le_base import base_practice_cfg
+from . import pose_imitation_cfg as cfg
+
 
 from types import SimpleNamespace
 
@@ -48,6 +48,7 @@ LANDMARK_GROUPS = [
 # TODO reduce goal features?
 # TODO 3d plot of landmarks in pyplot (instead of overlay)?
 # TODO fix pose landmarker memory leak
+# TODO terminate on missing pose detection?
 
 
 class PoseImitationEnv(HumanoidEnv):
@@ -57,7 +58,7 @@ class PoseImitationEnv(HumanoidEnv):
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=480, height=480)
         # self.frame_skip = 10
         
-        self.cfg: base_practice_cfg = base_practice_cfg
+        self.cfg = cfg
         self.desired_img = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_img.copy())
 
@@ -247,7 +248,7 @@ class PoseImitationEnv(HumanoidEnv):
             # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
             achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, self.ep_num_steps)
             desired_pose = self.landmarker_desired.detect(self.desired_img)
-            # bottleneck start
+            # bottleneck end
 
         else:
             # TODO take last valid pose? extrapolate from last valid poses?
@@ -265,6 +266,9 @@ class PoseImitationEnv(HumanoidEnv):
                 achieved_goal_norm.append(landmark.y)
                 achieved_goal_norm.append(landmark.z)
             self.last_detected_pose_achieved = achieved_goal_norm
+        else:
+            print('unable to detect achieved pose. fallback...')
+            achieved_goal_norm = self.last_detected_pose_achieved
             
         desired_goal_norm = []
         if desired_pose.pose_world_landmarks:
@@ -274,15 +278,13 @@ class PoseImitationEnv(HumanoidEnv):
                 desired_goal_norm.append(landmark.y)
                 desired_goal_norm.append(landmark.z)
             self.last_detected_pose_desired = desired_goal_norm
-
-        # both must be detected, else fallback
-        if not achieved_pose.pose_world_landmarks or not desired_pose.pose_world_landmarks:
-            achieved_goal_norm = self.last_detected_pose_achieved
+        else:
+            print('unable to detect desired pose. fallback...')
             desired_goal_norm = self.last_detected_pose_desired
 
 
 
-        if False and self.ep_num_steps % 10 == 0:
+        if True and self.ep_num_steps % 10 == 0:
             # TODO plot in separate thread?
 
             if not self.extplot:
@@ -372,8 +374,10 @@ class PoseImitationEnv(HumanoidEnv):
 
         if self.landmarker_achieved:
             self.landmarker_achieved.close()
+            del self.landmarker_achieved
         if self.landmarker_desired:
             self.landmarker_desired.close()
+            del self.landmarker_desired
 
         self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
         self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
