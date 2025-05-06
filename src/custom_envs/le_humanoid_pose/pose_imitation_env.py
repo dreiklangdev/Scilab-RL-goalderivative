@@ -5,7 +5,6 @@ import logging
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
-from skimage.measure import block_reduce
 
 import multiprocessing
 import matplotlib.pyplot as plt
