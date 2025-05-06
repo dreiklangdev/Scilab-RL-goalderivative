@@ -1,10 +1,13 @@
 
 import numpy as np
 import time
+import logging
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
+from skimage.measure import block_reduce
 
+import multiprocessing
 import matplotlib.pyplot as plt
 from matplotlib import image
 from mpl_toolkits.mplot3d import Axes3D
@@ -22,7 +25,8 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
 TOTAL_OBSERVATION_FEATURES = 99
-SIZE_RENDER = 250
+SIZE_RENDER = 480
+STEP_FRAME_SKIP = 5
 
 LANDMARK_GROUPS = [
     [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
@@ -58,7 +62,7 @@ class PoseImitationEnv(HumanoidEnv):
     def __init__(self):
         # TODO extract hyperparams
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=SIZE_RENDER, height=SIZE_RENDER)
-        # self.frame_skip = 10
+        self.frame_skip: 5 = STEP_FRAME_SKIP
         
         self.cfg = cfg
         img_array = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
@@ -73,8 +77,8 @@ class PoseImitationEnv(HumanoidEnv):
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
                 # prime-select nvidia
                 # glxinfo | grep -i opengl
-                # MUJOCO_GL=egl %python ...% (faster than Delegate.GPU)
-                delegate=BaseOptions.Delegate.CPU),
+                # MUJOCO_GL=egl|glfw|osmesa %python ...% (glfw seems fastest)
+                delegate=BaseOptions.Delegate.GPU),
             running_mode=VisionRunningMode.VIDEO,
             min_pose_detection_confidence=0.1,
             min_pose_presence_confidence=0.1)
@@ -83,7 +87,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_options_desired = PoseLandmarkerOptions(
             base_options=BaseOptions(
                 model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_lite.task',            
-                delegate=BaseOptions.Delegate.CPU),
+                delegate=BaseOptions.Delegate.GPU),
             running_mode=VisionRunningMode.IMAGE,
             min_pose_detection_confidence=0.1,
             min_pose_presence_confidence=0.1)
@@ -111,8 +115,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
         # self.desired_goal = self.cfg.PracticeSpace.d[2]
-        self.last_detected_pose_achieved = np.full(TOTAL_OBSERVATION_FEATURES, 1)
-        self.last_detected_pose_desired = np.full(TOTAL_OBSERVATION_FEATURES, 1)
+        self.last_detected_goal_achieved = np.full(TOTAL_OBSERVATION_FEATURES, 1)
+        self.last_detected_goal_desired = np.full(TOTAL_OBSERVATION_FEATURES, 1)
 
         # landmarker reset: better/correct detection of start pose
         self.landmarker_achieved = None
@@ -179,7 +183,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         nose_y = obs['achieved_goal'][1] # inverted height (nose)
         if nose_y > -0.4:
-            print('fell down.', nose_y)
+            print('FELL DOWN!', nose_y)
             terminated = True
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
@@ -236,19 +240,23 @@ class PoseImitationEnv(HumanoidEnv):
 
     def _get_obs(self):
         # render/detect pose only every nth frame
-        # TODO may already with self.frame_skip param?
+        # TODO may better with self.frame_skip param? (no idle frames)
         if self.ep_num_steps % 1 == 0:
             # renders only rgb (cant render multiple modes simultanously)
             self.render_mode = 'rgb_array'
             
             # bottleneck start
-            achieved_img = self.render().copy()
+            # https://github.com/jurgisp/memory-maze/issues/26
+            achieved_img = self.render().copy() # MUJOCO_GL=glfw
             achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
 
             # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
+            # t = time.perf_counter()
             video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
             achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
             desired_pose = self.landmarker_desired.detect(self.desired_img)
+            # print(time.perf_counter() - t)
+
             # bottleneck end
 
         else:
@@ -266,11 +274,11 @@ class PoseImitationEnv(HumanoidEnv):
                 achieved_goal_norm.append(landmark.x)
                 achieved_goal_norm.append(landmark.y)
                 achieved_goal_norm.append(landmark.z)
-            self.last_detected_pose_achieved = achieved_goal_norm
+            self.last_detected_goal_achieved = achieved_goal_norm
         else:
             print('unable to detect achieved pose. fallback...')
-            achieved_goal_norm = self.last_detected_pose_achieved
-            
+            achieved_goal_norm = self.last_detected_goal_achieved
+
         desired_goal_norm = []
         if desired_pose.pose_world_landmarks:
             # multiple poses found? only first
@@ -278,56 +286,19 @@ class PoseImitationEnv(HumanoidEnv):
                 desired_goal_norm.append(landmark.x)
                 desired_goal_norm.append(landmark.y)
                 desired_goal_norm.append(landmark.z)
-            self.last_detected_pose_desired = desired_goal_norm
+            self.last_detected_goal_desired = desired_goal_norm
         else:
             print('unable to detect desired pose. fallback...')
-            desired_goal_norm = self.last_detected_pose_desired
+            desired_goal_norm = self.last_detected_goal_desired
 
 
 
         if True and self.ep_num_steps % 10 == 0:
             # TODO plot in separate thread?
 
-            if not self.extplot:
-                # once
-                fig = plt.figure()
-                ax2 = fig.add_subplot(131)
-                self.plot_desired = ax2.imshow(np.zeros((1,1,3)))
-                ax1 = fig.add_subplot(132)
-                self.plot_achieved = ax1.imshow(np.zeros((1,1,3)))
-                self.extplot = fig.add_subplot(133, projection="3d")
-
-            desired_img_annotated = self._draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
-            self.plot_desired.set_data(desired_img_annotated)
-            self.plot_desired.draw(self.plot_desired.get_figure().canvas.get_renderer())
-
-            achieved_img_annotated = self._draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-            self.plot_achieved.set_data(achieved_img_annotated)
-            self.plot_achieved.draw(self.plot_achieved.get_figure().canvas.get_renderer())
-
-            # plot topology connections
-            # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
-            self.extplot.clear()
-            self.extplot.set_xlim3d(-1, 1)
-            self.extplot.set_ylim3d(-1, 1)
-            self.extplot.set_zlim3d(1, -1) # flip z-axis 
-
-            for group in LANDMARK_GROUPS:
-                if achieved_pose.pose_world_landmarks:
-                    plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
-                    plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
-                    plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
-                    self.extplot.plot(plotX, plotZ, plotY, color='red')
-
-                if desired_pose.pose_world_landmarks:
-                    plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
-                    plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
-                    plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
-                    self.extplot.plot(plotX, plotZ, plotY, color='green')
-        
-            self.extplot.draw(self.extplot.get_figure().canvas.get_renderer())
-
-            plt.pause(0.00001)
+            multiprocessing.log_to_stderr(logging.DEBUG)
+            multiprocessing.Process(target=self._plot, args=(achieved_img, achieved_pose, desired_pose)).start()
+            # self._plot(achieved_img, achieved_pose, desired_pose)
 
 
 
@@ -345,6 +316,51 @@ class PoseImitationEnv(HumanoidEnv):
             )
 
         return dictobs
+    
+    def _worker_plot(self):
+        
+
+    def _plot(self, achieved_img, achieved_pose, desired_pose):
+        if not self.extplot:
+            # once
+            fig = plt.figure()
+            ax2 = fig.add_subplot(131)
+            self.plot_desired = ax2.imshow(np.zeros((1,1,3)))
+            ax1 = fig.add_subplot(132)
+            self.plot_achieved = ax1.imshow(np.zeros((1,1,3)))
+            self.extplot = fig.add_subplot(133, projection="3d")
+
+        desired_img_annotated = self._draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
+        self.plot_desired.set_data(desired_img_annotated)
+        self.plot_desired.draw(self.plot_desired.get_figure().canvas.get_renderer())
+
+        achieved_img_annotated = self._draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
+        self.plot_achieved.set_data(achieved_img_annotated)
+        self.plot_achieved.draw(self.plot_achieved.get_figure().canvas.get_renderer())
+
+            # plot topology connections
+            # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
+        self.extplot.clear()
+        self.extplot.set_xlim3d(-1, 1)
+        self.extplot.set_ylim3d(-1, 1)
+        self.extplot.set_zlim3d(1, -1) # flip z-axis 
+
+        for group in LANDMARK_GROUPS:
+            if achieved_pose.pose_world_landmarks:
+                plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
+                plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
+                plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
+                self.extplot.plot(plotX, plotZ, plotY, color='red')
+
+            if desired_pose.pose_world_landmarks:
+                plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
+                plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
+                plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
+                self.extplot.plot(plotX, plotZ, plotY, color='green')
+        
+        self.extplot.draw(self.extplot.get_figure().canvas.get_renderer())
+
+        plt.pause(0.00001)
 
 
     def _add_noise(self, qpos, qvel):
