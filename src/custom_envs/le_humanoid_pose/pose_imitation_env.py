@@ -26,7 +26,9 @@ PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
 TOTAL_OBSERVATION_FEATURES = 99
 SIZE_RENDER = 480
-STEP_FRAME_SKIP = 5
+FRAMESKIP_STEP = 5
+FRAMESKIP_DETECT = 2
+FRAMESKIP_PLOT = 10
 
 LANDMARK_GROUPS = [
     [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
@@ -59,10 +61,11 @@ LANDMARK_GROUPS = [
 
 class PoseImitationEnv(HumanoidEnv):
 
+
     def __init__(self):
         # TODO extract hyperparams
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=SIZE_RENDER, height=SIZE_RENDER)
-        self.frame_skip: 5 = STEP_FRAME_SKIP
+        self.frame_skip: 5 = FRAMESKIP_STEP
         
         self.cfg = cfg
         img_array = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
@@ -243,79 +246,67 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def _get_obs(self):
-        # render/detect pose only every nth frame
-        # TODO may better with self.frame_skip param? (no idle frames)
-        if self.ep_num_steps % 1 == 0:
+
+        # detect pose only every nth frame, else use last valid
+        if self.ep_num_steps % FRAMESKIP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
             self.render_mode = 'rgb_array'
-            
+
             # bottleneck start
             # https://github.com/jurgisp/memory-maze/issues/26
             achieved_img = self.render().copy() # MUJOCO_GL=glfw
             achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
+            # TODO get desired img from video?
 
             # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
-            # t = time.perf_counter()
+            t = time.perf_counter()
             video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
             achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
             desired_pose = self.landmarker_desired.detect(self.desired_img)
-            # print(time.perf_counter() - t)
-
+            print(time.perf_counter() - t)
             # bottleneck end
-
         else:
-            # TODO take last valid pose? extrapolate from last valid poses?
             achieved_pose = SimpleNamespace(pose_world_landmarks=[])
             desired_pose = SimpleNamespace(pose_world_landmarks=[])
 
         # achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
         # desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
-        achieved_goal_norm = []
+        achieved_goal = []
         if achieved_pose.pose_world_landmarks:
-            # multiple poses found? only first
+            # only first detected pose
             for landmark in achieved_pose.pose_world_landmarks[0]:
-                achieved_goal_norm.append(landmark.x)
-                achieved_goal_norm.append(landmark.y)
-                achieved_goal_norm.append(landmark.z)
-            self.last_detected_goal_achieved = achieved_goal_norm
+                achieved_goal.extend((landmark.x, landmark.y, landmark.z))
+            self.last_detected_goal_achieved = achieved_goal
         else:
-            print('unable to detect achieved pose. fallback...')
-            achieved_goal_norm = self.last_detected_goal_achieved
+            # print('unable to detect achieved pose. fallback...')
+            achieved_goal = self.last_detected_goal_achieved
 
-        desired_goal_norm = []
+        desired_goal = []
         if desired_pose.pose_world_landmarks:
-            # multiple poses found? only first
             for landmark in desired_pose.pose_world_landmarks[0]:
-                desired_goal_norm.append(landmark.x)
-                desired_goal_norm.append(landmark.y)
-                desired_goal_norm.append(landmark.z)
-            self.last_detected_goal_desired = desired_goal_norm
+                desired_goal.extend((landmark.x, landmark.y, landmark.z))
+            self.last_detected_goal_desired = desired_goal
         else:
-            print('unable to detect desired pose. fallback...')
-            desired_goal_norm = self.last_detected_goal_desired
+            # print('unable to detect desired pose. fallback...')
+            desired_goal = self.last_detected_goal_desired
 
-
-
-        if True and self.ep_num_steps % 10 == 0:
-            # TODO plot in separate thread?
+        if self.ep_num_steps % FRAMESKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
-
-
         observation = []
         if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
             # TODO hash from desired_pose landmarks? (may ignore similarity/locality)
-            observation = np.concatenate((achieved_goal_norm, desired_goal_norm))
+            observation = np.concatenate((achieved_goal, desired_goal))
         else:
-            observation = achieved_goal_norm
+            observation = achieved_goal
 
         dictobs = dict(
                 observation=np.array(observation),
-                achieved_goal=np.array(achieved_goal_norm),
-                desired_goal=np.array(desired_goal_norm),
+                achieved_goal=np.array(achieved_goal),
+                desired_goal=np.array(desired_goal),
             )
 
         return dictobs
@@ -360,7 +351,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
         self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
-
     
     def _get_idx_for_trajectory_halving(self, strat):
         idx_step = -1
@@ -379,6 +369,7 @@ class PoseImitationEnv(HumanoidEnv):
         # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
         return (val - min_val) / (max_val - min_val)
+
 
 
 def draw_landmarks_on_image(rgb_image, detection_result):
