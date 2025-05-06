@@ -124,6 +124,10 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.extplot = None
 
+        self.parallel_plot_queue = multiprocessing.Queue()
+        multiprocessing.log_to_stderr(logging.DEBUG)
+        multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
+
         self._reset_episode()
         print('le-walker-2d initialized.')
 
@@ -295,10 +299,9 @@ class PoseImitationEnv(HumanoidEnv):
 
         if True and self.ep_num_steps % 10 == 0:
             # TODO plot in separate thread?
-
-            multiprocessing.log_to_stderr(logging.DEBUG)
-            multiprocessing.Process(target=self._plot, args=(achieved_img, achieved_pose, desired_pose)).start()
-            # self._plot(achieved_img, achieved_pose, desired_pose)
+            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
+            desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
+            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
 
 
@@ -317,51 +320,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         return dictobs
     
-    def _worker_plot(self):
-        
-
-    def _plot(self, achieved_img, achieved_pose, desired_pose):
-        if not self.extplot:
-            # once
-            fig = plt.figure()
-            ax2 = fig.add_subplot(131)
-            self.plot_desired = ax2.imshow(np.zeros((1,1,3)))
-            ax1 = fig.add_subplot(132)
-            self.plot_achieved = ax1.imshow(np.zeros((1,1,3)))
-            self.extplot = fig.add_subplot(133, projection="3d")
-
-        desired_img_annotated = self._draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
-        self.plot_desired.set_data(desired_img_annotated)
-        self.plot_desired.draw(self.plot_desired.get_figure().canvas.get_renderer())
-
-        achieved_img_annotated = self._draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-        self.plot_achieved.set_data(achieved_img_annotated)
-        self.plot_achieved.draw(self.plot_achieved.get_figure().canvas.get_renderer())
-
-            # plot topology connections
-            # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
-        self.extplot.clear()
-        self.extplot.set_xlim3d(-1, 1)
-        self.extplot.set_ylim3d(-1, 1)
-        self.extplot.set_zlim3d(1, -1) # flip z-axis 
-
-        for group in LANDMARK_GROUPS:
-            if achieved_pose.pose_world_landmarks:
-                plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
-                plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
-                plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
-                self.extplot.plot(plotX, plotZ, plotY, color='red')
-
-            if desired_pose.pose_world_landmarks:
-                plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
-                plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
-                plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
-                self.extplot.plot(plotX, plotZ, plotY, color='green')
-        
-        self.extplot.draw(self.extplot.get_figure().canvas.get_renderer())
-
-        plt.pause(0.00001)
-
 
     def _add_noise(self, qpos, qvel):
         noise_low = -self._reset_noise_scale
@@ -423,22 +381,64 @@ class PoseImitationEnv(HumanoidEnv):
         return (val - min_val) / (max_val - min_val)
 
 
-    def _draw_landmarks_on_image(self, rgb_image, detection_result):
-        pose_landmarks_list = detection_result.pose_landmarks
-        annotated_image = np.copy(rgb_image)
+def draw_landmarks_on_image(rgb_image, detection_result):
+    pose_landmarks_list = detection_result.pose_landmarks
+    annotated_image = np.copy(rgb_image)
 
-        # Loop through the detected poses to visualize.
-        for idx in range(len(pose_landmarks_list)):
-            pose_landmarks = pose_landmarks_list[idx]
+    # Loop through the detected poses to visualize.
+    for idx in range(len(pose_landmarks_list)):
+        pose_landmarks = pose_landmarks_list[idx]
 
-            # Draw the pose landmarks.
-            pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
-            pose_landmarks_proto.landmark.extend([
-                landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z)
-                for landmark in pose_landmarks])
-            solutions.drawing_utils.draw_landmarks(
-                annotated_image,
-                pose_landmarks_proto,
-                solutions.pose.POSE_CONNECTIONS,
-                solutions.drawing_styles.get_default_pose_landmarks_style())
-        return annotated_image
+        # Draw the pose landmarks.
+        pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+        pose_landmarks_proto.landmark.extend([
+            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z)
+            for landmark in pose_landmarks])
+        solutions.drawing_utils.draw_landmarks(
+            annotated_image,
+            pose_landmarks_proto,
+            solutions.pose.POSE_CONNECTIONS,
+            solutions.drawing_styles.get_default_pose_landmarks_style())
+    return annotated_image
+
+
+def parallel_plot(queue: multiprocessing.Queue):
+    fig = plt.figure()
+    ax2 = fig.add_subplot(131)
+    plot_desired = ax2.imshow(np.zeros((1,1,3)))
+    ax1 = fig.add_subplot(132)
+    plot_achieved = ax1.imshow(np.zeros((1,1,3)))
+    extplot = fig.add_subplot(133, projection="3d")
+
+    while True:
+        achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose = queue.get()
+        
+        plot_desired.set_data(desired_img_annotated)
+        plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
+
+        plot_achieved.set_data(achieved_img_annotated)
+        plot_achieved.draw(plot_achieved.get_figure().canvas.get_renderer())
+
+        # plot topology connections
+        # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
+        extplot.clear()
+        extplot.set_xlim3d(-1, 1)
+        extplot.set_ylim3d(-1, 1)
+        extplot.set_zlim3d(1, -1) # flip z-axis 
+
+        for group in LANDMARK_GROUPS:
+            if achieved_pose.pose_world_landmarks:
+                plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
+                plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
+                plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
+                extplot.plot(plotX, plotZ, plotY, color='red')
+
+            if desired_pose.pose_world_landmarks:
+                plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
+                plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
+                plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
+                extplot.plot(plotX, plotZ, plotY, color='green')
+        
+        extplot.draw(extplot.get_figure().canvas.get_renderer())
+
+        plt.pause(0.00001)
