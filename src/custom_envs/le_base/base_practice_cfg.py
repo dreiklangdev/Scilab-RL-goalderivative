@@ -5,6 +5,8 @@ import numpy as np
 # remote
 # ssh t500@192.168.178.36
 # sudo sshfs -o allow_other,default_permissions t500@192.168.178.36:/home/t500 /mnt/t500
+# tmux
+# MUJOCO_GL=egl %python ...%
 
 # TODO transform/move to dict? (immutable as configs should be)
 

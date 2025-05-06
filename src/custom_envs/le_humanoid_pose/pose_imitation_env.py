@@ -29,8 +29,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 OBSERVATION_FEATURES_TOTAL = 99
 RENDER_IMAGE_SIZE = 480
 FRAMESKIP_STEP = 5
-FRAMESKIP_STEP_DETECT = 2
-FRAMESKIP_STEP_PLOT = 10 # 10
+FRAMESKIP_STEP_DETECT = 1
+FRAMESKIP_STEP_PLOT = 1 # 10
 
 LANDMARK_GROUPS = [
     [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
@@ -67,6 +67,8 @@ class PoseImitationEnv(HumanoidEnv):
     def __init__(self, is_plot=True):
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=RENDER_IMAGE_SIZE, height=RENDER_IMAGE_SIZE)
         self.frame_skip: 5 = FRAMESKIP_STEP
+
+        assert FRAMESKIP_STEP_PLOT >= FRAMESKIP_STEP_DETECT, 'cannot plot in a step with a skipped detection'
 
         self.cfg = cfg
         self.is_plot = is_plot
