@@ -24,11 +24,11 @@ PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
-TOTAL_OBSERVATION_FEATURES = 99
-SIZE_RENDER = 480
+OBSERVATION_FEATURES_TOTAL = 99
+RENDER_IMAGE_SIZE = 480
 FRAMESKIP_STEP = 5
-FRAMESKIP_DETECT = 2
-FRAMESKIP_PLOT = 10
+FRAMESKIP_STEP_DETECT = 2
+FRAMESKIP_STEP_PLOT = 10
 
 LANDMARK_GROUPS = [
     [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
@@ -64,7 +64,7 @@ class PoseImitationEnv(HumanoidEnv):
 
     def __init__(self):
         # TODO extract hyperparams
-        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=SIZE_RENDER, height=SIZE_RENDER)
+        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=RENDER_IMAGE_SIZE, height=RENDER_IMAGE_SIZE)
         self.frame_skip: 5 = FRAMESKIP_STEP
         
         self.cfg = cfg
@@ -97,12 +97,12 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
         if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            obspace_shape = (TOTAL_OBSERVATION_FEATURES * 2,)
+            obspace_shape = (OBSERVATION_FEATURES_TOTAL * 2,)
         else:
-            obspace_shape = (TOTAL_OBSERVATION_FEATURES,)
+            obspace_shape = (OBSERVATION_FEATURES_TOTAL,)
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=obspace_shape, dtype='float64')
-        practice_space = spaces.Box(-np.inf, np.inf, shape=(TOTAL_OBSERVATION_FEATURES,), dtype='float64')
+        practice_space = spaces.Box(-np.inf, np.inf, shape=(OBSERVATION_FEATURES_TOTAL,), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -118,8 +118,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
         # self.desired_goal = self.cfg.PracticeSpace.d[2]
-        self.last_detected_goal_achieved = np.full(TOTAL_OBSERVATION_FEATURES, 1)
-        self.last_detected_goal_desired = np.full(TOTAL_OBSERVATION_FEATURES, 1)
+        self.last_detected_goal_achieved = np.full(OBSERVATION_FEATURES_TOTAL, 1)
+        self.last_detected_goal_desired = np.full(OBSERVATION_FEATURES_TOTAL, 1)
 
         # landmarker reset: better/correct detection of start pose
         self.landmarker_achieved = None
@@ -248,7 +248,7 @@ class PoseImitationEnv(HumanoidEnv):
     def _get_obs(self):
 
         # detect pose only every nth frame, else use last valid
-        if self.ep_num_steps % FRAMESKIP_DETECT == 0:
+        if self.ep_num_steps % FRAMESKIP_STEP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
             self.render_mode = 'rgb_array'
 
@@ -291,7 +291,7 @@ class PoseImitationEnv(HumanoidEnv):
             # print('unable to detect desired pose. fallback...')
             desired_goal = self.last_detected_goal_desired
 
-        if self.ep_num_steps % FRAMESKIP_PLOT == 0:
+        if self.ep_num_steps % FRAMESKIP_STEP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
