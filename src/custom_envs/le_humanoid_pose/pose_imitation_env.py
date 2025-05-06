@@ -66,7 +66,7 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO extract hyperparams
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=RENDER_IMAGE_SIZE, height=RENDER_IMAGE_SIZE)
         self.frame_skip: 5 = FRAMESKIP_STEP
-        
+
         self.cfg = cfg
         img_array = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
@@ -117,14 +117,12 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
-        self.last_detected_goal_achieved = np.full(OBSERVATION_FEATURES_TOTAL, 1)
-        self.last_detected_goal_desired = np.full(OBSERVATION_FEATURES_TOTAL, 1)
 
         # landmarker reset: better/correct detection of start pose
         self.landmarker_achieved = None
         self.landmarker_desired = None
-
-        self.extplot = None
+        self.last_detected_goal_achieved = np.full(OBSERVATION_FEATURES_TOTAL, 1)
+        self.last_detected_goal_desired = np.full(OBSERVATION_FEATURES_TOTAL, 1)
 
         self.parallel_plot_queue = multiprocessing.Queue()
         multiprocessing.log_to_stderr(logging.DEBUG)
@@ -249,19 +247,20 @@ class PoseImitationEnv(HumanoidEnv):
             # renders only rgb (cant render multiple modes simultanously)
             self.render_mode = 'rgb_array'
 
-            # bottleneck start
             # https://github.com/jurgisp/memory-maze/issues/26
             achieved_img = self.render().copy() # MUJOCO_GL=glfw
             achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
             # TODO get desired img from video?
 
-            # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
+            # bottleneck start
             t = time.perf_counter()
+            # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
             video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
             achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
             desired_pose = self.landmarker_desired.detect(self.desired_img)
             print(time.perf_counter() - t)
             # bottleneck end
+
         else:
             achieved_pose = SimpleNamespace(pose_world_landmarks=[])
             desired_pose = SimpleNamespace(pose_world_landmarks=[])
