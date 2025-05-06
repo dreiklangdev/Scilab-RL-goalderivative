@@ -117,7 +117,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
-        # self.desired_goal = self.cfg.PracticeSpace.d[2]
         self.last_detected_goal_achieved = np.full(OBSERVATION_FEATURES_TOTAL, 1)
         self.last_detected_goal_desired = np.full(OBSERVATION_FEATURES_TOTAL, 1)
 
@@ -142,14 +141,12 @@ class PoseImitationEnv(HumanoidEnv):
         # goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_normed - desired_goal_normed])
         goaldiff_weighted = np.array([achieved_goal_normed - desired_goal_normed])
 
-        # distance/accuracy (> at-least-only (needs control from both sides))
         goaldistance_normed = np.linalg.norm(goaldiff_weighted, axis=-1)
         if goaldistance_normed.shape[-1] == 1:
             # single step (no replay)
             self.ep_goal_distances_normed.append(goaldistance_normed[0])
 
         reward = (goaldistance_normed < self.ep_goal_reward_threshold_normed).astype(np.float64)
-        # try reward if pos. goal convergence? (non-sparse)
         return reward
     
 
