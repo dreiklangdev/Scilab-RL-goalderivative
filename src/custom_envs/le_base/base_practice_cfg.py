@@ -6,6 +6,7 @@ import numpy as np
 # ssh t500@192.168.178.36
 # sudo sshfs -o allow_other,default_permissions t500@192.168.178.36:/home/t500 /mnt/t500
 
+# TODO transform/move to dict? (immutable as configs should be)
 
 class General:
     EPISODE_TRUNCATION_STEPS_MAX = 1000

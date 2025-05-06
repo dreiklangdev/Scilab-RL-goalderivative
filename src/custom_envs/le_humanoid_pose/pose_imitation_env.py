@@ -2,6 +2,7 @@
 import numpy as np
 import time
 import logging
+import git
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
@@ -18,11 +19,13 @@ from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 
+
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
+PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tree_dir
 OBSERVATION_FEATURES_TOTAL = 99
 RENDER_IMAGE_SIZE = 480
 FRAMESKIP_STEP = 5
@@ -57,23 +60,23 @@ LANDMARK_GROUPS = [
 # TODO fix pose landmarker memory leak
 # TODO terminate on missing pose detection?
 
-
+        
 class PoseImitationEnv(HumanoidEnv):
 
 
-    def __init__(self):
-        # TODO extract hyperparams
+    def __init__(self, is_plot=True):
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=RENDER_IMAGE_SIZE, height=RENDER_IMAGE_SIZE)
         self.frame_skip: 5 = FRAMESKIP_STEP
 
         self.cfg = cfg
-        img_array = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
+        self.is_plot = is_plot
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = PoseLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_lite.task',            
+                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/pose_landmarker_lite.task',            
                 # cpu vs gpu
                 # https://forums.developer.nvidia.com/t/how-to-install-opengl-libs-of-nvidia/175409
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
@@ -88,7 +91,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.landmarker_options_desired = PoseLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_lite.task',            
+                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/pose_landmarker_lite.task',            
                 delegate=BaseOptions.Delegate.GPU),
             running_mode=VisionRunningMode.IMAGE,
             min_pose_detection_confidence=0.1,
@@ -123,9 +126,10 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_detected_goal_achieved = np.full(OBSERVATION_FEATURES_TOTAL, 1)
         self.last_detected_goal_desired = np.full(OBSERVATION_FEATURES_TOTAL, 1)
 
-        self.parallel_plot_queue = multiprocessing.Queue()
-        multiprocessing.log_to_stderr(logging.DEBUG)
-        multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
+        if self.is_plot:
+            self.parallel_plot_queue = multiprocessing.Queue()
+            multiprocessing.log_to_stderr(logging.DEBUG)
+            multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
 
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -252,12 +256,12 @@ class PoseImitationEnv(HumanoidEnv):
             # TODO get desired img from video?
 
             # bottleneck start
-            t = time.perf_counter()
+            # t = time.perf_counter()
             # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
             video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
             achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
             desired_pose = self.landmarker_desired.detect(self.desired_img)
-            print(time.perf_counter() - t)
+            # print(time.perf_counter() - t)
             # bottleneck end
 
         else:
@@ -286,7 +290,7 @@ class PoseImitationEnv(HumanoidEnv):
             # print('unable to detect desired pose. fallback...')
             desired_goal = self.last_detected_goal_desired
 
-        if self.ep_num_steps % FRAMESKIP_STEP_PLOT == 0:
+        if self.is_plot and self.ep_num_steps % FRAMESKIP_STEP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
