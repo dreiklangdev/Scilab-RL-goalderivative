@@ -1,26 +1,28 @@
 
 import numpy as np
 import time
-from mpl_toolkits.mplot3d import Axes3D
-from gymnasium import spaces
-from . import pose_imitation_cfg as cfg
-
-
 from types import SimpleNamespace
+from . import pose_imitation_cfg as cfg
+from gymnasium import spaces
 
 import matplotlib.pyplot as plt
 from matplotlib import image
+from mpl_toolkits.mplot3d import Axes3D
 
 from gymnasium.envs.mujoco.humanoid_v4 import HumanoidEnv
-
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 
+BaseOptions = mp.tasks.BaseOptions
+PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
+PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
 TOTAL_OBSERVATION_FEATURES = 99
+SIZE_RENDER = 250
 
 LANDMARK_GROUPS = [
     [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
@@ -55,16 +57,12 @@ class PoseImitationEnv(HumanoidEnv):
 
     def __init__(self):
         # TODO extract hyperparams
-        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=480, height=480)
+        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=SIZE_RENDER, height=SIZE_RENDER)
         # self.frame_skip = 10
         
         self.cfg = cfg
-        self.desired_img = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
-        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_img.copy())
-
-        BaseOptions = mp.tasks.BaseOptions
-        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-        VisionRunningMode = mp.tasks.vision.RunningMode
+        img_array = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
+        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = PoseLandmarkerOptions(
@@ -80,6 +78,7 @@ class PoseImitationEnv(HumanoidEnv):
             running_mode=VisionRunningMode.VIDEO,
             min_pose_detection_confidence=0.1,
             min_pose_presence_confidence=0.1)
+        self.landmarker_achieved = PoseLandmarker.create_from_options(self.landmarker_options_achieved)
 
         self.landmarker_options_desired = PoseLandmarkerOptions(
             base_options=BaseOptions(
@@ -88,7 +87,7 @@ class PoseImitationEnv(HumanoidEnv):
             running_mode=VisionRunningMode.IMAGE,
             min_pose_detection_confidence=0.1,
             min_pose_presence_confidence=0.1)
-        
+        self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
         if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
             obspace_shape = (TOTAL_OBSERVATION_FEATURES * 2,)
@@ -115,6 +114,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_detected_pose_achieved = np.full(TOTAL_OBSERVATION_FEATURES, 1)
         self.last_detected_pose_desired = np.full(TOTAL_OBSERVATION_FEATURES, 1)
 
+        # landmarker reset: better/correct detection of start pose
         self.landmarker_achieved = None
         self.landmarker_desired = None
 
@@ -246,7 +246,8 @@ class PoseImitationEnv(HumanoidEnv):
             achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
 
             # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
-            achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, self.ep_num_steps)
+            video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
+            achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
             desired_pose = self.landmarker_desired.detect(self.desired_img)
             # bottleneck end
 
@@ -372,17 +373,21 @@ class PoseImitationEnv(HumanoidEnv):
         # print('desired_goal', self.desired_goal)
         # print('goal tolerance', self.cfg.GoalRewardThreshold.MAX_FAC_DEFAULT * self.cfg.PracticeSpace.radius)
 
+        # landmarker reset: better/correct detection of start pose
         if self.landmarker_achieved:
             self.landmarker_achieved.close()
             del self.landmarker_achieved
+            self.landmarker_achieved = None
         if self.landmarker_desired:
             self.landmarker_desired.close()
             del self.landmarker_desired
+            self.landmarker_desired = None
 
         self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
         self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
 
+    
     def _get_idx_for_trajectory_halving(self, strat):
         idx_step = -1
         match strat:
