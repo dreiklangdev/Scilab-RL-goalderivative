@@ -1,118 +1,42 @@
 
 import numpy as np
-import time
-from mpl_toolkits.mplot3d import Axes3D
 from gymnasium import spaces
 from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
 from ..le_base import base_practice_cfg
 
 
-from types import SimpleNamespace
-
-import matplotlib.pyplot as plt
-from matplotlib import image
-
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-from mediapipe import solutions
-from mediapipe.framework.formats import landmark_pb2
-
-TOTAL_OBSERVATION_FEATURES = 99
-
-LANDMARK_GROUPS = [
-    [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
-    [10, 9],                       # mouth
-    [11, 13, 15, 17, 19, 15, 21],  # right arm
-    [11, 23, 25, 27, 29, 31, 27],  # right body side
-    [12, 14, 16, 18, 20, 16, 22],  # left arm
-    [12, 24, 26, 28, 30, 32, 28],  # left body side
-    [11, 12],                      # shoulder
-    [23, 24],                      # waist
-]
-
-# https://chuoling.github.io/mediapipe/solutions/pose.html
-# https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
-# https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
-
-# TODO do we need 3d body-relative (world) landmarks? (instead of 2d canvas-relative image coords (normalized))
-# https://github.com/google-ai-edge/mediapipe/issues/5325
-# https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
-# TODO reduce goal features?
-# TODO 3d plot of landmarks in pyplot (instead of overlay)?
-
 class BasePracticeEnv(BaseMujocoEnv):
 
 
     def __init__(self, cfg: base_practice_cfg):
-        
         self.cfg: base_practice_cfg = cfg
-        self.desired_img = image.imread('/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/poses/pose1.jpg')
-        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_img.copy())
-
-        BaseOptions = mp.tasks.BaseOptions
-        PoseLandmarker = mp.tasks.vision.PoseLandmarker
-        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-        VisionRunningMode = mp.tasks.vision.RunningMode
-
-        # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
-        options = PoseLandmarkerOptions(
-            base_options=BaseOptions(
-                model_asset_path='/home/t14/Documents/tuhh/dsf/Scilab-RL/mediapipe/model/pose_landmarker_full.task',            
-                # cpu vs gpu
-                delegate=BaseOptions.Delegate.CPU),
-            # TODO use video mode (more efficient)
-            running_mode=VisionRunningMode.IMAGE,
-            min_pose_detection_confidence=0.1,
-            min_pose_presence_confidence=0.1)
-        self.landmarker = PoseLandmarker.create_from_options(options)
-
-
-        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            obspace_shape = (self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1],)
-        else:
-            obspace_shape = (self.observation_space.shape[0],)
-
-        observation_space = spaces.Box(-np.inf, np.inf, shape=obspace_shape, dtype='float64')
-        
-        # practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.d.shape[1],), dtype='float64')
-        practice_space = spaces.Box(-np.inf, np.inf, shape=(TOTAL_OBSERVATION_FEATURES,), dtype='float64')
+        orig_obspace = self.observation_space
+        obspace = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.D.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
-                observation=observation_space,
-                desired_goal=practice_space,
-                achieved_goal=practice_space,
+                desired_goal=obspace,
+                achieved_goal=obspace,
+                observation=orig_obspace,
             )
         )
 
         # once
+        self.desired_goal = None
         self.last_ep_rewards_mean: float = 0
-        self.last_ep_goal_distance_min_normed: float = np.inf
-        self.ep_num_steps: int = 0
-        self.desired_goal = self.cfg.PracticeSpace.d[2]
-        self.last_detected_pose_achieved = np.full(TOTAL_OBSERVATION_FEATURES, 1)
-        self.last_detected_pose_desired = np.full(TOTAL_OBSERVATION_FEATURES, 1)
+        self.last_ep_goal_distance_min: float = np.inf
 
-        self.implot = None
-        self.extplot = None
-
+        # every ep
         self._reset_episode()
         print('le-walker-2d initialized.')
 
 
-    def get_achieved_goal(superobs):
-        raise NotImplementedError('inheriting env class must implement observing achieved goal from super obs')
-
-
     def compute_reward(
-        self, achieved_goal_normed: np.ndarray, desired_goal_normed: np.ndarray, info
+        self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        # goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_normed - desired_goal_normed])
-        goaldiff_weighted = np.array([achieved_goal_normed - desired_goal_normed])
-
+        goaldiff_weighted = self.cfg.PracticeSpace.D[3] * np.array([achieved_goal - desired_goal])
         # distance/accuracy (> at-least-only (needs control from both sides))
         goaldistance_normed = np.linalg.norm(goaldiff_weighted, axis=-1)
         if goaldistance_normed.shape[-1] == 1:
@@ -122,7 +46,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         reward = (goaldistance_normed < self.ep_goal_reward_threshold_normed).astype(np.float64)
         # try reward if pos. goal convergence? (non-sparse)
         return reward
-    
+
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
@@ -149,14 +73,14 @@ class BasePracticeEnv(BaseMujocoEnv):
                 goaldistance_shrink = self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1]
                 goaldistance_shrink = max(0, goaldistance_shrink)
                 self.ep_goal_reward_threshold_normed = self.ep_goal_distances_normed[-1] - goaldistance_shrink
-                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius_normed, self.ep_goal_reward_threshold_normed)
-                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius_normed, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = max(self.cfg.GoalRewardThreshold.MIN, self.ep_goal_reward_threshold_normed)
+                self.ep_goal_reward_threshold_normed = min(self.cfg.GoalRewardThreshold.MAX_DEFAULT, self.ep_goal_reward_threshold_normed)
                 if not self.ep_is_perfect:
-                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN_FAC * self.cfg.PracticeSpace.radius_normed:
-                        print('perfect goal zone reached!', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
+                    if self.ep_goal_reward_threshold_normed == self.cfg.GoalRewardThreshold.MIN:
+                        print('perfect goal zone reached! ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
                         self.ep_is_perfect = True
                     else:
-                        print('adaptive threshold ratio', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
+                        print('adaptive threshold ratio ', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
 
         terminated = False
         truncated = False
@@ -168,15 +92,10 @@ class BasePracticeEnv(BaseMujocoEnv):
         # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
         dims_outside, = np.where(np.logical_or(obs['achieved_goal'] < 0, obs['achieved_goal'] > 1))
         
-        # if len(dims_outside) > 0:
-        #     print('outside practice space!', obs['achieved_goal'][dims_outside])
-        #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
-        #     reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
-
-        nose_y = obs['achieved_goal'][1] # inverted height (nose)
-        if nose_y > -0.4:
-            print('fell down.', nose_y)
-            terminated = True
+        if len(dims_outside) > 0:
+            print('outside practice space!', self.cfg.PracticeSpace.LABELS[dims_outside], obs['achieved_goal'][dims_outside], sep=' ')
+            terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
+            reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
@@ -186,9 +105,9 @@ class BasePracticeEnv(BaseMujocoEnv):
         if self.render_mode == "human":
             self.render()
 
-        result = obs, float(reward[0]), terminated, truncated, info
+        result = obs, float(reward), terminated, truncated, info
         return result
-
+ 
 
     def reset_model(self):
         obs_init = None
@@ -197,162 +116,49 @@ class BasePracticeEnv(BaseMujocoEnv):
             # print(self.ep_goal_distances)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.radius_normed)
-            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.radius_normed)
+            print('ep_goal_distance_min_normed', min(self.ep_goal_distances_normed) / self.cfg.PracticeSpace.RADIUS)
+            print('ep_goal_convergence_mean_per_step_normed', ((max(self.ep_goal_distances_normed) - min(self.ep_goal_distances_normed)) / self.ep_num_steps) / self.cfg.PracticeSpace.RADIUS)
             print('ep_goal_desired_normed', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved_normed_end', self.ep_obs_cur['achieved_goal'])
-            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
-            print('ep_traj_is_halved', self.ep_traj_is_halved)
+            print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.RADIUS)
             print('ep_rewards_mean', self.ep_rewards_mean)
+            print('ep_is_perfect', self.ep_is_perfect)
             print('\n')
 
         if self.ep_num_steps > 1:
-            ep_goal_distance_min_normed = min(self.ep_goal_distances_normed)
+            ep_goal_distance_min = min(self.ep_goal_distances_normed)
 
-            if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min_normed < self.last_ep_goal_distance_min_normed):
+            # if IS_TRAJECTORY_HALVING and (self.ep_rewards_mean > self.last_ep_rewards_mean):
+            if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goal_distance_min < self.last_ep_goal_distance_min):
                 idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
-                print('halving!', idx_halving)
+                print('halving! ', idx_halving)
                 qpos, qvel = self.ep_states[idx_halving]
                 qpos, qvel = self._add_noise(qpos, qvel)
 
                 self.set_state(qpos, qvel)
-                self.ep_traj_is_halved = True
                 self.last_ep_rewards_mean = self.ep_rewards_mean
-                self.last_ep_goal_distance_min_normed = ep_goal_distance_min_normed
+                self.last_ep_goal_distance_min = ep_goal_distance_min
                 obs_init = self._get_obs()
-
+                
         if not obs_init:
-            obs_init = super().reset_model()
-            self.desired_goal = self._new_goal()
-            self.last_ep_goal_distance_min_normed = np.inf
+            # new goal
+            self.desired_goal = self._get_goal()
+            self.last_ep_goal_distance_min = np.inf
             self.last_ep_rewards_mean = 0
-            self.ep_traj_is_halved = False
+            obs_init = super().reset_model()
 
         self._reset_episode()
         return obs_init
 
 
-    def _get_obs(self):
-        superobs = super()._get_obs()
-
-        # render/detect pose only every nth frame
-        # TODO may already with self.frame_skip param?
-        if self.ep_num_steps % 1 == 0:
-            render_mode_tmp = self.render_mode
-            self.render_mode = 'rgb_array'
-            # bottleneck
-            achieved_img = self.render().copy()
-            achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
-            achieved_pose = self.landmarker.detect(achieved_img)
-            desired_pose = self.landmarker.detect(self.desired_img)
-            self.render_mode = render_mode_tmp
-
-            # plot?
-            if False:
-
-                achieved_img_annotated = self._draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-                if not self.implot:
-                    plt.figure()
-                    _, (ax1, ax2) = plt.subplots(2)
-                    self.implot = ax1.imshow(achieved_img_annotated)
-                    # TODO once (image) vs. every step (video)
-                    desired_pose = self.landmarker.detect(self.desired_img)
-                    desired_img_annotated = self._draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
-                    ax2.imshow(desired_img_annotated)
-                else:
-                    self.implot.set_data(achieved_img_annotated)
-                    self.implot.draw(self.implot.get_figure().canvas.get_renderer())
-                    plt.pause(0.000001)
-
-
+    def _get_goal(self):
+        if self.cfg.PracticeSpace.IS_RAND_GOAL_SAMPLING:
+            # https://en.wikipedia.org/wiki/Triangular_distribution
+            goal_randomized = np.random.triangular(self.cfg.PracticeSpace.D[0], self.cfg.PracticeSpace.D[2], self.cfg.PracticeSpace.D[1])
+            goal_randomized_weighted = self.cfg.PracticeSpace.D[3] * goal_randomized + (1 - self.cfg.PracticeSpace.D[3]) * self.cfg.PracticeSpace.D[2]
+            return goal_randomized_weighted
         else:
-            # TODO take last valid pose? extrapolate from last valid poses?
-            achieved_pose = SimpleNamespace(pose_world_landmarks=[])
-            desired_pose = SimpleNamespace(pose_world_landmarks=[])
-
-        # achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        # desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-
-        achieved_goal_norm = []
-        if achieved_pose.pose_world_landmarks:
-            # multiple poses found? only first
-            for landmark in achieved_pose.pose_world_landmarks[0]:
-                achieved_goal_norm.append(landmark.x)
-                achieved_goal_norm.append(landmark.y)
-                achieved_goal_norm.append(landmark.z)
-            self.last_detected_pose_achieved = achieved_goal_norm
-            
-        desired_goal_norm = []
-        if desired_pose.pose_world_landmarks:
-            # multiple poses found? only first
-            for landmark in desired_pose.pose_world_landmarks[0]:
-                desired_goal_norm.append(landmark.x)
-                desired_goal_norm.append(landmark.y)
-                desired_goal_norm.append(landmark.z)
-            self.last_detected_pose_desired = desired_goal_norm
-
-        # both must be detected, else fallback
-        if not achieved_pose.pose_world_landmarks or not desired_pose.pose_world_landmarks:
-            achieved_goal_norm = self.last_detected_pose_achieved
-            desired_goal_norm = self.last_detected_pose_desired
-
-
-        if not self.extplot:
-            fig = plt.figure()
-            self.extplot = fig.add_subplot(111, projection="3d")
-
-        # plot topology connections
-        # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
-        self.extplot.clear()
-
-         # had to flip the z axis
-        self.extplot.set_xlim3d(-1, 1)
-        self.extplot.set_ylim3d(-1, 1)
-        self.extplot.set_zlim3d(1, -1)
-
-        # get coordinates for each group and plot
-        for group in LANDMARK_GROUPS:
-            plotX, plotY, plotZ = [], [], []
-
-            plotX = [desired_pose.pose_world_landmarks.landmark[i].x for i in group]
-            plotY = [desired_pose.pose_world_landmarks.landmark[i].y for i in group]
-            plotZ = [desired_pose.pose_world_landmarks.landmark[i].z for i in group]
-
-            self.extplot.plot(plotX, plotZ, plotY)
-        
-        self.extplot.draw(self.extplot.get_figure().canvas.get_renderer())
-        plt.pause(0.000001)
-
-        
-        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            # TODO hash from desired_pose landmarks?
-            superobs = np.concatenate((superobs, self.desired_goal))
-
-        dictobs = dict(
-                observation=superobs,
-                achieved_goal=np.array(achieved_goal_norm),
-                desired_goal=np.array(desired_goal_norm),
-            )
-
-        return dictobs
-
-
-    def _new_goal(self):
-        goal_randomized = None
-
-        match self.cfg.PracticeSpace.RandomGoalSampling.STRAT:
-            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.GENERALIST:
-                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-
-            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.CONFORMIST:
-                # https://en.wikipedia.org/wiki/Triangular_distribution
-                goal_randomized = np.random.triangular(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[2], self.cfg.PracticeSpace.d[1])
-
-            case self.cfg.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST:
-                goal_randomized = self.cfg.PracticeSpace.d[2]
-
-        goal_randomized_weighted = self.cfg.PracticeSpace.d[3] * goal_randomized + (1 - self.cfg.PracticeSpace.d[3]) * self.cfg.PracticeSpace.d[2]
-        return goal_randomized_weighted
+            return self.cfg.PracticeSpace.D[2]
 
 
     def _add_noise(self, qpos, qvel):
@@ -374,10 +180,10 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = None
         self.ep_goal_distances_normed = []
         self.ep_states = []
-        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius_normed
+        self.ep_goal_reward_threshold_normed = self.cfg.GoalRewardThreshold.MAX_DEFAULT
         self.ep_is_perfect = False
-        print('desired_goal', self.desired_goal)
-        print('goal tolerance', self.cfg.GoalRewardThreshold.MAX_DEFAULT_FAC * self.cfg.PracticeSpace.radius)
+
+        print('desired_goal ', self.desired_goal)
 
 
     def _get_idx_for_trajectory_halving(self, strat):
@@ -397,24 +203,3 @@ class BasePracticeEnv(BaseMujocoEnv):
         # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
         return (val - min_val) / (max_val - min_val)
-
-
-    def _draw_landmarks_on_image(self, rgb_image, detection_result):
-        pose_landmarks_list = detection_result.pose_landmarks
-        annotated_image = np.copy(rgb_image)
-
-        # Loop through the detected poses to visualize.
-        for idx in range(len(pose_landmarks_list)):
-            pose_landmarks = pose_landmarks_list[idx]
-
-            # Draw the pose landmarks.
-            pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
-            pose_landmarks_proto.landmark.extend([
-                landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z)
-                for landmark in pose_landmarks])
-            solutions.drawing_utils.draw_landmarks(
-                annotated_image,
-                pose_landmarks_proto,
-                solutions.pose.POSE_CONNECTIONS,
-                solutions.drawing_styles.get_default_pose_landmarks_style())
-        return annotated_image

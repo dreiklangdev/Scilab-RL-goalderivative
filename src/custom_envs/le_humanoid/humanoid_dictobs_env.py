@@ -25,8 +25,7 @@ class HumanoidDictObsEnv(BasePracticeEnv, HumanoidEnv):
 
 
     def __init__(self):
-        # TODO extract hyperparams
-        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=480, height=480)
+        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True)
         # self.frame_skip = 10
         BasePracticeEnv.__init__(self, cfg)
 

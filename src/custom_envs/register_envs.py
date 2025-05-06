@@ -168,6 +168,12 @@ def register_custom_envs():
         max_episode_steps=1500,
     )
 
+    register(
+        id="le-pose-imitation-v4",
+        entry_point='custom_envs.le_humanoid_pose.pose_imitation_env:PoseImitationEnv',
+        max_episode_steps=1500,
+    )
+
 
 def register_metaworld_envs():
     for env_name, env_class in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE.items():
