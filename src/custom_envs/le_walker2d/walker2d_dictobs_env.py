@@ -52,17 +52,18 @@ from . import walker2d_dictobs_cfg as cfg
 #   3.  400k, randomWeightedDims,adaptiveTh   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/29743f1/le-walker2d-v4/00-34-57/rl_model_finished
 # random: slower, but generalizing (single dim, ie. velocity)
 
-# best: v8    minmax[0.05,0.2], th-halfAtLowestDist
-#   1M  /home/t500/tuhh/dsf/Scilab-RL/data/8425c48/le-walker2d-v4/15-41-58/rl_model_finished
-#       no goal-holding...
-# best: v7    0.2, noAdaptive, th-halfAtLowestDist
+# v7(best)    0.2, noAdaptive, th-halfAtLowestDist
 #   1M  /home/t500/tuhh/dsf/Scilab-RL/data/4779276/le-walker2d-v4/19-35-53/rl_model_finished
 #       success!
-# best: v9 - incrementalist
+
+# v8    minmax[0.05,0.2], th-halfAtLowestDist
+#   1M  /home/t500/tuhh/dsf/Scilab-RL/data/8425c48/le-walker2d-v4/15-41-58/rl_model_finished
+#       no goal-holding...
+
+# v9 - incrementalist
         # incremental roadmap
 #   1.  1M  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/9eb139a/le-walker2d-v4/18-04-17/rl_model_finished
 #           reliable goal holding, faster initial learning (for more difficult goals)?
-
 #   specialist
 #       500k    home/t14/Documents/tuhh/dsf/Scilab-RL/data/9eb139a/le-walker2d-v4/20-31-35/rl_model_finished
 #               fast targetted learning
@@ -72,6 +73,20 @@ from . import walker2d_dictobs_cfg as cfg
 #   generalist
 #       500k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a903811/le-walker2d-v4/15-12-18/rl_model_finished
 #               slower learing
+
+# v10   0.1, noAdapt, th-halfAtLowestDist, specialist, rewardNudge-personalRecord, velocityDim-only
+#       100k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a2e4438/le-walker2d-v4/13-01-21/rl_model_finished
+#               significant more efficient
+#       noNudging
+#           100k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a2e4438/le-walker2d-v4/13-16-52/rl_model_finished
+#                   less efficient
+#       noMetaObs
+#           100k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a2e4438/le-walker2d-v4/14-42-20/rl_model_finished
+#                   more efficient (less falling)
+#       rewardNudge-personalRecord, metaObs
+#           100k    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/a2e4438/le-walker2d-v4/14-26-15/rl_model_finished
+#                   best efficiency
+
 
 # forming: goal + termination ("coaching")
 # reward-trickling ("breadcrumbing")

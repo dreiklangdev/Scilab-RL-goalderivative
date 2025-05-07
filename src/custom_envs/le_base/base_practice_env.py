@@ -11,13 +11,13 @@ class BasePracticeEnv(BaseMujocoEnv):
     def __init__(self, cfg: base_practice_cfg):
         self.cfg: base_practice_cfg = cfg
 
-        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
-            obspace_shape = (self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1],)
+        if self.cfg.MetaObservation.IS_ENABLED:
+            self.obspace_total_dims = self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1] + 3
         else:
-            obspace_shape = (self.observation_space.shape[0],)
+            self.obspace_total_dims = self.observation_space.shape[0]
 
-        observation_space = spaces.Box(-np.inf, np.inf, shape=obspace_shape, dtype='float64')
-        
+        print('obspace_total_dims', self.obspace_total_dims)
+        observation_space = spaces.Box(-np.inf, np.inf, shape=(self.obspace_total_dims,), dtype='float64')
         practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.d.shape[1],), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
@@ -34,6 +34,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_goal_distance_min_normed: float = np.inf
         self.ep_num_steps: int = 0
         self.desired_goal = self.cfg.PracticeSpace.d[2]
+        self.goaldistance_normed_personal_best = np.inf
 
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -48,15 +49,23 @@ class BasePracticeEnv(BaseMujocoEnv):
     ) -> float:
 
         goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_normed - desired_goal_normed])
-        # distance/accuracy (> at-least-only (needs control from both sides))
+        # distance/accuracy (better than "at-least" (needs control from both sides))
         goaldistance_normed = np.linalg.norm(goaldiff_weighted, axis=-1)
+        
+        reward = (goaldistance_normed < self.ep_goal_reward_threshold_normed)
+
         if goaldistance_normed.shape[-1] == 1:
-            # single step (no replay)
+            # single live step (no replay)
             self.ep_goal_distances_normed.append(goaldistance_normed[0])
 
-        reward = (goaldistance_normed < self.ep_goal_reward_threshold_normed).astype(np.float64)
+            if self.cfg.GoalRewardThreshold.IS_NUDGING:
+                if goaldistance_normed < self.goaldistance_normed_personal_best:
+                    print('personal record!', goaldistance_normed)
+                    self.goaldistance_normed_personal_best = goaldistance_normed
+                    reward = np.array([True])
+
         # try reward if pos. goal convergence? (non-sparse)
-        return reward
+        return reward.astype(np.float64)
     
 
     def step(self, action):
@@ -64,12 +73,12 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         info = {}
         info['success'] = False
-        obs = self._get_obs()
-        self.ep_obs_cur = obs
-
         qpos = self.data.qpos.flat.copy()
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
+
+        obs = self._get_obs()
+        self.ep_obs_cur = obs
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
         reward = float(reward[0]) # here only scalar rewards (vs. exp. buffer)
@@ -135,6 +144,7 @@ class BasePracticeEnv(BaseMujocoEnv):
             print('ep_goal_reward_threshold_normed', self.ep_goal_reward_threshold_normed / self.cfg.PracticeSpace.radius_normed)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
+            print('obspace_total_dims', self.obspace_total_dims)
             print('\n')
 
         if self.ep_num_steps > 1:
@@ -165,11 +175,24 @@ class BasePracticeEnv(BaseMujocoEnv):
 
     def _get_obs(self):
         superobs = super()._get_obs()
-        if self.cfg.General.IS_OBSERVATION_GOAL_EXTENDED:
+
+        if self.cfg.MetaObservation.IS_ENABLED:
+            # goal desired
             superobs = np.concatenate((superobs, self.desired_goal))
+            if len(self.ep_goal_distances_normed) > 1:
+                # TODO too late (meta-obs from last step)
+                # goal distance
+                superobs = np.append(superobs, self.ep_goal_distances_normed[-1])
+                # goal convergence
+                superobs = np.append(superobs, self.ep_goal_distances_normed[-2] - self.ep_goal_distances_normed[-1])
+                # goal is_converging
+                is_converging = np.sign(self.ep_goal_distances_normed[-1] - self.ep_goal_distances_normed[-2])
+                superobs = np.append(superobs, is_converging)
 
         achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
         desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+
+        superobs = np.pad(superobs, (0, self.obspace_total_dims - superobs.shape[0]))
 
         dictobs = dict(
                 observation=superobs,

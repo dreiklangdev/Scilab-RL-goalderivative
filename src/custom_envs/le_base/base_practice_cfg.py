@@ -13,7 +13,10 @@ import numpy as np
 class General:
     EPISODE_TRUNCATION_STEPS_MAX = 1000
     EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN = 0.95
-    IS_OBSERVATION_GOAL_EXTENDED = True
+
+
+class MetaObservation:
+    IS_ENABLED = True
 
 
 # as general basic training? (base policy)
@@ -34,9 +37,7 @@ class PracticeSpace:
     # jack-of-all-trades (but non perfectly) vs. perfectionist
     IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
     REWARD_IF_OUTSIDE = 0
-    # TODO adapting? (increase/decrease waypoint distances depending on training timesteps left)
-    GOALS_ROADMAP_TOTAL_WAYPOINTS = 100
-
+    
     d = None
     labels = None
 
@@ -78,8 +79,9 @@ class GoalRewardThreshold:
     #   too sparse => no improvement (randomness, slow-broad conv.)
     #   too painful => no courage (fearful, no conv.)
 
-    # rewarding :static, predictable > adaptive, dynamic?
+    # rewarding: static, predictable > adaptive, dynamic?
     IS_ADAPTIVE = False
+    IS_NUDGING = True
 
     # smaller: faster reach
     # too small: will never hold?

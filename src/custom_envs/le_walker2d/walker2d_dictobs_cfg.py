@@ -7,6 +7,10 @@ class General(base.General):
     EPISODE_TRUNCATION_STEPS_MAX = 1000
 
 
+class MetaObservation(base.MetaObservation):
+    IS_ENABLED = True
+
+
 class PracticeSpace(base.PracticeSpace):    
     IS_TERMINATION_IF_OUTSIDE = True
     
@@ -14,7 +18,8 @@ class PracticeSpace(base.PracticeSpace):
         [0.8,        -2.0,          -1.0,       -2.0,   ],   # min
         [2.0,        3.0,           1.5,        2.0,    ],   # max
         [1.1,        1.0,           0.5,        0,      ],   # mode
-        [0.05,       1.0,           0.05,       0.0,    ]    # weight [0,1]
+        # [0.05,       1.0,           0.05,       0.0,    ]    # weight [0,1]
+        [0.0,        1.0,            0.0,       0.0,    ]    # weight [0,1]
     ],  ['height',   'velocity',    'angle',   'angle_thigh'])
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
@@ -23,6 +28,8 @@ class PracticeSpace(base.PracticeSpace):
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
     IS_ADAPTIVE = False
+    IS_NUDGING = True
+    MAX_FAC_DEFAULT = 0.1
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
