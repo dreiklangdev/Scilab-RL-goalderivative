@@ -85,8 +85,8 @@ class GoalRewardThreshold:
 
     # smaller: faster reach
     # too small: will never hold?
-    MIN_FAC = 0.05 # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
-    MAX_FAC_DEFAULT = 0.1 # decaying?
+    MIN_FRAC = 0.05 # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
+    MAX_FRAC_DEFAULT = 0.1 # decaying?
     # need to earn adaption (only bad performance => no rewards!)
 
 

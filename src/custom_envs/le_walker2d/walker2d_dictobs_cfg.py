@@ -29,7 +29,7 @@ class PracticeSpace(base.PracticeSpace):
 class GoalRewardThreshold(base.GoalRewardThreshold):
     IS_ADAPTIVE = False
     IS_NUDGING = True
-    MAX_FAC_DEFAULT = 0.1
+    MAX_FRAC_DEFAULT = 0.1
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
