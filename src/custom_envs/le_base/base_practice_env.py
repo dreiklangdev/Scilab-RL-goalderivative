@@ -113,7 +113,7 @@ class BasePracticeEnv(BaseMujocoEnv):
             is_converging = self.ep_goaldists_nld[-window] - self.ep_goaldists_nld[-1] < 0
             # is_converging = np.mean(np.gradient(self.ep_goaldists_nld[:window])) < 0
             if not is_converging:
-                print('GOAL DIVERGENCE!', )
+                print('GOAL DIVERGENCE!')
                 terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
                 reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
