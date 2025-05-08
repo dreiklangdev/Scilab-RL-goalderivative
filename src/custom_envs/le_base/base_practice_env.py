@@ -4,13 +4,14 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
 from ..le_base import base_practice_cfg
 
+# TODO disable traj-halving, th-halving etc. in eval env
 
 class BasePracticeEnv(BaseMujocoEnv):
 
 
     def __init__(self, cfg: base_practice_cfg):
         self.cfg: base_practice_cfg = cfg
-
+        
         if self.cfg.MetaObservation.IS_ENABLED:
             self.obspace_total_dims = self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1] + 3
         else:
@@ -33,7 +34,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_goaldist_min_nld: float = np.inf
         self.ep_num_steps: int = 0
         self.desired_goal = self.cfg.PracticeSpace.d[2]
-        self.goaldist_nld_personal_best = np.inf
+        self.goaldist_nld_personal_best: float = -1.0
         self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
         self._reset_episode()
@@ -53,6 +54,7 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         if np.isscalar(achieved_goal_nld[0]):
             # single live step (no replay)
+            # TODO move to get_obs()
             self.ep_goaldists_nld.append(achieved_goal_nld[0])
 
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
@@ -85,20 +87,6 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
 
-        if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-            if reward and len(self.ep_goaldists_nld) > 1:
-                goaldistance_shrink = self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1]
-                goaldistance_shrink = max(0, goaldistance_shrink)
-                self.ep_reward_threshold_nld = self.ep_goaldists_nld[-1] - goaldistance_shrink
-                self.ep_reward_threshold_nld = max(self.cfg.GoalRewardThreshold.MIN_FRAC * self.cfg.PracticeSpace.radius_normed, self.ep_reward_threshold_nld)
-                self.ep_reward_threshold_nld = min(self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * self.cfg.PracticeSpace.radius_normed, self.ep_reward_threshold_nld)
-                if not self.ep_is_perfect:
-                    if self.ep_reward_threshold_nld == self.cfg.GoalRewardThreshold.MIN_FRAC * self.cfg.PracticeSpace.radius_normed:
-                        print('perfect goal zone reached!', self.ep_reward_threshold_nld / self.cfg.PracticeSpace.radius_normed)
-                        self.ep_is_perfect = True
-                    else:
-                        print('adaptive threshold ratio', self.ep_reward_threshold_nld / self.cfg.PracticeSpace.radius_normed)
-
         terminated = False
         truncated = False
 
@@ -116,7 +104,7 @@ class BasePracticeEnv(BaseMujocoEnv):
             terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
             reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
-        # TODO adaptive termination threshold?
+        # TODO adaptive termination threshold? (halving again?)
         # if self.ep_goaldists_normed[-1] > self.ep_goaldists_normed[0] * 1.2:
         #     print('outside goal distance!', self.ep_goaldists_normed[-1])
         #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
@@ -167,11 +155,30 @@ class BasePracticeEnv(BaseMujocoEnv):
                 obs_init = self._get_obs()
 
         if not obs_init:
+            # brand new episode
             obs_init = super().reset_model()
+            print('init_goaldistance', obs_init['achieved_goal'])
+            self.ep_goaldists_nld.append(obs_init['achieved_goal'])
             self.desired_goal = self._new_goal()
             self.last_ep_goaldist_min_nld = np.inf
             self.last_ep_rewards_mean = 0
             self.ep_traj_is_halved = False
+            if self.goaldist_nld_personal_best < 0:
+                self.goaldist_nld_personal_best = obs_init['achieved_goal']
+
+            if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
+                pad = 0.3
+                # possibly traj-halved rewards mean
+                if self.ep_rewards_mean < pad:
+                    # bad episode before: towards init. goaldist.
+                    self.ep_reward_threshold_nld += (obs_init['achieved_goal'] - obs_init['desired_goal']) / 2
+                elif self.ep_rewards_mean > (1 - pad):
+                    # good episode before: towards 0
+                    self.ep_reward_threshold_nld -= (obs_init['achieved_goal'] - 0) / 2
+                self.ep_reward_threshold_nld = max(self.ep_reward_threshold_nld, obs_init['achieved_goal'] * pad)
+                self.ep_reward_threshold_nld = min(self.ep_reward_threshold_nld, obs_init['achieved_goal'] * (1 - pad))
+                assert 0 <= self.ep_reward_threshold_nld <= obs_init['achieved_goal']
+
 
         self._reset_episode()
         return obs_init
@@ -245,7 +252,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = None
         self.ep_goaldists_nld = []
         self.ep_states = []
-        self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * self.cfg.PracticeSpace.radius_normed
+        # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * self.cfg.PracticeSpace.radius_normed
         self.ep_is_perfect = False
         print('obspace_total_dims', self.obspace_total_dims)
         print('desired_goal', self.desired_goal)

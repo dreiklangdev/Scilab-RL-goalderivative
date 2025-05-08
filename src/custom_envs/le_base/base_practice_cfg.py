@@ -99,3 +99,7 @@ class TrajectoryHalving:
         HIGHEST_GOAL_CONVERGENCE = 1
         LOWEST_GOAL_DISTANCE = 2
     STRAT = Strat.LOWEST_GOAL_DISTANCE
+
+
+class CfgAssertion:
+    assert 0 <= GoalRewardThreshold.MAX_FRAC_DEFAULT <= 1, f'normalized threshold must be in [0,1], is: {GoalRewardThreshold.MAX_FRAC_DEFAULT}'
