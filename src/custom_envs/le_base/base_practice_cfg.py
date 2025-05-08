@@ -80,8 +80,11 @@ class GoalRewardThreshold:
     #   too painful => no courage (fearful, no conv.)
 
     # rewarding: static, predictable > adaptive, dynamic?
-    IS_ADAPTIVE = False
+    IS_ADAPTIVE = True
+    ADAPTION_PADDING = 0.3
+
     IS_NUDGING = True
+
 
     # smaller: faster reach
     # too small: will never hold?

@@ -27,7 +27,9 @@ class PracticeSpace(base.PracticeSpace):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    IS_ADAPTIVE = False
+    IS_ADAPTIVE = True
+    ADAPTION_PADDING = 0.3
+
     IS_NUDGING = True
     MAX_FRAC_DEFAULT = 0.1
 

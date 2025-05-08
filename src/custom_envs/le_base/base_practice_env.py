@@ -167,7 +167,7 @@ class BasePracticeEnv(BaseMujocoEnv):
                 self.goaldist_nld_personal_best = obs_init['achieved_goal']
 
             if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-                pad = 0.3
+                pad = self.cfg.GoalRewardThreshold.ADAPTION_PADDING
                 # possibly traj-halved rewards mean
                 if self.ep_rewards_mean < pad:
                     # bad episode before: towards init. goaldist.
