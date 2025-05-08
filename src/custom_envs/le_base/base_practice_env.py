@@ -12,12 +12,12 @@ class BasePracticeEnv(BaseMujocoEnv):
     def __init__(self, cfg: base_practice_cfg):
         self.cfg: base_practice_cfg = cfg
         
-        if self.cfg.MetaObservation.IS_ENABLED:
-            self.obspace_total_dims = self.observation_space.shape[0] + self.cfg.PracticeSpace.d.shape[1] + 3
-        else:
-            self.obspace_total_dims = self.observation_space.shape[0]
+        obspace_total_dims = self.observation_space.shape[0]
 
-        observation_space = spaces.Box(-np.inf, np.inf, shape=(self.obspace_total_dims,), dtype='float64')
+        if self.cfg.MetaObservation.IS_ENABLED:
+            obspace_total_dims += self.cfg.PracticeSpace.d.shape[1] + 3
+
+        observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
@@ -39,6 +39,8 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         self._reset_episode()
         print('le-walker-2d initialized.')
+        print('observation_space', observation_space)
+        print('goal_space', goal_space)
 
 
     def extract_practiced_obs(superobs):
@@ -88,6 +90,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         terminated = False
         truncated = False
 
+        # practice pre-knowledge
         # always manual only? (direction (guidance, experience, coaching))
         # the more, the better?
         # faster learning: decrease search/interaction space (find terminations (=constraints))
@@ -102,7 +105,10 @@ class BasePracticeEnv(BaseMujocoEnv):
                 terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
                 reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
-        TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True
+        TERMINATE_ON_GRACE_STEPS_DIVERGENCE = False
+        # possibly mandatory for envs without significant practice pre-knowledge?
+        # 100k, enabled     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/14-53-42/rl_model_finished
+        # 100k, disabled    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/15-09-46/rl_model_finished
         if TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
             GRACE_STEPS = 150
             if len(self.ep_goaldists_nld) >= GRACE_STEPS:
@@ -162,25 +168,17 @@ class BasePracticeEnv(BaseMujocoEnv):
             # brand new episode
             obs_init = super().reset_model()
             print('init_goaldistance', obs_init['achieved_goal'])
-            self.desired_obs = self._new_desired_obs()
+            self.desired_obs = self._get_desired_obs()
             self.last_ep_goaldist_min_nld = np.inf
             self.last_ep_rewards_mean = 0
             self.ep_traj_is_halved = False
+            # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
+
             if self.goaldist_nld_personal_best < 0:
                 self.goaldist_nld_personal_best = obs_init['achieved_goal']
 
             if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-                pad = self.cfg.GoalRewardThreshold.ADAPTION_PADDING
-                # possibly traj-halved rewards mean
-                if self.ep_rewards_mean < pad:
-                    # bad episode before: towards init. goaldist.
-                    self.ep_reward_threshold_nld += (obs_init['achieved_goal'] - obs_init['desired_goal']) / 2
-                elif self.ep_rewards_mean > (1 - pad):
-                    # good episode before: towards 0
-                    self.ep_reward_threshold_nld -= (obs_init['achieved_goal'] - 0) / 2
-                self.ep_reward_threshold_nld = max(self.ep_reward_threshold_nld, obs_init['achieved_goal'] * pad)
-                self.ep_reward_threshold_nld = min(self.ep_reward_threshold_nld, obs_init['achieved_goal'] * (1 - pad))
-                assert 0 <= self.ep_reward_threshold_nld <= obs_init['achieved_goal']
+                self.ep_reward_threshold_nld = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
 
         self._reset_episode()
         return obs_init
@@ -218,7 +216,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         return dictobs
 
 
-    def _new_desired_obs(self):
+    def _get_desired_obs(self):
         desired_obs_randomized = None
 
         match self.cfg.PracticeSpace.RandomGoalSampling.STRAT:
@@ -249,16 +247,14 @@ class BasePracticeEnv(BaseMujocoEnv):
 
 
     def _reset_episode(self):
-        self.ep_rewards_mean: float = 0
+        self.ep_rewards_mean: float = -1
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
         self.ep_goaldists_nld = []
         self.ep_states = []
-        # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * self.cfg.PracticeSpace.radius_normed
         self.ep_is_perfect = False
-        print('obspace_total_dims', self.obspace_total_dims)
-        print('desired_goal', self.desired_obs)
+        print('desired_obs', self.desired_obs)
         print('goaldist_nld_personal_best', self.goaldist_nld_personal_best)
 
 
