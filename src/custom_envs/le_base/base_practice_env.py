@@ -41,8 +41,8 @@ class BasePracticeEnv(BaseMujocoEnv):
         print('le-walker-2d initialized.')
 
 
-    def extract_achieved_obs(superobs):
-        raise NotImplementedError('inheriting env class must implement observing achieved goal from super obs')
+    def extract_practiced_obs(superobs):
+        raise NotImplementedError('inheriting env class must implement observing practiced obs from super obs')
 
 
     # is also used by HER (multi-dim. args.)
@@ -77,7 +77,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = obs
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
-        reward = float(reward[0])
+        reward = reward[0]
         if reward:
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
@@ -88,34 +88,31 @@ class BasePracticeEnv(BaseMujocoEnv):
         terminated = False
         truncated = False
 
-        # termination shaping? (manual vs autom.)
+        # always manual only? (direction (guidance, experience, coaching))
+        # the more, the better?
         # faster learning: decrease search/interaction space (find terminations (=constraints))
-        # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
-        # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
-        # achieved_obs_nld = self._normalize(self.extract_achieved_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        # dims_outside, = np.where(np.logical_or(achieved_obs_nld < 0, achieved_obs_nld > 1))
-        # if len(dims_outside) > 0:
-        #     # TODO automatic practice space
-        #     print('outside practice space!',
-        #           self.cfg.PracticeSpace.labels[dims_outside], achieved_obs_nld[dims_outside])
-        #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
-        #     reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
-
-        # TODO adaptive termination threshold? (halving again?)
-        # if self.ep_goaldists_nld[-1] > self.ep_goaldists_nld[0] * 1.2:
-        #     print('outside goal distance!', self.ep_goaldists_nld[-1])
-        #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
-        #     reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
-
-        window = 10
-        if len(self.ep_goaldists_nld) >= window:
-            is_converging = self.ep_goaldists_nld[-window] - self.ep_goaldists_nld[-1] < 0
-            # is_converging = np.mean(np.gradient(self.ep_goaldists_nld[:window])) < 0
-            if not is_converging:
-                print('GOAL DIVERGENCE!')
+        TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
+        if TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
+            practiced_obs_nld = self._normalize(self.extract_practiced_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+            dims_outside, = np.where(np.logical_or(practiced_obs_nld < 0, practiced_obs_nld > 1))
+            if len(dims_outside) > 0:
+                print('OUTSIDE PRACTICE SPACE!',
+                    self.cfg.PracticeSpace.labels[dims_outside], practiced_obs_nld[dims_outside])
                 terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
                 reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
+
+        TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True
+        if TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
+            GRACE_STEPS = 150
+            if len(self.ep_goaldists_nld) >= GRACE_STEPS:
+                is_reached = obs['achieved_goal'] < obs['desired_goal']
+                is_converging = self.ep_goaldists_nld[-GRACE_STEPS] - self.ep_goaldists_nld[-1] < 0
+                # is_converging = np.mean(np.gradient(self.ep_goaldists_nld[:window])) < 0
+                if not is_reached and not is_converging:
+                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', GRACE_STEPS)
+                    terminated = True
+                    reward = 0
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
@@ -192,7 +189,7 @@ class BasePracticeEnv(BaseMujocoEnv):
     def _get_obs(self):
         superobs = super()._get_obs()
 
-        achieved_obs_nld = self._normalize(self.extract_achieved_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        achieved_obs_nld = self._normalize(self.extract_practiced_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
         desired_obs_nld = self._normalize(self.desired_obs, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
         goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_obs_nld - desired_obs_nld])
