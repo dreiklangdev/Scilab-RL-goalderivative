@@ -112,7 +112,7 @@ class Walker2dDictObsEnv(BasePracticeEnv, Walker2dEnv):
         BasePracticeEnv.__init__(self, cfg)
 
 
-    def get_achieved_goal(self, superobs):        
+    def extract_achieved_obs(self, superobs):        
         distance, height, velocity, angle = superobs[0], superobs[1], superobs[9], superobs[2]
         # n_contact_after = self.data.ncon if self.ep_num_steps > 300 else 1
         angle_thigh = max(superobs[3], superobs[6])

@@ -30,7 +30,7 @@ class HumanoidDictObsEnv(BasePracticeEnv, HumanoidEnv):
         BasePracticeEnv.__init__(self, cfg)
 
 
-    def get_achieved_goal(self, superobs):
+    def extract_achieved_obs(self, superobs):
         height = superobs[0]
         x_velocity = superobs[22]
         return np.array((height, x_velocity))

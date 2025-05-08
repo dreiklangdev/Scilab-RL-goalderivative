@@ -17,14 +17,14 @@ class BasePracticeEnv(BaseMujocoEnv):
             self.obspace_total_dims = self.observation_space.shape[0]
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(self.obspace_total_dims,), dtype='float64')
-        practice_space = spaces.Box(-np.inf, np.inf, shape=(self.cfg.PracticeSpace.d.shape[1],), dtype='float64')
+        goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
                 observation=observation_space,
-                desired_goal=practice_space,
-                achieved_goal=practice_space,
+                desired_goal=goal_space,
+                achieved_goal=goal_space,
             )
         )
 
@@ -40,7 +40,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         print('le-walker-2d initialized.')
 
 
-    def get_achieved_goal(superobs):
+    def extract_achieved_obs(superobs):
         raise NotImplementedError('inheriting env class must implement observing achieved goal from super obs')
 
 
@@ -49,18 +49,16 @@ class BasePracticeEnv(BaseMujocoEnv):
         self, achieved_goal_nld: np.ndarray, desired_goal_nld: np.ndarray, info
     ) -> float:
 
-        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_nld - desired_goal_nld])
-        goaldist_nld = np.linalg.norm(goaldiff_weighted, axis=-1)
-        reward = (goaldist_nld < self.ep_reward_threshold_nld)
+        reward = (achieved_goal_nld < desired_goal_nld)
 
-        if np.isscalar(goaldist_nld[0]):
+        if np.isscalar(achieved_goal_nld[0]):
             # single live step (no replay)
-            self.ep_goaldists_nld.append(goaldist_nld[0])
+            self.ep_goaldists_nld.append(achieved_goal_nld[0])
 
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if goaldist_nld[0] < self.goaldist_nld_personal_best:
-                    print('personal record!', goaldist_nld[0])
-                    self.goaldist_nld_personal_best = goaldist_nld[0]
+                if achieved_goal_nld[0] < self.goaldist_nld_personal_best:
+                    print('personal record!', achieved_goal_nld[0])
+                    self.goaldist_nld_personal_best = achieved_goal_nld[0]
                     reward = np.array([True])
 
         return reward.astype(np.float64)
@@ -109,11 +107,12 @@ class BasePracticeEnv(BaseMujocoEnv):
         # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
-        dims_outside, = np.where(np.logical_or(obs['achieved_goal'] < 0, obs['achieved_goal'] > 1))
-        
+        achieved_obs_nld = self._normalize(self.extract_achieved_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        dims_outside, = np.where(np.logical_or(achieved_obs_nld < 0, achieved_obs_nld > 1))
         if len(dims_outside) > 0:
+            # TODO automatic practice space
             print('outside practice space!',
-                  self.cfg.PracticeSpace.labels[dims_outside], obs['achieved_goal'][dims_outside])
+                  self.cfg.PracticeSpace.labels[dims_outside], achieved_obs_nld[dims_outside])
             terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
             reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
@@ -181,27 +180,29 @@ class BasePracticeEnv(BaseMujocoEnv):
     def _get_obs(self):
         superobs = super()._get_obs()
 
-        if self.cfg.MetaObservation.IS_ENABLED:
-            superobs = np.concatenate((superobs, self.desired_goal))
-            if len(self.ep_goaldists_nld) > 1:
-                # TODO too late (meta-obs from last step)
-                goal_dist = self.ep_goaldists_nld[-1]
-                superobs = np.append(superobs, goal_dist)
-                goal_convergence = self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1]
-                superobs = np.append(superobs, goal_convergence)
-                # TODO order?
-                is_converging = np.sign(self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1])
-                superobs = np.append(superobs, is_converging)
+        achieved_goal_nld = self._normalize(self.extract_achieved_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        desired_goal_nld = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
-        achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        desired_goal_norm = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_nld - desired_goal_nld])
+        goaldist_nld = np.linalg.norm(goaldiff_weighted, axis=-1)
+        
+        metaobs = []
+        metaobs.extend(self.desired_goal)
+        if len(self.ep_goaldists_nld) > 1:
+            goal_convergence = self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1]
+            metaobs.append(goal_convergence)
+            is_converging = np.sign(self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1])
+            metaobs.append(is_converging)
+        else:
+            metaobs.extend([0,0])
+        metaobs.append(goaldist_nld[0])
 
-        superobs = np.pad(superobs, (0, self.obspace_total_dims - superobs.shape[0]))
+        obs = np.append(superobs, metaobs)
 
         dictobs = dict(
-                observation=superobs,
-                achieved_goal=achieved_goal_norm,
-                desired_goal=desired_goal_norm,
+                observation=obs,
+                achieved_goal=goaldist_nld,
+                desired_goal=self.ep_reward_threshold_nld,
             )
         
         return dictobs
