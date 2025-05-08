@@ -31,7 +31,7 @@ class PracticeSpace(base.PracticeSpace):
 class PracticeTime(base.PracticeTime):    
     IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True # autom. decrease search-/practice-time
     GRACE_STEPS = 100
-    REWARD_ON_TERMINATE = 0
+    REWARD_ON_TERMINATE = -1
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):

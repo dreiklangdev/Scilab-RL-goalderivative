@@ -111,13 +111,15 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         # possibly viable for envs without significant practice pre-knowledge (eg. no space-constraints)?
         # time-constraint
+        # 100k, disabled, space:   2 steps, confident, efficient, jumpy /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/15-09-46/rl_model_finished
+        # 200k, disabled, space:   2-3 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/16-01-27/rl_model_finished  
         # 100k, enabled:    no step, less efficient /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/14-53-42/rl_model_finished
         # 200k, enabled:    1-2 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/15-30-10/rl_model_finished
-        # 100k, disabled:   2 steps, confident, efficient, jumpy /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/15-09-46/rl_model_finished
-        # 200k, disabled:   2-3 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/16-01-27/rl_model_finished  
         # 100k, noSpace:    0.5 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
-        # 200k, noSpace, nudge:     1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
         # 100k, noSpace, noNudge:   -1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-35-34/rl_model_finished
+        # 200k, noSpace, nudge:     1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
+        # 200k, noSpace, nudge, 2d:     0-0.5 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/22-55-10/rl_model_finished
+        # 200k, noSpace, nudge, 2d, penalty:    1.5 step reliably forward by tumbling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/23-26-55/rl_model_finished
         if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
             grace_steps = self.cfg.PracticeTime.GRACE_STEPS
             if len(self.ep_goaldists_nld) >= grace_steps:
