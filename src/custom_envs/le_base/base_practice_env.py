@@ -46,26 +46,25 @@ class BasePracticeEnv(BaseMujocoEnv):
 
     # is also used by HER (multi-dim. args.)
     def compute_reward(
-        self, achieved_goals_nld: np.ndarray, desired_goals_nld: np.ndarray, info
+        self, achieved_goal_nld: np.ndarray, desired_goal_nld: np.ndarray, info
     ) -> float:
 
-        goaldiffs_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goals_nld - desired_goals_nld])
-        goaldists_nld = np.linalg.norm(goaldiffs_weighted, axis=-1)
+        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_nld - desired_goal_nld])
+        goaldist_nld = np.linalg.norm(goaldiff_weighted, axis=-1)
+        reward = (goaldist_nld < self.ep_reward_threshold_nld)
 
-        reward = (goaldists_nld < self.ep_reward_threshold_nld)
-        # if goaldists_nld.shape[-1] == 1:
-        if np.isscalar(goaldists_nld[0]):
-            # live step (no replay)
-            self.ep_goaldists_nld.append(goaldists_nld[0])
+        if np.isscalar(goaldist_nld[0]):
+            # single live step (no replay)
+            self.ep_goaldists_nld.append(goaldist_nld[0])
 
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if goaldists_nld < self.goaldist_nld_personal_best:
-                    print('personal record!', goaldists_nld[0])
-                    self.goaldist_nld_personal_best = goaldists_nld[0]
+                if goaldist_nld[0] < self.goaldist_nld_personal_best:
+                    print('personal record!', goaldist_nld[0])
+                    self.goaldist_nld_personal_best = goaldist_nld[0]
                     reward = np.array([True])
 
         return reward.astype(np.float64)
-    
+
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
@@ -191,7 +190,7 @@ class BasePracticeEnv(BaseMujocoEnv):
                 goal_convergence = self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1]
                 superobs = np.append(superobs, goal_convergence)
                 # TODO order?
-                is_converging = np.sign(self.ep_goaldists_nld[-1] - self.ep_goaldists_nld[-2])
+                is_converging = np.sign(self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1])
                 superobs = np.append(superobs, is_converging)
 
         achieved_goal_norm = self._normalize(self.get_achieved_goal(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
