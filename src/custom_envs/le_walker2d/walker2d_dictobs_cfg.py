@@ -12,7 +12,8 @@ class MetaObservation(base.MetaObservation):
 
 
 class PracticeSpace(base.PracticeSpace):    
-    IS_TERMINATION_IF_OUTSIDE = True
+    IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = False # manually decrease search-/practice-space
+    REWARD_ON_TERMINATE = 0
     
     base.PracticeSpace.init_dims([
         [0.8,        -2.0,          -1.0,       -2.0,   ],   # min
@@ -26,12 +27,16 @@ class PracticeSpace(base.PracticeSpace):
         STRAT = base.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST
 
 
-class GoalRewardThreshold(base.GoalRewardThreshold):
-    IS_ADAPTIVE = False
-    ADAPTION_PADDING = 0.3
+class PracticeTime(base.PracticeTime):    
+    IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True # autom. decrease search-/practice-time
+    GRACE_STEPS = 100
+    REWARD_ON_TERMINATE = 0
 
-    IS_NUDGING = True
+
+class GoalRewardThreshold(base.GoalRewardThreshold):
     MAX_FRAC_DEFAULT = 0.1
+    IS_NUDGING = True
+    IS_ADAPTIVE = False
 
 
 class TrajectoryHalving(base.TrajectoryHalving):

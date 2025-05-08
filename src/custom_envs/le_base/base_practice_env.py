@@ -33,9 +33,10 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min_nld: float = np.inf
         self.ep_num_steps: int = 0
+        self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
         self.desired_obs = self.cfg.PracticeSpace.d[2]
         self.goaldist_nld_personal_best: float = -1.0
-        self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
+        self.total_full_episodes = 0
 
         self._reset_episode()
         print('le-walker-2d initialized.')
@@ -56,8 +57,9 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         if np.isscalar(achieved_goal_nld[0]):
             # single live step (no replay)
-
+            
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
+                # 100k, 100, /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/20-14-38/rl_model_finished
                 if achieved_goal_nld[0] < self.goaldist_nld_personal_best:
                     print('personal record!', achieved_goal_nld[0])
                     self.goaldist_nld_personal_best = achieved_goal_nld[0]
@@ -91,34 +93,41 @@ class BasePracticeEnv(BaseMujocoEnv):
         truncated = False
 
         # practice pre-knowledge
+        # space-constraint
         # always manual only? (direction (guidance, experience, coaching))
         # the more, the better?
         # faster learning: decrease search/interaction space (find terminations (=constraints))
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
-        TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
-        if TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
+        # TODO autom. practice space bounds: input := min-max. (sampled?), output:= rewards_mean
+        #   (bounds/constrained opt./adapt.: bayes?) (unconstrained opt./adapt.: gradient descent?)
+        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
             practiced_obs_nld = self._normalize(self.extract_practiced_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
             dims_outside, = np.where(np.logical_or(practiced_obs_nld < 0, practiced_obs_nld > 1))
             if len(dims_outside) > 0:
                 print('OUTSIDE PRACTICE SPACE!',
                     self.cfg.PracticeSpace.labels[dims_outside], practiced_obs_nld[dims_outside])
-                terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
-                reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
+                reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                terminated = True
 
-        TERMINATE_ON_GRACE_STEPS_DIVERGENCE = False
-        # possibly mandatory for envs without significant practice pre-knowledge?
-        # 100k, enabled     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/14-53-42/rl_model_finished
-        # 100k, disabled    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/15-09-46/rl_model_finished
-        if TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
-            GRACE_STEPS = 150
-            if len(self.ep_goaldists_nld) >= GRACE_STEPS:
+        # possibly viable for envs without significant practice pre-knowledge (eg. no space-constraints)?
+        # time-constraint
+        # 100k, enabled:    no step, less efficient /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/14-53-42/rl_model_finished
+        # 200k, enabled:    1-2 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/15-30-10/rl_model_finished
+        # 100k, disabled:   2 steps, confident, efficient, jumpy /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/15-09-46/rl_model_finished
+        # 200k, disabled:   2-3 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/16-01-27/rl_model_finished  
+        # 100k, noSpace:    0.5 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
+        # 200k, noSpace, nudge:     1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
+        # 100k, noSpace, noNudge:   -1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-35-34/rl_model_finished
+        if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
+            grace_steps = self.cfg.PracticeTime.GRACE_STEPS
+            if len(self.ep_goaldists_nld) >= grace_steps:
                 is_reached = obs['achieved_goal'] < obs['desired_goal']
-                is_converging = self.ep_goaldists_nld[-GRACE_STEPS] - self.ep_goaldists_nld[-1] < 0
-                # is_converging = np.mean(np.gradient(self.ep_goaldists_nld[:window])) < 0
+                is_converging = self.ep_goaldists_nld[-grace_steps] - self.ep_goaldists_nld[-1] < 0
+                # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
                 if not is_reached and not is_converging:
-                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', GRACE_STEPS)
+                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)
+                    reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
                     terminated = True
-                    reward = 0
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
@@ -143,7 +152,6 @@ class BasePracticeEnv(BaseMujocoEnv):
             print('ep_goaldist_min_nld', min(self.ep_goaldists_nld))
             print('ep_goaldist_mean_nld', np.mean(self.ep_goaldists_nld))
             print('ep_goaldist_max_nld', max(self.ep_goaldists_nld))
-          
             print('ep_reward_threshold_nld', self.ep_reward_threshold_nld)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
@@ -180,6 +188,9 @@ class BasePracticeEnv(BaseMujocoEnv):
             if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
                 self.ep_reward_threshold_nld = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
 
+            self.total_full_episodes += 1
+            print('total_full_episodes', self.total_full_episodes)
+
         self._reset_episode()
         return obs_init
     
@@ -212,7 +223,7 @@ class BasePracticeEnv(BaseMujocoEnv):
                 achieved_goal=goaldist_nld,
                 desired_goal=self.ep_reward_threshold_nld,
             )
-        
+
         return dictobs
 
 

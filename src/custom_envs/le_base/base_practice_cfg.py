@@ -31,13 +31,13 @@ class PracticeSpace:
     #   smaller => faster, focussed
     #   larger => slower, more universal
     # generally: the more goal dims., the better? ("more experienced coach")
-    # TODO goal analysis (eg. most failed dim.) on eval
+    # TODO dims. analysis (eg. most failed dim.) on eval
     # sample int (float), if int (float)?
     # only works for similar goals (same dim., same sign)
     # jack-of-all-trades (but non perfectly) vs. perfectionist
-    IS_TERMINATION_IF_OUTSIDE = True # radically decrease state-/searchspace
-    REWARD_IF_OUTSIDE = 0
-    
+    IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = False # manually decrease search-/practice-space
+    REWARD_ON_TERMINATE = 0
+
     d = None
     labels = None
 
@@ -63,7 +63,6 @@ class PracticeSpace:
     #     [0.05,       1.0]    # weight [0,1]
     # ], ['height',   'velocity'])
 
-
     class RandomGoalSampling:
         class Strat(Enum):
             GENERALIST = 0
@@ -72,19 +71,24 @@ class PracticeSpace:
         STRAT = Strat.GENERALIST
 
 
+class PracticeTime:
+    IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True # autom. decrease search-/practice-time
+    GRACE_STEPS = 1000
+    REWARD_ON_TERMINATE = 0
+
+
 class GoalRewardThreshold:
     # "breadcrumbing"
     # rewards: (sparse > freq.)
-    #   too frequent => no movement (idleness, fast-narrow conv.)
-    #   too sparse => no improvement (randomness, slow-broad conv.)
-    #   too painful => no courage (fearful, no conv.)
+    #   too frequent => no movement (idleness, too little exploration, "stay")
+    #   too sparse => no improvement (randomness, too much exploration, "move")
+    #   too painful => no courage (fearful, no exploration, "hide")
 
-    # rewarding: static, predictable > adaptive, dynamic?
-    IS_ADAPTIVE = False
-    ADAPTION_PADDING = 0.3
-
+    # reward on record breaks
     IS_NUDGING = True
 
+    # rewarding (threshold): constant (confident, predictable) >> adaptive (dynamic, noisy)?
+    IS_ADAPTIVE = False
 
     # smaller: faster reach
     # too small: will never hold?
