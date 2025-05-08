@@ -120,6 +120,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         # 200k, noSpace, nudge:     1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
         # 200k, noSpace, nudge, 2d:     0-0.5 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/22-55-10/rl_model_finished
         # 200k, noSpace, nudge, 2d, penalty:    1.5 step reliably forward by tumbling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/23-26-55/rl_model_finished
+        # 200k, space, nudge, 2d, penalty:  3-4 steps confident, reliably forward but collapsing walk /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7d45aa7/le-walker2d-v4/00-10-10/rl_model_finished
         if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
             grace_steps = self.cfg.PracticeTime.GRACE_STEPS
             if len(self.ep_goaldists_nld) >= grace_steps:
