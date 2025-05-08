@@ -33,7 +33,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min_nld: float = np.inf
         self.ep_num_steps: int = 0
-        self.desired_goal = self.cfg.PracticeSpace.d[2]
+        self.desired_obs = self.cfg.PracticeSpace.d[2]
         self.goaldist_nld_personal_best: float = -1.0
         self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
@@ -54,8 +54,6 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         if np.isscalar(achieved_goal_nld[0]):
             # single live step (no replay)
-            # TODO move to get_obs()
-            self.ep_goaldists_nld.append(achieved_goal_nld[0])
 
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
                 if achieved_goal_nld[0] < self.goaldist_nld_personal_best:
@@ -95,20 +93,29 @@ class BasePracticeEnv(BaseMujocoEnv):
         # imitation vs. direction (guidance, experience, coaching)
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
         # TODO should all constraints also be practiced? (ie. as dim. in practice (multi-)goalspace, not only in general obs., "conscious about constraints")
-        achieved_obs_nld = self._normalize(self.extract_achieved_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        dims_outside, = np.where(np.logical_or(achieved_obs_nld < 0, achieved_obs_nld > 1))
-        if len(dims_outside) > 0:
-            # TODO automatic practice space
-            print('outside practice space!',
-                  self.cfg.PracticeSpace.labels[dims_outside], achieved_obs_nld[dims_outside])
-            terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
-            reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
-
-        # TODO adaptive termination threshold? (halving again?)
-        # if self.ep_goaldists_normed[-1] > self.ep_goaldists_normed[0] * 1.2:
-        #     print('outside goal distance!', self.ep_goaldists_normed[-1])
+        # achieved_obs_nld = self._normalize(self.extract_achieved_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        # dims_outside, = np.where(np.logical_or(achieved_obs_nld < 0, achieved_obs_nld > 1))
+        # if len(dims_outside) > 0:
+        #     # TODO automatic practice space
+        #     print('outside practice space!',
+        #           self.cfg.PracticeSpace.labels[dims_outside], achieved_obs_nld[dims_outside])
         #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
         #     reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
+
+        # TODO adaptive termination threshold? (halving again?)
+        # if self.ep_goaldists_nld[-1] > self.ep_goaldists_nld[0] * 1.2:
+        #     print('outside goal distance!', self.ep_goaldists_nld[-1])
+        #     terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
+        #     reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
+
+        window = 10
+        if len(self.ep_goaldists_nld) >= window:
+            is_converging = self.ep_goaldists_nld[-window] - self.ep_goaldists_nld[-1] < 0
+            # is_converging = np.mean(np.gradient(self.ep_goaldists_nld[:window])) < 0
+            if not is_converging:
+                print('GOAL DIVERGENCE!', )
+                terminated = self.cfg.PracticeSpace.IS_TERMINATION_IF_OUTSIDE
+                reward = self.cfg.PracticeSpace.REWARD_IF_OUTSIDE
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
@@ -158,8 +165,7 @@ class BasePracticeEnv(BaseMujocoEnv):
             # brand new episode
             obs_init = super().reset_model()
             print('init_goaldistance', obs_init['achieved_goal'])
-            self.ep_goaldists_nld.append(obs_init['achieved_goal'])
-            self.desired_goal = self._new_goal()
+            self.desired_obs = self._new_desired_obs()
             self.last_ep_goaldist_min_nld = np.inf
             self.last_ep_rewards_mean = 0
             self.ep_traj_is_halved = False
@@ -179,7 +185,6 @@ class BasePracticeEnv(BaseMujocoEnv):
                 self.ep_reward_threshold_nld = min(self.ep_reward_threshold_nld, obs_init['achieved_goal'] * (1 - pad))
                 assert 0 <= self.ep_reward_threshold_nld <= obs_init['achieved_goal']
 
-
         self._reset_episode()
         return obs_init
     
@@ -187,14 +192,14 @@ class BasePracticeEnv(BaseMujocoEnv):
     def _get_obs(self):
         superobs = super()._get_obs()
 
-        achieved_goal_nld = self._normalize(self.extract_achieved_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        desired_goal_nld = self._normalize(self.desired_goal, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        achieved_obs_nld = self._normalize(self.extract_achieved_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        desired_obs_nld = self._normalize(self.desired_obs, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
-        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_goal_nld - desired_goal_nld])
+        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_obs_nld - desired_obs_nld])
         goaldist_nld = np.linalg.norm(goaldiff_weighted, axis=-1)
-        
+
         metaobs = []
-        metaobs.extend(self.desired_goal)
+        metaobs.extend(self.desired_obs)
         if len(self.ep_goaldists_nld) > 1:
             goal_convergence = self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1]
             metaobs.append(goal_convergence)
@@ -205,6 +210,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         metaobs.append(goaldist_nld[0])
 
         obs = np.append(superobs, metaobs)
+        self.ep_goaldists_nld.append(goaldist_nld[0])
 
         dictobs = dict(
                 observation=obs,
@@ -215,22 +221,22 @@ class BasePracticeEnv(BaseMujocoEnv):
         return dictobs
 
 
-    def _new_goal(self):
-        goal_randomized = None
+    def _new_desired_obs(self):
+        desired_obs_randomized = None
 
         match self.cfg.PracticeSpace.RandomGoalSampling.STRAT:
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.GENERALIST:
-                goal_randomized = np.random.uniform(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+                desired_obs_randomized = np.random.uniform(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.CONFORMIST:
                 # https://en.wikipedia.org/wiki/Triangular_distribution
-                goal_randomized = np.random.triangular(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[2], self.cfg.PracticeSpace.d[1])
+                desired_obs_randomized = np.random.triangular(self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[2], self.cfg.PracticeSpace.d[1])
 
             case self.cfg.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST:
-                goal_randomized = self.cfg.PracticeSpace.d[2]
+                desired_obs_randomized = self.cfg.PracticeSpace.d[2]
 
-        goal_randomized_weighted = self.cfg.PracticeSpace.d[3] * goal_randomized + (1 - self.cfg.PracticeSpace.d[3]) * self.cfg.PracticeSpace.d[2]
-        return goal_randomized_weighted
+        desired_obs_randomized_weighted = self.cfg.PracticeSpace.d[3] * desired_obs_randomized + (1 - self.cfg.PracticeSpace.d[3]) * self.cfg.PracticeSpace.d[2]
+        return desired_obs_randomized_weighted
 
 
     def _add_noise(self, qpos, qvel):
@@ -255,7 +261,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * self.cfg.PracticeSpace.radius_normed
         self.ep_is_perfect = False
         print('obspace_total_dims', self.obspace_total_dims)
-        print('desired_goal', self.desired_goal)
+        print('desired_goal', self.desired_obs)
         print('goaldist_nld_personal_best', self.goaldist_nld_personal_best)
 
 
