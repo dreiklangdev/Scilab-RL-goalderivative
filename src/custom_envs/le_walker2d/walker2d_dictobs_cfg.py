@@ -20,8 +20,9 @@ class PracticeSpace(base.PracticeSpace):
         [2.0,        3.0,           1.5,        2.0,    ],   # max
         [1.1,        1.0,           0.5,        0,      ],   # mode
         # [0.05,       1.0,           0.05,       0.0,    ]    # weight [0,1]
-        [0.0,        1.0,            0.0,       0.0,    ]    # weight [0,1]
-    ],  ['height',   'velocity',    'angle',   'angle_thigh'])
+        # [0.0,        1.0,            0.0,       0.0,    ]    # weight [0,1]
+        [1.0,        1.0,           0.0,        0.0,    ]    # weight [0,1]
+    ],  ['height',   'velocity',    'angle',    'angle_thigh'])
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
         STRAT = base.PracticeSpace.RandomGoalSampling.Strat.SPECIALIST

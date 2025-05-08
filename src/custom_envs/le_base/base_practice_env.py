@@ -121,10 +121,10 @@ class BasePracticeEnv(BaseMujocoEnv):
         if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
             grace_steps = self.cfg.PracticeTime.GRACE_STEPS
             if len(self.ep_goaldists_nld) >= grace_steps:
-                is_reached = obs['achieved_goal'] < obs['desired_goal']
-                is_converging = self.ep_goaldists_nld[-grace_steps] - self.ep_goaldists_nld[-1] < 0
+                is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
+                is_goal_converging = self.ep_goaldists_nld[-grace_steps] - self.ep_goaldists_nld[-1] < 0
                 # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
-                if not is_reached and not is_converging:
+                if not is_goal_reached and not is_goal_converging:
                     print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)
                     reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
                     terminated = True
