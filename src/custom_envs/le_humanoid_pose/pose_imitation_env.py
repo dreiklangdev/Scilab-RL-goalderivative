@@ -47,12 +47,9 @@ LANDMARK_GROUPS = [
 # https://pytorch.org/rl/0.6/reference/generated/knowledge_base/MUJOCO_INSTALLATION.html
 # https://colab.research.google.com/github/deepmind/mujoco/blob/main/python/tutorial.ipynb
 
-# TODO do we need 3d body-relative (world) landmarks? (instead of 2d canvas-relative image coords (normalized))
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
 # TODO reduce goal features?
-# TODO 3d plot of landmarks in pyplot (instead of overlay)?
-# TODO fix pose landmarker memory leak
 # TODO terminate on missing pose detection?
 
 
@@ -64,7 +61,7 @@ class PoseImitationEnv(HumanoidEnv):
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=cfg.General.RENDER_IMAGE_SIZE, height=cfg.General.RENDER_IMAGE_SIZE)
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
-        assert cfg.General.FRAMESKIP_STEP_PLOT >= cfg.General.FRAMESKIP_STEP_DETECT and cfg.General.FRAMESKIP_STEP_PLOT >= cfg.General.FRAMESKIP_STEP_DETECT, 'cannot plot in a step with no pose render (and detection'
+        assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
 
         self.cfg = cfg
         self.is_plot = is_plot
@@ -201,8 +198,8 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def _get_obs(self):
-        # detect pose only every nth frame, else use last valid
-        if self.ep_num_steps % cfg.General.FRAMESKIP_STEP_DETECT == 0:
+        # detect pose only every nth step, else use last valid
+        if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
             self.render_mode = 'rgb_array'
 
@@ -219,8 +216,8 @@ class PoseImitationEnv(HumanoidEnv):
             desired_pose = self.landmarker_desired.detect(self.desired_img)
             # print(time.perf_counter() - t)
             # bottleneck end
-
         else:
+            # skip pose detection for this step
             achieved_pose = SimpleNamespace(pose_world_landmarks=[])
             desired_pose = SimpleNamespace(pose_world_landmarks=[])
 
@@ -231,7 +228,7 @@ class PoseImitationEnv(HumanoidEnv):
                 achieved_obs.extend((landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_achieved = achieved_obs
         else:
-            # print('unable to detect achieved pose. fallback...')
+            # no detected achieved pose. fallback...
             achieved_obs = self.last_detected_obs_achieved
 
         desired_obs = []
@@ -240,10 +237,10 @@ class PoseImitationEnv(HumanoidEnv):
                 desired_obs.extend((landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_desired = desired_obs
         else:
-            # print('unable to detect desired pose. fallback...')
+            # no detected desired pose. fallback...
             desired_obs = self.last_detected_obs_desired
 
-        if self.is_plot and self.ep_num_steps % cfg.General.FRAMESKIP_STEP_PLOT == 0:
+        if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
@@ -400,7 +397,7 @@ class PoseImitationEnv(HumanoidEnv):
         # print('desired_obs', self.desired_obs)
 
         # landmarker reset: better/correct detection of start pose
-        # TODO wait for reset() implementation in API
+        # TODO wait for efficient reset() implementation in API
         # workaround by re-create
         if self.landmarker_achieved:
             self.landmarker_achieved.close()
@@ -506,5 +503,4 @@ def parallel_plot(queue: multiprocessing.Queue):
                 extplot.plot(plotX, plotZ, plotY, color='green')
         
         extplot.draw(extplot.get_figure().canvas.get_renderer())
-
         plt.pause(0.00001)

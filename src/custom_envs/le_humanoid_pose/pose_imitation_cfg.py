@@ -6,8 +6,8 @@ class General(base.General):
     OBSERVATION_DIMS_TOTAL = 99
     RENDER_IMAGE_SIZE = 480
     FRAMESKIP_STEP = 5
-    FRAMESKIP_STEP_DETECT = 2
-    FRAMESKIP_STEP_PLOT = 6 # 10 >= FRAMESKIP_STEP_DETECT
+    STEPSKIP_DETECT = 2
+    STEPSKIP_PLOT = 2 # 10 >= FRAMESKIP_STEP_DETECT
 
 
 class MetaObservation(base.MetaObservation):
