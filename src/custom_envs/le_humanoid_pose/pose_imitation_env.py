@@ -49,6 +49,7 @@ LANDMARK_GROUPS = [
 
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
+# https://github.com/google-ai-edge/mediapipe/issues/5325
 # TODO reduce goal features?
 # TODO terminate on missing pose detection?
 
@@ -93,10 +94,12 @@ class PoseImitationEnv(HumanoidEnv):
             min_pose_presence_confidence=0.1)
         self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
-        obspace_total_dims = cfg.General.OBSERVATION_DIMS_TOTAL
+        obspace_total_dims = 0
+        obspace_total_dims += self.observation_space.shape[0] # super
+        obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION + 1 # achieved
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += cfg.General.OBSERVATION_DIMS_TOTAL + 3
+            obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION + 4 # desired etc.
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -125,8 +128,8 @@ class PoseImitationEnv(HumanoidEnv):
         
         self.landmarker_achieved = None
         self.landmarker_desired = None
-        self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
-        self.last_detected_obs_desired = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
+        self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+        self.last_detected_obs_desired = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -161,10 +164,10 @@ class PoseImitationEnv(HumanoidEnv):
 
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
-            nose_y = obs['observation'][1] # inverted height (nose)
-            if nose_y > -0.4:
+            height = obs['observation'][0]
+            if height < 1.0 or height > 2.0:
                 # TODO learn default standing-pose first?
-                print('OUTSIDE: FELL DOWN!', nose_y)
+                print('OUTSIDE: FELL DOWN!', height)
                 terminated = True
                 # dont neutralize already pos. eps.
                 if not self.ep_rewards_mean and not reward:
@@ -197,7 +200,13 @@ class PoseImitationEnv(HumanoidEnv):
         return result
 
 
+    # obs = superobs(phys.) + achieved_obs(vis.) + metaobs
+    # 40k, unnormalized:    slow, tries standing, no turning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/28af96a/le-pose-imitation-v4/01-22-59/rl_model_finished
     def _get_obs(self):
+        obs = []
+        superobs = super()._get_obs()
+        obs.extend(superobs)
+
         # detect pose only every nth step, else use last valid
         if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
@@ -222,6 +231,9 @@ class PoseImitationEnv(HumanoidEnv):
             desired_pose = SimpleNamespace(pose_world_landmarks=[])
 
         achieved_obs = []
+        achieved_ob_height = superobs[0]
+        achieved_obs.append(achieved_ob_height)
+
         if achieved_pose.pose_world_landmarks:
             # only first detected pose
             for landmark in achieved_pose.pose_world_landmarks[0]:
@@ -231,7 +243,12 @@ class PoseImitationEnv(HumanoidEnv):
             # no detected achieved pose. fallback...
             achieved_obs = self.last_detected_obs_achieved
 
+        obs.extend(achieved_obs)
+
         desired_obs = []
+        desired_ob_height = 1.3
+        desired_obs.append(desired_ob_height)
+
         if desired_pose.pose_world_landmarks:
             for landmark in desired_pose.pose_world_landmarks[0]:
                 desired_obs.extend((landmark.x, landmark.y, landmark.z))
@@ -245,24 +262,23 @@ class PoseImitationEnv(HumanoidEnv):
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
-        obs = []
-        obs.extend(achieved_obs)
 
         achieved_obs = np.array(achieved_obs)
         desired_obs = np.array(desired_obs)
         goaldist = np.linalg.norm(achieved_obs - desired_obs, axis=-1)
 
-        metaobs = []
-        metaobs.extend(desired_obs)
-        if len(self.ep_goaldists) > 1:
-            goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
-            metaobs.append(goal_convergence)
-            is_converging = np.sign(self.ep_goaldists[-2] - self.ep_goaldists[-1])
-            metaobs.append(is_converging)
-        else:
-            metaobs.extend([0,0])
-        metaobs.append(goaldist)
-        obs.extend(metaobs)
+        if self.cfg.MetaObservation.IS_ENABLED:
+            metaobs = []
+            metaobs.extend(desired_obs)
+            if len(self.ep_goaldists) > 1:
+                goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
+                metaobs.append(goal_convergence)
+                is_converging = np.sign(self.ep_goaldists[-2] - self.ep_goaldists[-1])
+                metaobs.append(is_converging)
+            else:
+                metaobs.extend([0,0])
+            metaobs.append(goaldist)
+            obs.extend(metaobs)
 
         self.ep_goaldists.append(goaldist)
 
@@ -345,6 +361,8 @@ class PoseImitationEnv(HumanoidEnv):
         # 40k, none, pen:   better, some turning, one-legged /home/t500/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/17-37-41/rl_model_finished
         # 40k, none, pen, less zero-eps.:   good, reliable turning, one-legged, resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/19-57-30/rl_model_finished
         # 40k, none, pen, min. zero-eps.:   best, reliable turning, hand moves up /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07/rl_model_finished
+        # 100k,                         : falling to knees (more stable position? does not know ground/height (ob dim./sense))  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07_restored/rl_model_finished
+        # 200k,                         : barely pos. rewards anymore, rather tries to sit down (only avoids falling / penalties), no resemblence anymore /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07_restored_restored/rl_model_finished
         CONSECUTIVE_NEG_FEPS_UNTIL_PERSONAL_RESET = 10
         if self.tr_goaldist_personal_best < 0: # or self.tr_feps_consecutive_neg >= CONSECUTIVE_NEG_FEPS_UNTIL_PERSONAL_RESET:
             print('reset personal best.')

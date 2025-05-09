@@ -78,9 +78,9 @@ class PracticeTime:
 
 
 class GoalRewardThreshold:
-    # rewards: (sparse > freq.)
-    #   1: constructive         too frequent => no movement (idleness, too little exploration, "stay/keep")
-    #   0: neutral              too sparse => no improvement (indifference, too much exploration, "move/change")
+    # rewards: (sparse > freq.) "avoid & seek"
+    #   1: constructive         too frequent => no movement (idleness, too little exploration, "seek")
+    #   0: neutral              too sparse => no improvement (indifference, too much exploration, "search")
     #   -1: destructive         too painful => no courage (fearful, no exploration, "avoid")
     #   [0,1]: ambivalent       too noisy => no confidence (unstable)
     #   [-1,1]: neutralizing    too noisy => no idea (randomness, senseless exploration)

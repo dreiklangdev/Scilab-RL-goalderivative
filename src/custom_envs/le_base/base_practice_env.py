@@ -200,6 +200,7 @@ class BasePracticeEnv(BaseMujocoEnv):
 
     def _get_obs(self):
         superobs = super()._get_obs()
+        height = superobs[0]
 
         # TODO clean up shapes for avoiding?: achieved_obs_nld[0], goaldist_nld[0], reward[0]
         achieved_obs_nld = self._normalize(self.extract_practiced_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])

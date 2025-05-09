@@ -3,7 +3,7 @@ from ..le_base import base_practice_cfg as base
 
 
 class General(base.General):
-    OBSERVATION_DIMS_TOTAL = 99
+    OBSERVATION_DIMS_VISUAL_DETECTION = 99
     RENDER_IMAGE_SIZE = 480
     FRAMESKIP_STEP = 5
     STEPSKIP_DETECT = 2
@@ -35,4 +35,4 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
-    IS_ENABLED = True
+    IS_ENABLED = False
