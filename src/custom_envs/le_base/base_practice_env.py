@@ -201,12 +201,18 @@ class BasePracticeEnv(BaseMujocoEnv):
     def _get_obs(self):
         superobs = super()._get_obs()
 
+        # TODO clean up shapes for avoiding?: achieved_obs_nld[0], goaldist_nld[0], reward[0]
         achieved_obs_nld = self._normalize(self.extract_practiced_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
         desired_obs_nld = self._normalize(self.desired_obs, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
         goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_obs_nld - desired_obs_nld])
         goaldist_nld = np.linalg.norm(goaldiff_weighted, axis=-1)
 
+        # TODO readable
+        # obs = []
+        # obs.extend[achieved_obs]
+
+        # TODO if MetaObservation:
         metaobs = []
         metaobs.extend(self.desired_obs)
         if len(self.ep_goaldists_nld) > 1:

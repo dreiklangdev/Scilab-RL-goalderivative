@@ -3,8 +3,10 @@ from ..le_base import base_practice_cfg as base
 
 
 class General(base.General):
-    IS_OBSERVATION_GOAL_EXTENDED = True
+    pass
 
+class MetaObservation(base.MetaObservation):
+    pass
 
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATION_IF_OUTSIDE = True
