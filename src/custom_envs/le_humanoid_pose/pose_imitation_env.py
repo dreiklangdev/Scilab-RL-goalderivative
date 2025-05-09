@@ -26,11 +26,6 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
 PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tree_dir
-OBSERVATION_FEATURES_TOTAL = 99
-RENDER_IMAGE_SIZE = 480
-FRAMESKIP_STEP = 5
-FRAMESKIP_STEP_DETECT = 2
-FRAMESKIP_STEP_PLOT = 10 # 10
 
 LANDMARK_GROUPS = [
     [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
@@ -65,10 +60,10 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def __init__(self, is_plot=True):
-        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=RENDER_IMAGE_SIZE, height=RENDER_IMAGE_SIZE)
-        self.frame_skip: 5 = FRAMESKIP_STEP
+        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=cfg.General.RENDER_IMAGE_SIZE, height=cfg.General.RENDER_IMAGE_SIZE)
+        self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
-        assert FRAMESKIP_STEP_PLOT >= FRAMESKIP_STEP_DETECT, 'cannot plot in a step with a skipped detection'
+        assert cfg.General.FRAMESKIP_STEP_PLOT >= cfg.General.FRAMESKIP_STEP_DETECT, 'cannot plot in a step with a skipped detection'
 
         self.cfg = cfg
         self.is_plot = is_plot
@@ -100,10 +95,10 @@ class PoseImitationEnv(HumanoidEnv):
             min_pose_presence_confidence=0.1)
         self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
-        obspace_total_dims = OBSERVATION_FEATURES_TOTAL
+        obspace_total_dims = cfg.General.OBSERVATION_DIMS_TOTAL
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += OBSERVATION_FEATURES_TOTAL + 3
+            obspace_total_dims += cfg.General.OBSERVATION_DIMS_TOTAL + 3
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -129,8 +124,8 @@ class PoseImitationEnv(HumanoidEnv):
         # landmarker reset: better/correct detection of start pose
         self.landmarker_achieved = None
         self.landmarker_desired = None
-        self.last_detected_goal_achieved = np.full(OBSERVATION_FEATURES_TOTAL, 1)
-        self.last_detected_goal_desired = np.full(OBSERVATION_FEATURES_TOTAL, 1)
+        self.last_detected_goal_achieved = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
+        self.last_detected_goal_desired = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -186,12 +181,25 @@ class PoseImitationEnv(HumanoidEnv):
         truncated = False
 
         # space constraint
-        nose_y = obs['observation'][1] # inverted height (nose)
-        if nose_y > -0.4:
-            # TODO learn default standing-pose first?
-            print('FELL DOWN!', nose_y)
-            terminated = True
-            reward = 0
+        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
+            nose_y = obs['observation'][1] # inverted height (nose)
+            if nose_y > -0.4:
+                # TODO learn default standing-pose first?
+                print('FELL DOWN!', nose_y)
+                reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                terminated = True
+
+        # time constraint
+        if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
+            grace_steps = self.cfg.PracticeTime.GRACE_STEPS
+            if len(self.ep_goaldists) >= grace_steps:
+                is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
+                is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
+                # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
+                if not is_goal_reached and not is_goal_converging:
+                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)
+                    reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
+                    terminated = True
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
@@ -261,7 +269,7 @@ class PoseImitationEnv(HumanoidEnv):
     def _get_obs(self):
 
         # detect pose only every nth frame, else use last valid
-        if self.ep_num_steps % FRAMESKIP_STEP_DETECT == 0:
+        if self.ep_num_steps % cfg.General.FRAMESKIP_STEP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
             self.render_mode = 'rgb_array'
 
@@ -302,7 +310,7 @@ class PoseImitationEnv(HumanoidEnv):
             # print('unable to detect desired pose. fallback...')
             desired_obs = self.last_detected_goal_desired
 
-        if self.is_plot and self.ep_num_steps % FRAMESKIP_STEP_PLOT == 0:
+        if self.is_plot and self.ep_num_steps % cfg.General.FRAMESKIP_STEP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
@@ -360,7 +368,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goal_reward_threshold = 1.5
         self.ep_is_perfect = False
         # print('desired_obs', self.desired_obs)
-        print('goaldist_nld_personal_best', self.goaldist_personal_best)
+        print('goaldist_personal_best', self.goaldist_personal_best)
 
         # landmarker reset: better/correct detection of start pose
         if self.landmarker_achieved:
