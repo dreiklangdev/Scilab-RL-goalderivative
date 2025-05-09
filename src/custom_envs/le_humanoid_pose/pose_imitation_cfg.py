@@ -16,7 +16,7 @@ class MetaObservation(base.MetaObservation):
 
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
-    REWARD_ON_TERMINATE = -1
+    REWARD_ON_TERMINATE = 0
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
         pass

@@ -78,13 +78,17 @@ class PracticeTime:
 
 
 class GoalRewardThreshold:
-    # "breadcrumbing"
     # rewards: (sparse > freq.)
-    #   1: constructive     too frequent => no movement (idleness, too little exploration, "stay/keep")
-    #   0: neutral          too sparse => no improvement (indifference, too much exploration, "move/change")
-    #   -1: destructive     too painful => no courage (fearful, no exploration, "avoid")
-    #   0-1: neutralizing   too noisy => no confidence (randomness, senseless exploration))
+    #   1: constructive         too frequent => no movement (idleness, too little exploration, "stay/keep")
+    #   0: neutral              too sparse => no improvement (indifference, too much exploration, "move/change")
+    #   -1: destructive         too painful => no courage (fearful, no exploration, "avoid")
+    #   [0,1]: ambivalent       too noisy => no confidence (unstable)
+    #   [-1,1]: neutralizing    too noisy => no idea (randomness, senseless exploration)
 
+    # dont punish every step? dont punish and reward in the same step? (neu)
+
+    # "breadcrumbing"
+    
     # reward on record breaks
     IS_NUDGING = True
 

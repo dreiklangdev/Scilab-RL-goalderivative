@@ -121,8 +121,10 @@ class PoseImitationEnv(HumanoidEnv):
         # constant threshold
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * 3
         self.goaldist_personal_best: float = np.inf
-        self.total_full_episodes = 0
-        
+        self.tr_feps_total = 0
+        self.tr_feps_consecutive_failures = 0
+        self.fep_rewards_sum = -1
+
         self.landmarker_achieved = None
         self.landmarker_desired = None
         self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
@@ -133,29 +135,10 @@ class PoseImitationEnv(HumanoidEnv):
             multiprocessing.log_to_stderr(logging.DEBUG)
             multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
 
-        self._reset_episode()
+        self._reset()
         print('le-walker-2d initialized.')
         print('observation_space', observation_space)
         print('goal_space', goal_space)
-
-
-    # is also used by HER (multi-dim. args.)
-    def compute_reward(
-        self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
-    ) -> float:
-
-        reward = (achieved_goal < desired_goal)
-
-        if achieved_goal.ndim == 0:
-            # single live step (no replay)
-
-            if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if achieved_goal < self.goaldist_personal_best:
-                    print('personal record!', achieved_goal)
-                    self.goaldist_personal_best = achieved_goal
-                    reward = np.array([True])
-
-        return reward.astype(np.float64)
 
 
     def step(self, action):
@@ -175,6 +158,7 @@ class PoseImitationEnv(HumanoidEnv):
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
 
+        self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
 
@@ -209,62 +193,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         result = obs, reward, terminated, truncated, info
         return result
-
-
-    def reset_model(self):
-        obs_init = None
-
-        if self.ep_obs_cur:
-            print('ep_num_steps', self.ep_num_steps)
-            print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_desired', self.ep_obs_cur['desired_goal'])
-            print('ep_goal_achieved', self.ep_obs_cur['achieved_goal'])
-            print('ep_goaldist_min', min(self.ep_goaldists))
-            print('ep_goaldist_mean', np.mean(self.ep_goaldists))
-            print('ep_goaldist_max', max(self.ep_goaldists))
-            print('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
-            print('ep_traj_is_halved', self.ep_traj_is_halved)
-            print('ep_rewards_mean', self.ep_rewards_mean)
-            print('\n')
-
-        if self.ep_num_steps > 1:
-            # ep_goal_distance_min_normed = min(self.ep_goal_distances_normed)
-            ep_goaldist_min = min(self.ep_goaldists)
-
-            if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goaldist_min < self.last_ep_goaldist_min):
-                idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
-                print('halving!', idx_halving)
-                qpos, qvel = self.ep_states[idx_halving]
-                # qpos, qvel = self._add_noise(qpos, qvel)
-
-                self.set_state(qpos, qvel)
-                self.ep_traj_is_halved = True
-                self.last_ep_rewards_mean = self.ep_rewards_mean
-                self.last_ep_goaldist_min = ep_goaldist_min
-                obs_init = self._get_obs()
-
-        if not obs_init:
-            # brand new episode
-            obs_init = super().reset_model()
-            # self.desired_obs = self._get_desired_obs()
-            self.last_ep_goaldist_min = np.inf
-            self.last_ep_rewards_mean = 0
-            self.ep_traj_is_halved = False
-            # noisy relative threshold (varies by initial state noise)
-            # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
-
-            if self.goaldist_personal_best < 0:
-                self.goaldist_personal_best = np.inf
-
-            if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-                self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
-
-            self.total_full_episodes += 1
-            print('total_full_episodes', self.total_full_episodes)
-
-        self._reset_episode()
-        print('init_goaldistance', obs_init['achieved_goal'])
-        return obs_init
 
 
     def _get_obs(self):
@@ -343,22 +271,108 @@ class PoseImitationEnv(HumanoidEnv):
             )
 
         return dictobs
+
+
+    # is also used by HER (multi-dim. args.)
+    def compute_reward(
+        self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
+    ) -> float:
+
+        reward = (achieved_goal < desired_goal)
+
+        if achieved_goal.ndim == 0:
+            # single live step (no replay)
+
+            if self.cfg.GoalRewardThreshold.IS_NUDGING:
+                if achieved_goal < self.goaldist_personal_best:
+                    print('PERSONAL RECORD!', achieved_goal)
+                    self.goaldist_personal_best = achieved_goal
+                    reward = np.bool_(True)
+
+        return reward.astype(np.float64)
     
 
-    def _add_noise(self, qpos, qvel):
-        exit()
-        noise_low = -self._reset_noise_scale
-        noise_high = self._reset_noise_scale
-        qpos = qpos + self.np_random.uniform(
-            low=noise_low, high=noise_high, size=self.model.nq
-        )
-        qvel = qvel + self.np_random.uniform(
-            low=noise_low, high=noise_high, size=self.model.nv
-        )
-        return qpos, qvel
+    def reset_model(self):
+        obs_init = None
+
+        if self.ep_num_steps > 0:
+            # episode report
+            print('ep_num_steps', self.ep_num_steps)
+            print('ep_first_reward_step', self.ep_first_reward_step)
+            print('ep_goal_desired', self.ep_obs_cur['desired_goal'])
+            print('ep_goal_achieved', self.ep_obs_cur['achieved_goal'])
+            print('ep_goaldist_min', min(self.ep_goaldists))
+            print('ep_goaldist_mean', np.mean(self.ep_goaldists))
+            print('ep_goaldist_max', max(self.ep_goaldists))
+            print('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
+            print('ep_traj_is_halved', self.ep_traj_is_halved)
+            print('ep_rewards_mean', self.ep_rewards_mean)
+            print('\n')
+
+        if self.ep_num_steps > 1:
+            if self.cfg.TrajectoryHalving.IS_ENABLED:
+                ep_goaldist_min = min(self.ep_goaldists)
+                if ep_goaldist_min < self.last_ep_goaldist_min:
+                    obs_init = self._reset_half_episode(ep_goaldist_min)
+
+        if not obs_init:
+            obs_init = self._reset_full_episode()
+
+        print('ep_init_goaldist', obs_init['achieved_goal'])
+        return obs_init
+    
+
+    def _reset_full_episode(self):
+        obs_init = super().reset_model()
+        # self.desired_obs = self._get_desired_obs()
+        self.last_ep_goaldist_min = np.inf
+        self.last_ep_rewards_mean = 0
+        self.ep_traj_is_halved = False
+        # noisy relative threshold (varies by initial state noise)
+        # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
+
+        FULL_CONSECUTIVE_FAILURES_UNTIL_PERSONAL_RESET = 1
+        # 40k, 1, noPen /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-36-44/rl_model_finished
+        # 40k, 10, noPen /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-10-26/rl_model_finished
+        # 40k, inf/none, noPen 
+        if self.goaldist_personal_best < 0: # or self.tr_feps_consecutive_failures >= FULL_CONSECUTIVE_FAILURES_UNTIL_PERSONAL_RESET:
+            print('reset personal best.')
+            self.goaldist_personal_best = np.inf
+
+        if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
+            self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
+
+        self.tr_feps_total += 1
+        if self.fep_rewards_sum == 0:
+            self.tr_feps_consecutive_failures += 1
+        else:
+            self.tr_feps_consecutive_failures = 0
+
+        print('tr_feps_total', self.tr_feps_total)
+        print('tr_feps_consecutive_failed', self.tr_feps_consecutive_failures)
+        print('fep_rewards_sum', self.fep_rewards_sum)
+        self.fep_rewards_sum = 0
+        
+        self._reset()
+        return obs_init
 
 
-    def _reset_episode(self):
+    def _reset_half_episode(self, ep_goaldist_min):
+        idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
+        print('halving!', idx_halving)
+        qpos, qvel = self.ep_states[idx_halving]
+        # qpos, qvel = self._add_noise(qpos, qvel)
+        self.set_state(qpos, qvel)
+        self.ep_traj_is_halved = True
+        self.last_ep_rewards_mean = self.ep_rewards_mean
+        self.last_ep_goaldist_min = ep_goaldist_min
+
+        obs_init = self._get_obs()
+        self._reset()
+        return obs_init
+
+
+    def _reset(self):
         self.ep_rewards_mean: float = -1
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
@@ -367,7 +381,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states = []
         self.ep_is_perfect = False
         # print('desired_obs', self.desired_obs)
-        print('goaldist_personal_best', self.goaldist_personal_best)
 
         # landmarker reset: better/correct detection of start pose
         # TODO wait for reset() implementation in API
@@ -383,6 +396,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
         self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
+        
+        print('goaldist_personal_best', self.goaldist_personal_best)
 
 
     def _get_idx_for_trajectory_halving(self, strat):
@@ -395,6 +410,18 @@ class PoseImitationEnv(HumanoidEnv):
             case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
                 idx_step = np.argmin(self.ep_goaldists)
         return idx_step
+
+
+    def _add_noise(self, qpos, qvel):
+        noise_low = -self._reset_noise_scale
+        noise_high = self._reset_noise_scale
+        qpos = qpos + self.np_random.uniform(
+            low=noise_low, high=noise_high, size=self.model.nq
+        )
+        qvel = qvel + self.np_random.uniform(
+            low=noise_low, high=noise_high, size=self.model.nv
+        )
+        return qpos, qvel
 
 
     def _normalize(self, val, min_val, max_val):
