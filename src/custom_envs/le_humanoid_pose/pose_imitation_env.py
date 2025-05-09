@@ -55,15 +55,16 @@ LANDMARK_GROUPS = [
 # TODO fix pose landmarker memory leak
 # TODO terminate on missing pose detection?
 
-        
+
 class PoseImitationEnv(HumanoidEnv):
 
 
     def __init__(self, is_plot=True):
+
         HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=cfg.General.RENDER_IMAGE_SIZE, height=cfg.General.RENDER_IMAGE_SIZE)
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
-        assert cfg.General.FRAMESKIP_STEP_PLOT >= cfg.General.FRAMESKIP_STEP_DETECT, 'cannot plot in a step with a skipped detection'
+        assert cfg.General.FRAMESKIP_STEP_PLOT >= cfg.General.FRAMESKIP_STEP_DETECT and cfg.General.FRAMESKIP_STEP_PLOT >= cfg.General.FRAMESKIP_STEP_DETECT, 'cannot plot in a step with no pose render (and detection'
 
         self.cfg = cfg
         self.is_plot = is_plot
@@ -117,15 +118,15 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min: float = np.inf
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
-        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
-        self.goaldist_personal_best: float = -1.0
+        # constant threshold
+        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * 3
+        self.goaldist_personal_best: float = np.inf
         self.total_full_episodes = 0
-
-        # landmarker reset: better/correct detection of start pose
+        
         self.landmarker_achieved = None
         self.landmarker_desired = None
-        self.last_detected_goal_achieved = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
-        self.last_detected_goal_desired = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
+        self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
+        self.last_detected_obs_desired = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -145,17 +146,17 @@ class PoseImitationEnv(HumanoidEnv):
 
         reward = (achieved_goal < desired_goal)
 
-        if np.isscalar(achieved_goal):
+        if achieved_goal.ndim == 0:
             # single live step (no replay)
-            
+
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if achieved_goal[0] < self.goaldist_personal_best:
+                if achieved_goal < self.goaldist_personal_best:
                     print('personal record!', achieved_goal)
                     self.goaldist_personal_best = achieved_goal
                     reward = np.array([True])
 
         return reward.astype(np.float64)
-    
+
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
@@ -221,7 +222,7 @@ class PoseImitationEnv(HumanoidEnv):
             print('ep_goaldist_min', min(self.ep_goaldists))
             print('ep_goaldist_mean', np.mean(self.ep_goaldists))
             print('ep_goaldist_max', max(self.ep_goaldists))
-            print('ep_reward_threshold', self.ep_reward_threshold)
+            print('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
             print('\n')
@@ -230,12 +231,11 @@ class PoseImitationEnv(HumanoidEnv):
             # ep_goal_distance_min_normed = min(self.ep_goal_distances_normed)
             ep_goaldist_min = min(self.ep_goaldists)
 
-
             if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goaldist_min < self.last_ep_goaldist_min):
                 idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
                 print('halving!', idx_halving)
                 qpos, qvel = self.ep_states[idx_halving]
-                qpos, qvel = self._add_noise(qpos, qvel)
+                # qpos, qvel = self._add_noise(qpos, qvel)
 
                 self.set_state(qpos, qvel)
                 self.ep_traj_is_halved = True
@@ -246,15 +246,15 @@ class PoseImitationEnv(HumanoidEnv):
         if not obs_init:
             # brand new episode
             obs_init = super().reset_model()
-            print('init_goaldistance', obs_init['achieved_goal'])
             # self.desired_obs = self._get_desired_obs()
             self.last_ep_goaldist_min = np.inf
             self.last_ep_rewards_mean = 0
             self.ep_traj_is_halved = False
-            # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
+            # noisy relative threshold (varies by initial state noise)
+            # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
 
             if self.goaldist_personal_best < 0:
-                self.goaldist_personal_best = obs_init['achieved_goal']
+                self.goaldist_personal_best = np.inf
 
             if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
                 self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
@@ -263,11 +263,11 @@ class PoseImitationEnv(HumanoidEnv):
             print('total_full_episodes', self.total_full_episodes)
 
         self._reset_episode()
+        print('init_goaldistance', obs_init['achieved_goal'])
         return obs_init
 
 
     def _get_obs(self):
-
         # detect pose only every nth frame, else use last valid
         if self.ep_num_steps % cfg.General.FRAMESKIP_STEP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
@@ -296,19 +296,19 @@ class PoseImitationEnv(HumanoidEnv):
             # only first detected pose
             for landmark in achieved_pose.pose_world_landmarks[0]:
                 achieved_obs.extend((landmark.x, landmark.y, landmark.z))
-            self.last_detected_goal_achieved = achieved_obs
+            self.last_detected_obs_achieved = achieved_obs
         else:
             # print('unable to detect achieved pose. fallback...')
-            achieved_obs = self.last_detected_goal_achieved
+            achieved_obs = self.last_detected_obs_achieved
 
         desired_obs = []
         if desired_pose.pose_world_landmarks:
             for landmark in desired_pose.pose_world_landmarks[0]:
                 desired_obs.extend((landmark.x, landmark.y, landmark.z))
-            self.last_detected_goal_desired = desired_obs
+            self.last_detected_obs_desired = desired_obs
         else:
             # print('unable to detect desired pose. fallback...')
-            desired_obs = self.last_detected_goal_desired
+            desired_obs = self.last_detected_obs_desired
 
         if self.is_plot and self.ep_num_steps % cfg.General.FRAMESKIP_STEP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
@@ -339,13 +339,14 @@ class PoseImitationEnv(HumanoidEnv):
         dictobs = dict(
                 observation=np.array(obs),
                 achieved_goal=np.array(goaldist),
-                desired_goal=self.ep_goal_reward_threshold,
+                desired_goal=self.ep_reward_threshold,
             )
 
         return dictobs
     
 
     def _add_noise(self, qpos, qvel):
+        exit()
         noise_low = -self._reset_noise_scale
         noise_high = self._reset_noise_scale
         qpos = qpos + self.np_random.uniform(
@@ -364,13 +365,13 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_obs_cur = None
         self.ep_goaldists = []
         self.ep_states = []
-        # TODO set norm
-        self.ep_goal_reward_threshold = 1.5
         self.ep_is_perfect = False
         # print('desired_obs', self.desired_obs)
         print('goaldist_personal_best', self.goaldist_personal_best)
 
         # landmarker reset: better/correct detection of start pose
+        # TODO wait for reset() implementation in API
+        # workaround by re-create
         if self.landmarker_achieved:
             self.landmarker_achieved.close()
             del self.landmarker_achieved
@@ -383,7 +384,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
         self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
-    
+
     def _get_idx_for_trajectory_halving(self, strat):
         idx_step = -1
         match strat:
@@ -394,6 +395,7 @@ class PoseImitationEnv(HumanoidEnv):
             case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
                 idx_step = np.argmin(self.ep_goaldists)
         return idx_step
+
 
     def _normalize(self, val, min_val, max_val):
         # manual normalization (obs fairness)
@@ -433,12 +435,12 @@ def parallel_plot(queue: multiprocessing.Queue):
     extplot = fig.add_subplot(133, projection="3d")
 
     while True:
-        achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose = queue.get()
+        achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
         
-        plot_desired.set_data(desired_img_annotated)
+        plot_desired.set_data(desired_img)
         plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
 
-        plot_achieved.set_data(achieved_img_annotated)
+        plot_achieved.set_data(achieved_img)
         plot_achieved.draw(plot_achieved.get_figure().canvas.get_renderer())
 
         # plot topology connections

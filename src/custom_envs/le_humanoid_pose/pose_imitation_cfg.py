@@ -7,14 +7,16 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 480
     FRAMESKIP_STEP = 5
     FRAMESKIP_STEP_DETECT = 2
-    FRAMESKIP_STEP_PLOT = 10 # 10
+    FRAMESKIP_STEP_PLOT = 6 # 10 >= FRAMESKIP_STEP_DETECT
+
 
 class MetaObservation(base.MetaObservation):
     pass
 
+
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
-    REWARD_IF_OUTSIDE = 0
+    REWARD_ON_TERMINATE = -1
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
         pass
@@ -27,7 +29,7 @@ class PracticeTime(base.PracticeTime):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    MAX_FAC_DEFAULT = 0.3 # TODO use
+    MAX_FRAC_DEFAULT = 0.3 # TODO use
     IS_NUDGING = True
     IS_ADAPTIVE = False
 
