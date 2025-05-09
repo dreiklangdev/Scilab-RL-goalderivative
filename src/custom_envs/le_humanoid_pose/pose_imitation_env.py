@@ -114,17 +114,18 @@ class PoseImitationEnv(HumanoidEnv):
         )
 
         # once
+        self.tr_feps_total = 0
+        self.tr_feps_consecutive_neg = 0
+        self.tr_total_zero_sum_eps = 0
+        self.tr_total_zero_sum_eps_steps = 0
+        self.tr_goaldist_personal_best: float = np.inf
+        self.fep_rewards_sum = -1
         self.last_ep_rewards_mean: float = 0
-        self.last_ep_goaldist_min: float = np.inf
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
         # constant threshold
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * 3
-        self.goaldist_personal_best: float = np.inf
-        self.tr_feps_total = 0
-        self.tr_feps_consecutive_failures = 0
-        self.fep_rewards_sum = -1
-
+        
         self.landmarker_achieved = None
         self.landmarker_desired = None
         self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_TOTAL, 1)
@@ -158,10 +159,6 @@ class PoseImitationEnv(HumanoidEnv):
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
 
-        self.fep_rewards_sum += reward
-        self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
-        self.ep_num_steps += 1
-
         terminated = False
         truncated = False
 
@@ -170,9 +167,11 @@ class PoseImitationEnv(HumanoidEnv):
             nose_y = obs['observation'][1] # inverted height (nose)
             if nose_y > -0.4:
                 # TODO learn default standing-pose first?
-                print('FELL DOWN!', nose_y)
-                reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                print('OUTSIDE: FELL DOWN!', nose_y)
                 terminated = True
+                # dont neutralize already pos. eps.
+                if not self.ep_rewards_mean and not reward:
+                    reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
 
         # time constraint
         if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
@@ -183,11 +182,17 @@ class PoseImitationEnv(HumanoidEnv):
                 # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
                 if not is_goal_reached and not is_goal_converging:
                     print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)
-                    reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
                     terminated = True
+                    # dont neutralize already pos. eps.
+                    if not self.ep_rewards_mean and not reward:
+                        reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+
+        self.fep_rewards_sum += reward
+        self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
+        self.ep_num_steps += 1
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
-            print('truncated.')
+            print('TRUNCATED.')
             info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             truncated = True
 
@@ -284,9 +289,9 @@ class PoseImitationEnv(HumanoidEnv):
             # single live step (no replay)
 
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if achieved_goal < self.goaldist_personal_best:
-                    print('PERSONAL RECORD!', achieved_goal)
-                    self.goaldist_personal_best = achieved_goal
+                if achieved_goal < self.tr_goaldist_personal_best:
+                    print(f'NEW PERSONAL BEST! {achieved_goal} > {self.tr_goaldist_personal_best}')
+                    self.tr_goaldist_personal_best = achieved_goal
                     reward = np.bool_(True)
 
         return reward.astype(np.float64)
@@ -307,6 +312,10 @@ class PoseImitationEnv(HumanoidEnv):
             print('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
+            if self.ep_rewards_mean == 0:
+                print('WARNING: zero-sum-ep. => wasted ep.')
+                self.tr_total_zero_sum_eps += 1
+                self.tr_total_zero_sum_eps_steps += self.ep_num_steps
             print('\n')
 
         if self.ep_num_steps > 1:
@@ -331,28 +340,36 @@ class PoseImitationEnv(HumanoidEnv):
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
 
-        FULL_CONSECUTIVE_FAILURES_UNTIL_PERSONAL_RESET = 1
-        # 40k, 1, noPen /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-36-44/rl_model_finished
-        # 40k, 10, noPen /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-10-26/rl_model_finished
-        # 40k, inf/none, noPen 
-        if self.goaldist_personal_best < 0: # or self.tr_feps_consecutive_failures >= FULL_CONSECUTIVE_FAILURES_UNTIL_PERSONAL_RESET:
+        # 40k, 1, noPen:    worst, no learning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-36-44/rl_model_finished
+        # 40k, 10, pen, no zero-eps.:   worse, no learning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-23-38/rl_model_finished
+        # 40k, 10, pen:     not better, collapses fast, trying /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/18-32-28/rl_model_finished
+        # 40k, inf/none, noPen:     bad, but trying /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/17-30-34/rl_model_finished
+        # 40k, 10, noPen:   better, some standing and turning, some straight legs /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-10-26/rl_model_finished
+        # 40k, none, pen:   better, some turning, one-legged /home/t500/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/17-37-41/rl_model_finished
+        # 40k, none, pen, less zero-eps.:   good, reliable turning, one-legged, resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/19-57-30/rl_model_finished
+        # 40k, none, pen, min. zero-eps.:   best, reliable turning, hand moves up /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07/rl_model_finished
+        CONSECUTIVE_NEG_FEPS_UNTIL_PERSONAL_RESET = 10
+        if self.tr_goaldist_personal_best < 0: # or self.tr_feps_consecutive_neg >= CONSECUTIVE_NEG_FEPS_UNTIL_PERSONAL_RESET:
             print('reset personal best.')
-            self.goaldist_personal_best = np.inf
+            self.tr_goaldist_personal_best = np.inf
 
         if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
             self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
 
         self.tr_feps_total += 1
-        if self.fep_rewards_sum == 0:
-            self.tr_feps_consecutive_failures += 1
+        if self.fep_rewards_sum < 0:
+            self.tr_feps_consecutive_neg += 1
         else:
-            self.tr_feps_consecutive_failures = 0
+            self.tr_feps_consecutive_neg = 0
 
         print('tr_feps_total', self.tr_feps_total)
-        print('tr_feps_consecutive_failed', self.tr_feps_consecutive_failures)
+        print('tr_feps_consecutive_neg', self.tr_feps_consecutive_neg)
+        print('tr_total_zero_sum_eps', self.tr_total_zero_sum_eps)
+        print('tr_total_zero_sum_eps_steps', self.tr_total_zero_sum_eps_steps)
+        print('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
         print('fep_rewards_sum', self.fep_rewards_sum)
         self.fep_rewards_sum = 0
-        
+
         self._reset()
         return obs_init
 
@@ -396,8 +413,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
         self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
-        
-        print('goaldist_personal_best', self.goaldist_personal_best)
 
 
     def _get_idx_for_trajectory_halving(self, strat):

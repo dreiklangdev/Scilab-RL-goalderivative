@@ -85,10 +85,11 @@ class GoalRewardThreshold:
     #   [0,1]: ambivalent       too noisy => no confidence (unstable)
     #   [-1,1]: neutralizing    too noisy => no idea (randomness, senseless exploration)
 
-    # dont punish every step? dont punish and reward in the same step? (neu)
+    # dont punish and reward in the same step (xor, else neutralizing)?
+    # minimize zero(-sum)-eps? (no pos. or neg. reward-sum => expected result for all prev. traj. steps converges to zero/none => wasted ep.?) (!= zero-step: exploring step)
 
     # "breadcrumbing"
-    
+
     # reward on record breaks
     IS_NUDGING = True
 
