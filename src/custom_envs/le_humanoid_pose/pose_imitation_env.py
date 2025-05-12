@@ -144,14 +144,14 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def step(self, action):
-        # burning health (default)
+        # idle health (default)
         # TODO starting contingent (health) + terminate at zero? (time constraint)
         # 40k:  correct turning, some standing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59/rl_model_finished
         # 100k: turns on one foot? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored/rl_model_finished
         # 140k: worsens, collapses without turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored_restored/rl_model_finished
         # 180k: still bad, collapes without turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored_restored_restored/rl_model_finished
         # 260k: 
-        reward = -1
+        reward = 0
 
         self.do_simulation(action, self.frame_skip)
 
@@ -187,9 +187,8 @@ class PoseImitationEnv(HumanoidEnv):
                 print('OUTSIDE: FELL DOWN!', height)
                 terminated = True
                 # dont neutralize already pos. eps.?
-                # if not self.ep_rewards_mean and not reward:
-                # if not reward:
-                #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                if not self.ep_rewards_mean and not reward:
+                    reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE 
 
         self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)

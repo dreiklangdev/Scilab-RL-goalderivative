@@ -35,4 +35,4 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
-    IS_ENABLED = False
+    IS_ENABLED = True

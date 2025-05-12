@@ -53,27 +53,18 @@ class BasePracticeEnv(BaseMujocoEnv):
     def compute_reward(
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
-
         reward = (achieved_goal < desired_goal)
-
-        if achieved_goal.ndim == 0:
-            # single live step (no replay)
-            
-            if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if achieved_goal < self.goaldist_personal_best:
-                    print('personal record!', achieved_goal)
-                    self.goaldist_personal_best = achieved_goal
-                    reward = np.bool_(True)
-
         return reward.astype(np.float64)
 
 
     def step(self, action):
-        # burning health
-        # TODO starting health contigent + terminate at zero?
+        # idle health
         # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53/rl_model_finished
         # 100k(!!):     so many steps... /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53_restored/rl_model_finished
-        reward = -1
+
+        # burning health
+        # TODO starting health contigent + terminate at zero?
+        # 20k:  direct collapse (seeks termination) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ca8a4f5/le-walker2d-v4/18-24-46/rl_model_finished
 
         self.do_simulation(action, self.frame_skip)
 
@@ -87,11 +78,11 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = obs
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
-        
+
         if obs['achieved_goal'] < self.goaldist_personal_best:
             print('personal record!', obs['achieved_goal'])
             self.goaldist_personal_best = obs['achieved_goal']
-            reward = 1
+            reward = 1.0
 
         if reward:
             if self.ep_first_reward_step < 0:
@@ -110,10 +101,24 @@ class BasePracticeEnv(BaseMujocoEnv):
             dims_outside, = np.where(np.logical_or(practiced_obs < 0, practiced_obs > 1))
             if len(dims_outside) > 0:
                 print('OUTSIDE PRACTICE SPACE!', self.cfg.PracticeSpace.labels[dims_outside], practiced_obs[dims_outside])
-                terminated = True                    
-                # dont neutralize already pos. eps.
-                if not self.ep_rewards_mean and not reward:
-                    reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                terminated = True
+                # dont neutralize already pos. eps.?
+                # if not self.ep_rewards_mean and not reward:
+                # reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+
+        # if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
+        #     grace_steps = self.cfg.PracticeTime.GRACE_STEPS
+        #     if len(self.ep_goaldists) >= grace_steps:
+        #         is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
+        #         is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
+        #         # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
+        #         if not is_goal_reached and not is_goal_converging:
+        #             print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)                
+        #             terminated = True
+        #             # dont neutralize already pos. eps.
+        #             if not self.ep_rewards_mean and not reward:
+        #                 reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
+
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
