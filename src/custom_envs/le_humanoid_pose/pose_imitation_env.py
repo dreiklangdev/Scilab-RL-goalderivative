@@ -187,8 +187,8 @@ class PoseImitationEnv(HumanoidEnv):
                 print('OUTSIDE: FELL DOWN!', height)
                 terminated = True
                 # dont neutralize already pos. eps.?
-                if not self.ep_rewards_mean and not reward:
-                    reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE 
+                # if not self.ep_rewards_mean and not reward:
+                #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
 
         self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)

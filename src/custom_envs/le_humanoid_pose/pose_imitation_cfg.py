@@ -7,7 +7,7 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 480
     FRAMESKIP_STEP = 5
     STEPSKIP_DETECT = 2
-    STEPSKIP_PLOT = 2 # 10 >= FRAMESKIP_STEP_DETECT
+    STEPSKIP_PLOT = 2 # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
 
 class MetaObservation(base.MetaObservation):
