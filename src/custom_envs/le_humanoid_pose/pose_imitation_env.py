@@ -54,6 +54,10 @@ LANDMARK_GROUPS = [
 # TODO terminate on missing pose detection?
 
 
+# 40k, noPen:   slow turn, little standing
+# 100k, noPen:  worsens again significantly (bend legs, early termination)
+# 40k, correctHeight:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f4559e6/le-pose-imitation-v4/23-19-34/rl_model_finished
+# 100k, correctHeight: no change, still worsens with training time /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f4559e6/le-pose-imitation-v4/23-19-34_restored/rl_model_finished
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -118,6 +122,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_feps_consecutive_neg = 0
         self.tr_total_zero_sum_eps = 0
         self.tr_total_zero_sum_eps_steps = 0
+        self.tr_count_goal_reached = 0
         self.tr_goaldist_personal_best = np.inf
         self.fep_rewards_sum = -1
         self.last_ep_rewards_mean: float = 0
@@ -165,6 +170,9 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states.append((qpos, qvel))
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
+        if reward:
+            print(f"GOAL(-ZONE) REACHED. {obs['achieved_goal']} < {obs['desired_goal']}")
+            tr_count_goal_reached += 1
 
         # healing health
         if obs['achieved_goal'] < self.ep_goaldist_min:
@@ -239,6 +247,7 @@ class PoseImitationEnv(HumanoidEnv):
         if achieved_pose.pose_world_landmarks:
             # only first detected pose
             for landmark in achieved_pose.pose_world_landmarks[0]:
+                # landmark.y -= superobs[0]
                 achieved_obs = np.append(achieved_obs, (landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_achieved = achieved_obs
         else:
@@ -257,7 +266,9 @@ class PoseImitationEnv(HumanoidEnv):
         desired_obs = np.array([])
 
         if desired_pose.pose_world_landmarks:
+            # only first detected pose
             for landmark in desired_pose.pose_world_landmarks[0]:
+                # landmark.y -= 1.2
                 desired_obs = np.append(desired_obs, (landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_desired = desired_obs
         else:
@@ -327,7 +338,7 @@ class PoseImitationEnv(HumanoidEnv):
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
             if self.ep_rewards_mean == 0:
-                print('WARNING: zero-sum-ep. => wasted ep.')
+                print('WARNING: zero-sum-ep. => wasted ep.?')
                 self.tr_total_zero_sum_eps += 1
                 self.tr_total_zero_sum_eps_steps += self.ep_num_steps
             print('\n')
@@ -340,7 +351,7 @@ class PoseImitationEnv(HumanoidEnv):
         if not obs_init:
             obs_init = self._reset_full_episode()
 
-        print('ep_init_goaldist', obs_init['achieved_goal'])
+        self.ep_goaldists.append(obs_init['achieved_goal'])
         return obs_init
     
 
