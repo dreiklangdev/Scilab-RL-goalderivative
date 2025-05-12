@@ -69,6 +69,8 @@ class BasePracticeEnv(BaseMujocoEnv):
 
 
     def step(self, action):
+        reward = -1
+
         self.do_simulation(action, self.frame_skip)
 
         info = {}
@@ -83,13 +85,20 @@ class BasePracticeEnv(BaseMujocoEnv):
         # ~ grace time?
         # 20k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/13-05-49/rl_model_finished
         # 100k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/13-05-49_restored/rl_model_finished
-        if self.ep_num_steps >= 100 and self.ep_num_steps % 100 == 0:
-            # allow nudging every n steps again
-            print('reset personal best.')
-            self.goaldist_personal_best = np.inf
+        # if self.ep_num_steps >= 100 and self.ep_num_steps % 100 == 0:
+        #     # allow nudging every n steps again
+        #     print('reset personal best.')
+        #     self.goaldist_personal_best = np.inf
 
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
+        
+        if obs['achieved_goal'] < self.goaldist_personal_best:
+            print('personal record!', obs['achieved_goal'])
+            self.goaldist_personal_best = obs['achieved_goal']
+            reward = 1
+
+
         if reward:
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
@@ -128,22 +137,26 @@ class BasePracticeEnv(BaseMujocoEnv):
         # 200k, noSpace, nudge, 2d:     0-0.5 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/22-55-10/rl_model_finished
         # 200k, noSpace, nudge, 2d, penalty:    1.5 step reliably forward by tumbling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/23-26-55/rl_model_finished
         # 200k, space, nudge, 2d, penalty:  3-4 steps confident, reliably forward but collapsing walk /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7d45aa7/le-walker2d-v4/00-10-10/rl_model_finished
-        if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
-            grace_steps = self.cfg.PracticeTime.GRACE_STEPS
-            if len(self.ep_goaldists) >= grace_steps:
-                is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
-                is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
-                # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
-                if not is_goal_reached and not is_goal_converging:
-                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)                
-                    terminated = True
-                    # dont neutralize already pos. eps.
-                    if not self.ep_rewards_mean and not reward:
-                        reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
+        # if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
+        #     grace_steps = self.cfg.PracticeTime.GRACE_STEPS
+        #     if len(self.ep_goaldists) >= grace_steps:
+        #         is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
+        #         is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
+        #         # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
+        #         if not is_goal_reached and not is_goal_converging:
+        #             print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)                
+        #             terminated = True
+        #             # dont neutralize already pos. eps.
+        #             if not self.ep_rewards_mean and not reward:
+        #                 reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
 
         # avoid & seek
         # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-06-31/rl_model_finished
-        
+
+        # health reduction
+        # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53/rl_model_finished
+        # 100k(!!):     so many steps... /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53_restored/rl_model_finished
+
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
@@ -203,8 +216,7 @@ class BasePracticeEnv(BaseMujocoEnv):
             self.ep_traj_is_halved = False
             # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
 
-            if self.goaldist_personal_best < 0:
-                self.goaldist_personal_best = obs_init['achieved_goal']
+            self.goaldist_personal_best = obs_init['achieved_goal']
 
             if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
                 self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
