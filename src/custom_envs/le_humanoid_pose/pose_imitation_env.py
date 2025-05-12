@@ -154,10 +154,21 @@ class PoseImitationEnv(HumanoidEnv):
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
 
+        # nudging every n steps for pos. trainsum? ('seek+')
+        # 20k, 10       slow turn, slow stand /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-pose-imitation-v4/10-50-01/rl_model_finished
+        # 20k, 100      bit better, correct turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-pose-imitation-v4/11-16-59/rl_model_finished
+        if self.ep_num_steps % 100 == 0:
+            print('reset personal best.')
+            self.tr_goaldist_personal_best = np.inf
+
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
         if reward:
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
+
+        # long duration eps. rewards (standing, vs. neg. trainsum)
+        # if self.ep_num_steps % 10 == 0:
+        #     reward = 1
 
         terminated = False
         truncated = False
@@ -201,7 +212,10 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     # obs = superobs(phys.) + achieved_obs(vis.) + metaobs
-    # 40k, unnormalized:    slow, tries standing, no turning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/28af96a/le-pose-imitation-v4/01-22-59/rl_model_finished
+    # 40k, unnormalized, pen.:    slow, tries standing, no turning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/28af96a/le-pose-imitation-v4/01-22-59/rl_model_finished
+    # 40k!, norm., pen.:   best, turns, resembles strongly, inverted x-axis pose? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bd7c5c/le-pose-imitation-v4/19-36-59/rl_model_finished 
+    # 100k, norm., pen.:   worsens, converges to same action (dont do anything except bend legs), barely pos. rewards, only neg. rewards ("avoid&no-seek", neg. train-rewardsum) -> "fear" (min. pen. at near zero trainsum) => should: pos. rewards > neg. rewards? (pos. trainsum/-mean)
+    # 40k, norm., duration-reward:  standing, turning, weak resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-pose-imitation-v4/10-21-49/rl_model_finished
     def _get_obs(self):
         obs = []
         superobs = super()._get_obs()
@@ -250,7 +264,7 @@ class PoseImitationEnv(HumanoidEnv):
         achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
         obs.extend(achieved_obs)
-        
+
 
         desired_obs = np.array([])
 
@@ -312,7 +326,7 @@ class PoseImitationEnv(HumanoidEnv):
 
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
                 if achieved_goal < self.tr_goaldist_personal_best:
-                    print(f'NEW PERSONAL BEST! {achieved_goal} > {self.tr_goaldist_personal_best}')
+                    print(f'NEW PERSONAL BEST! {achieved_goal} < {self.tr_goaldist_personal_best}')
                     self.tr_goaldist_personal_best = achieved_goal
                     reward = np.bool_(True)
 
@@ -516,18 +530,25 @@ def parallel_plot(queue: multiprocessing.Queue):
         extplot.set_ylim3d(-1, 1)
         extplot.set_zlim3d(1, -1) # flip z-axis 
 
-        for group in LANDMARK_GROUPS:
-            if achieved_pose.pose_world_landmarks:
+        if achieved_pose.pose_world_landmarks:
+            for group in LANDMARK_GROUPS:
                 plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
                 plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
                 plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
-                extplot.plot(plotX, plotZ, plotY, color='red')
+                if 11 in group: # right side
+                    extplot.plot(plotX, plotZ, plotY, color='red')
+                else:
+                    extplot.plot(plotX, plotZ, plotY, color='red', linestyle = 'dashed')
 
-            if desired_pose.pose_world_landmarks:
+        if desired_pose.pose_world_landmarks:
+            for group in LANDMARK_GROUPS:
                 plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
                 plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
                 plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
-                extplot.plot(plotX, plotZ, plotY, color='green')
+                if 11 in group: # right side
+                    extplot.plot(plotX, plotZ, plotY, color='green')
+                else:
+                    extplot.plot(plotX, plotZ, plotY, color='green', linestyle = 'dashed')
         
         extplot.draw(extplot.get_figure().canvas.get_renderer())
         plt.pause(0.00001)

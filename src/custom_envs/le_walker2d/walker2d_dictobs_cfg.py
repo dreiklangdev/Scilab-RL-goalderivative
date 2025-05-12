@@ -13,7 +13,7 @@ class MetaObservation(base.MetaObservation):
 
 class PracticeSpace(base.PracticeSpace):    
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True # manually decrease search-/practice-space
-    REWARD_ON_TERMINATE = 0
+    REWARD_ON_TERMINATE = -1
     
     base.PracticeSpace.init_dims([
         [0.8,        -2.0,          -1.0,       -2.0,   ],   # min

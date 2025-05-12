@@ -12,10 +12,11 @@ class BasePracticeEnv(BaseMujocoEnv):
     def __init__(self, cfg: base_practice_cfg):
         self.cfg: base_practice_cfg = cfg
         
-        obspace_total_dims = self.observation_space.shape[0]
+        obspace_total_dims = self.observation_space.shape[0] # super
+        obspace_total_dims += self.cfg.PracticeSpace.d.shape[0] # achieved
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += self.cfg.PracticeSpace.d.shape[1] + 3
+            obspace_total_dims += self.cfg.PracticeSpace.d.shape[1] + 3 # meta
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -31,11 +32,11 @@ class BasePracticeEnv(BaseMujocoEnv):
 
         # once
         self.last_ep_rewards_mean: float = 0
-        self.last_ep_goaldist_min_nld: float = np.inf
+        self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
-        self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
+        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
         self.desired_obs = self.cfg.PracticeSpace.d[2]
-        self.goaldist_nld_personal_best: float = -1.0
+        self.goaldist_personal_best: float = -1.0
         self.total_full_episodes = 0
 
         self._reset_episode()
@@ -50,20 +51,19 @@ class BasePracticeEnv(BaseMujocoEnv):
 
     # is also used by HER (multi-dim. args.)
     def compute_reward(
-        self, achieved_goal_nld: np.ndarray, desired_goal_nld: np.ndarray, info
+        self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
 
-        reward = (achieved_goal_nld < desired_goal_nld)
+        reward = (achieved_goal < desired_goal)
 
-        if np.isscalar(achieved_goal_nld[0]):
+        if achieved_goal.ndim == 0:
             # single live step (no replay)
             
             if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                # 100k, 100, /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/20-14-38/rl_model_finished
-                if achieved_goal_nld[0] < self.goaldist_nld_personal_best:
-                    print('personal record!', achieved_goal_nld[0])
-                    self.goaldist_nld_personal_best = achieved_goal_nld[0]
-                    reward = np.array([True])
+                if achieved_goal < self.goaldist_personal_best:
+                    print('personal record!', achieved_goal)
+                    self.goaldist_personal_best = achieved_goal
+                    reward = np.bool_(True)
 
         return reward.astype(np.float64)
 
@@ -80,14 +80,19 @@ class BasePracticeEnv(BaseMujocoEnv):
         obs = self._get_obs()
         self.ep_obs_cur = obs
 
+        # ~ grace time?
+        # 20k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/13-05-49/rl_model_finished
+        # 100k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/13-05-49_restored/rl_model_finished
+        if self.ep_num_steps >= 100 and self.ep_num_steps % 100 == 0:
+            # allow nudging every n steps again
+            print('reset personal best.')
+            self.goaldist_personal_best = np.inf
+
+
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
-        reward = reward[0]
         if reward:
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
-
-        self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
-        self.ep_num_steps += 1
 
         terminated = False
         truncated = False
@@ -101,13 +106,15 @@ class BasePracticeEnv(BaseMujocoEnv):
         # TODO autom. practice space bounds: input := min-max. (sampled?), output:= rewards_mean
         #   (bounds/constrained opt./adapt.: bayes?) (unconstrained opt./adapt.: gradient descent?)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
-            practiced_obs_nld = self._normalize(self.extract_practiced_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-            dims_outside, = np.where(np.logical_or(practiced_obs_nld < 0, practiced_obs_nld > 1))
+            practiced_obs = self._normalize(self.extract_practiced_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+            dims_outside, = np.where(np.logical_or(practiced_obs < 0, practiced_obs > 1))
             if len(dims_outside) > 0:
-                print('OUTSIDE PRACTICE SPACE!',
-                    self.cfg.PracticeSpace.labels[dims_outside], practiced_obs_nld[dims_outside])
-                reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
-                terminated = True
+                print('OUTSIDE PRACTICE SPACE!', self.cfg.PracticeSpace.labels[dims_outside], practiced_obs[dims_outside])
+                terminated = True                    
+                # dont neutralize already pos. eps.
+                if not self.ep_rewards_mean and not reward:
+                    reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                
 
         # possibly viable for envs without significant practice pre-knowledge (eg. no space-constraints)?
         # time-constraint
@@ -123,14 +130,23 @@ class BasePracticeEnv(BaseMujocoEnv):
         # 200k, space, nudge, 2d, penalty:  3-4 steps confident, reliably forward but collapsing walk /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7d45aa7/le-walker2d-v4/00-10-10/rl_model_finished
         if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
             grace_steps = self.cfg.PracticeTime.GRACE_STEPS
-            if len(self.ep_goaldists_nld) >= grace_steps:
+            if len(self.ep_goaldists) >= grace_steps:
                 is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
-                is_goal_converging = self.ep_goaldists_nld[-grace_steps] - self.ep_goaldists_nld[-1] < 0
+                is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
                 # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
                 if not is_goal_reached and not is_goal_converging:
-                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)
-                    reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
+                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)                
                     terminated = True
+                    # dont neutralize already pos. eps.
+                    if not self.ep_rewards_mean and not reward:
+                        reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
+
+        # avoid & seek
+        # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-06-31/rl_model_finished
+        
+
+        self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
+        self.ep_num_steps += 1
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             print('truncated.')
@@ -150,46 +166,48 @@ class BasePracticeEnv(BaseMujocoEnv):
         if self.ep_obs_cur:
             print('ep_num_steps', self.ep_num_steps)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_desired_nld', self.ep_obs_cur['desired_goal'])
-            print('ep_goal_achieved_nld', self.ep_obs_cur['achieved_goal'])
-            print('ep_goaldist_min_nld', min(self.ep_goaldists_nld))
-            print('ep_goaldist_mean_nld', np.mean(self.ep_goaldists_nld))
-            print('ep_goaldist_max_nld', max(self.ep_goaldists_nld))
-            print('ep_reward_threshold_nld', self.ep_reward_threshold_nld)
+            print('ep_goal_desired', self.ep_obs_cur['desired_goal'])
+            print('ep_goal_achieved', self.ep_obs_cur['achieved_goal'])
+            print('ep_goaldist_min', min(self.ep_goaldists))
+            print('ep_goaldist_mean', np.mean(self.ep_goaldists))
+            print('ep_goaldist_max', max(self.ep_goaldists))
+            print('ep_reward_threshold', self.ep_reward_threshold)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
+            if self.ep_rewards_mean == 0:
+                print('WARNING: zero-sum-ep. => wasted ep.')
             print('\n')
 
         if self.ep_num_steps > 1:
-            ep_goaldist_min_nld = min(self.ep_goaldists_nld)
+            ep_goaldist_min = min(self.ep_goaldists)
+            if ep_goaldist_min < self.last_ep_goaldist_min:
+                if self.cfg.TrajectoryHalving.IS_ENABLED:
+                    idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
+                    print('halving!', idx_halving)
+                    qpos, qvel = self.ep_states[idx_halving]
+                    qpos, qvel = self._add_noise(qpos, qvel)
 
-            if self.cfg.TrajectoryHalving.IS_ENABLED and (ep_goaldist_min_nld < self.last_ep_goaldist_min_nld):
-                idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
-                print('halving!', idx_halving)
-                qpos, qvel = self.ep_states[idx_halving]
-                qpos, qvel = self._add_noise(qpos, qvel)
-
-                self.set_state(qpos, qvel)
-                self.ep_traj_is_halved = True
-                self.last_ep_rewards_mean = self.ep_rewards_mean
-                self.last_ep_goaldist_min_nld = ep_goaldist_min_nld
-                obs_init = self._get_obs()
+                    self.set_state(qpos, qvel)
+                    self.ep_traj_is_halved = True
+                    self.last_ep_rewards_mean = self.ep_rewards_mean
+                    self.last_ep_goaldist_min = ep_goaldist_min
+                    obs_init = self._get_obs()
 
         if not obs_init:
             # brand new episode
             obs_init = super().reset_model()
             print('init_goaldistance', obs_init['achieved_goal'])
             self.desired_obs = self._get_desired_obs()
-            self.last_ep_goaldist_min_nld = np.inf
+            self.last_ep_goaldist_min = np.inf
             self.last_ep_rewards_mean = 0
             self.ep_traj_is_halved = False
             # self.ep_reward_threshold_nld = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
 
-            if self.goaldist_nld_personal_best < 0:
-                self.goaldist_nld_personal_best = obs_init['achieved_goal']
+            if self.goaldist_personal_best < 0:
+                self.goaldist_personal_best = obs_init['achieved_goal']
 
             if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-                self.ep_reward_threshold_nld = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
+                self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
 
             self.total_full_episodes += 1
             print('total_full_episodes', self.total_full_episodes)
@@ -199,39 +217,37 @@ class BasePracticeEnv(BaseMujocoEnv):
     
 
     def _get_obs(self):
+        obs = []
         superobs = super()._get_obs()
-        height = superobs[0]
+        obs.extend(superobs)
 
-        # TODO clean up shapes for avoiding?: achieved_obs_nld[0], goaldist_nld[0], reward[0]
-        achieved_obs_nld = self._normalize(self.extract_practiced_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
-        desired_obs_nld = self._normalize(self.desired_obs, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        achieved_obs = self._normalize(self.extract_practiced_obs(superobs), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
+        obs.extend(achieved_obs)
+        
+        desired_obs = self._normalize(self.desired_obs, self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
 
-        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array([achieved_obs_nld - desired_obs_nld])
-        goaldist_nld = np.linalg.norm(goaldiff_weighted, axis=-1)
+        goaldiff_weighted = self.cfg.PracticeSpace.d[3] * np.array(achieved_obs - desired_obs)
+        goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
-        # TODO readable
-        # obs = []
-        # obs.extend[achieved_obs]
+        if self.cfg.MetaObservation.IS_ENABLED:
+            metaobs = []
+            metaobs.extend(desired_obs)
+            if len(self.ep_goaldists) > 1:
+                goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
+                metaobs.append(goal_convergence)
+                is_converging = np.sign(self.ep_goaldists[-2] - self.ep_goaldists[-1])
+                metaobs.append(is_converging)
+            else:
+                metaobs.extend([0,0])
+            metaobs.append(goaldist)
+            obs.extend(metaobs)
 
-        # TODO if MetaObservation:
-        metaobs = []
-        metaobs.extend(self.desired_obs)
-        if len(self.ep_goaldists_nld) > 1:
-            goal_convergence = self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1]
-            metaobs.append(goal_convergence)
-            is_converging = np.sign(self.ep_goaldists_nld[-2] - self.ep_goaldists_nld[-1])
-            metaobs.append(is_converging)
-        else:
-            metaobs.extend([0,0])
-        metaobs.append(goaldist_nld[0])
-
-        obs = np.append(superobs, metaobs)
-        self.ep_goaldists_nld.append(goaldist_nld[0])
+        self.ep_goaldists.append(goaldist)
 
         dictobs = dict(
                 observation=obs,
-                achieved_goal=goaldist_nld,
-                desired_goal=self.ep_reward_threshold_nld,
+                achieved_goal=goaldist,
+                desired_goal=self.ep_reward_threshold,
             )
 
         return dictobs
@@ -272,12 +288,15 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_num_steps: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_obs_cur = None
-        self.ep_goaldists_nld = []
+        self.ep_goaldists = []
         self.ep_states = []
         self.ep_is_perfect = False
         print('desired_obs', self.desired_obs)
-        print('goaldist_nld_personal_best', self.goaldist_nld_personal_best)
-
+        # reset nudging every ep.?
+        # 20k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-42-29/rl_model_finished
+        # 50k: not good, no fall, but no walk /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-42-29_restored/rl_model_finished
+        # self.goaldist_personal_best = np.inf
+        print('goaldist_personal_best', self.goaldist_personal_best)
 
     def _get_idx_for_trajectory_halving(self, strat):
         idx_step = -1
@@ -285,9 +304,9 @@ class BasePracticeEnv(BaseMujocoEnv):
             case self.cfg.TrajectoryHalving.Strat.HALF:
                 idx_step = len(self.ep_states) // 2
             case self.cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
-                idx_step = np.argmin(np.gradient(self.ep_goaldists_nld))
+                idx_step = np.argmin(np.gradient(self.ep_goaldists))
             case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
-                idx_step = np.argmin(self.ep_goaldists_nld)
+                idx_step = np.argmin(self.ep_goaldists)
         return idx_step
 
 

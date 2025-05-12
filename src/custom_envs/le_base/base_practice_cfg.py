@@ -78,12 +78,15 @@ class PracticeTime:
 
 
 class GoalRewardThreshold:
-    # rewards: (sparse > freq.) "avoid & seek"
+    # rewards: (sparse > freq.)
     #   1: constructive         too frequent => no movement (idleness, too little exploration, "seek")
     #   0: neutral              too sparse => no improvement (indifference, too much exploration, "search")
     #   -1: destructive         too painful => no courage (fearful, no exploration, "avoid")
     #   [0,1]: ambivalent       too noisy => no confidence (unstable)
     #   [-1,1]: neutralizing    too noisy => no idea (randomness, senseless exploration)
+    # "avoid & tough-seek": problem, if difficult goal ("needle-in-the-haystack", ~ no goal, no seek)
+    # "avoid & seek": both neg. and pos. rewards
+    # "avoid & seek+" both neg. and pos. rewards, but more pos. (pos. trainsum)
 
     # dont punish and reward in the same step (xor, else neutralizing)?
     # minimize zero(-sum)-eps? (no pos. or neg. reward-sum => expected result for all prev. traj. steps converges to zero/none => wasted ep.?) (!= zero-step: exploring step)
