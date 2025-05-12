@@ -29,7 +29,7 @@ class PracticeTime(base.PracticeTime):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    MAX_FRAC_DEFAULT = 0.3 # TODO use
+    MAX_FRAC_DEFAULT = 0.1 # TODO use
     IS_NUDGING = True
     IS_ADAPTIVE = False
 

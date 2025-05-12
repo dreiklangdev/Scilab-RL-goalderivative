@@ -230,42 +230,46 @@ class PoseImitationEnv(HumanoidEnv):
             achieved_pose = SimpleNamespace(pose_world_landmarks=[])
             desired_pose = SimpleNamespace(pose_world_landmarks=[])
 
-        achieved_obs = []
-        achieved_ob_height = superobs[0]
-        achieved_obs.append(achieved_ob_height)
+
+        # get normalized goal distance
+        achieved_obs = np.array([])
 
         if achieved_pose.pose_world_landmarks:
             # only first detected pose
             for landmark in achieved_pose.pose_world_landmarks[0]:
-                achieved_obs.extend((landmark.x, landmark.y, landmark.z))
+                achieved_obs = np.append(achieved_obs, (landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_achieved = achieved_obs
         else:
             # no detected achieved pose. fallback...
             achieved_obs = self.last_detected_obs_achieved
 
-        obs.extend(achieved_obs)
+        achieved_obs = self._normalize(achieved_obs, -1, 1)
+        
+        achieved_ob_height = superobs[0]
+        achieved_ob_height = self._normalize(achieved_ob_height, 1.0, 2.0)
+        achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
-        desired_obs = []
-        desired_ob_height = 1.3
-        desired_obs.append(desired_ob_height)
+        obs.extend(achieved_obs)
+        
+
+        desired_obs = np.array([])
 
         if desired_pose.pose_world_landmarks:
             for landmark in desired_pose.pose_world_landmarks[0]:
-                desired_obs.extend((landmark.x, landmark.y, landmark.z))
+                desired_obs = np.append(desired_obs, (landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_desired = desired_obs
         else:
             # no detected desired pose. fallback...
             desired_obs = self.last_detected_obs_desired
 
-        if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
-            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-            desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
-            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+        desired_obs = self._normalize(desired_obs, -1, 1)
 
+        desired_ob_height = 1.3
+        desired_ob_height = self._normalize(desired_ob_height, 1.0, 2.0)
+        desired_obs = np.append(desired_obs, desired_ob_height)
 
-        achieved_obs = np.array(achieved_obs)
-        desired_obs = np.array(desired_obs)
         goaldist = np.linalg.norm(achieved_obs - desired_obs, axis=-1)
+
 
         if self.cfg.MetaObservation.IS_ENABLED:
             metaobs = []
@@ -287,6 +291,11 @@ class PoseImitationEnv(HumanoidEnv):
                 achieved_goal=np.array(goaldist),
                 desired_goal=self.ep_reward_threshold,
             )
+
+        if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
+            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
+            desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
+            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
 
