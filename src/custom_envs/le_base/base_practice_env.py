@@ -69,6 +69,10 @@ class BasePracticeEnv(BaseMujocoEnv):
 
 
     def step(self, action):
+        # burning health
+        # TODO starting health contigent + terminate at zero?
+        # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53/rl_model_finished
+        # 100k(!!):     so many steps... /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53_restored/rl_model_finished
         reward = -1
 
         self.do_simulation(action, self.frame_skip)
@@ -82,22 +86,12 @@ class BasePracticeEnv(BaseMujocoEnv):
         obs = self._get_obs()
         self.ep_obs_cur = obs
 
-        # ~ grace time?
-        # 20k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/13-05-49/rl_model_finished
-        # 100k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/13-05-49_restored/rl_model_finished
-        # if self.ep_num_steps >= 100 and self.ep_num_steps % 100 == 0:
-        #     # allow nudging every n steps again
-        #     print('reset personal best.')
-        #     self.goaldist_personal_best = np.inf
-
-
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
         
         if obs['achieved_goal'] < self.goaldist_personal_best:
             print('personal record!', obs['achieved_goal'])
             self.goaldist_personal_best = obs['achieved_goal']
             reward = 1
-
 
         if reward:
             if self.ep_first_reward_step < 0:
@@ -106,14 +100,11 @@ class BasePracticeEnv(BaseMujocoEnv):
         terminated = False
         truncated = False
 
-        # practice pre-knowledge
         # space-constraint
         # always manual only? (direction (guidance, experience, coaching))
         # the more, the better?
         # faster learning: decrease search/interaction space (find terminations (=constraints))
         # TODO how to recognize/mitigate destructive terminations? (lead to impossible goals/searches)
-        # TODO autom. practice space bounds: input := min-max. (sampled?), output:= rewards_mean
-        #   (bounds/constrained opt./adapt.: bayes?) (unconstrained opt./adapt.: gradient descent?)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
             practiced_obs = self._normalize(self.extract_practiced_obs(obs['observation']), self.cfg.PracticeSpace.d[0], self.cfg.PracticeSpace.d[1])
             dims_outside, = np.where(np.logical_or(practiced_obs < 0, practiced_obs > 1))
@@ -123,40 +114,6 @@ class BasePracticeEnv(BaseMujocoEnv):
                 # dont neutralize already pos. eps.
                 if not self.ep_rewards_mean and not reward:
                     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
-                
-
-        # possibly viable for envs without significant practice pre-knowledge (eg. no space-constraints)?
-        # time-constraint
-        # 100k, disabled, space:   2 steps, confident, efficient, jumpy /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/15-09-46/rl_model_finished
-        # 200k, disabled, space:   2-3 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/16-01-27/rl_model_finished  
-        # 100k, enabled:    no step, less efficient /home/t14/Documents/tuhh/dsf/Scilab-RL/data/cee5d5e/le-walker2d-v4/14-53-42/rl_model_finished
-        # 200k, enabled:    1-2 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/15-30-10/rl_model_finished
-        # 100k, noSpace:    0.5 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
-        # 100k, noSpace, noNudge:   -1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-35-34/rl_model_finished
-        # 200k, noSpace, nudge:     1 step /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c3315cd/le-walker2d-v4/21-06-14/rl_model_finished
-        # 200k, noSpace, nudge, 2d:     0-0.5 steps /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/22-55-10/rl_model_finished
-        # 200k, noSpace, nudge, 2d, penalty:    1.5 step reliably forward by tumbling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/fea1c75/le-walker2d-v4/23-26-55/rl_model_finished
-        # 200k, space, nudge, 2d, penalty:  3-4 steps confident, reliably forward but collapsing walk /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7d45aa7/le-walker2d-v4/00-10-10/rl_model_finished
-        # if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
-        #     grace_steps = self.cfg.PracticeTime.GRACE_STEPS
-        #     if len(self.ep_goaldists) >= grace_steps:
-        #         is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
-        #         is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
-        #         # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
-        #         if not is_goal_reached and not is_goal_converging:
-        #             print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)                
-        #             terminated = True
-        #             # dont neutralize already pos. eps.
-        #             if not self.ep_rewards_mean and not reward:
-        #                 reward = self.cfg.PracticeTime.REWARD_ON_TERMINATE
-
-        # avoid & seek
-        # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-06-31/rl_model_finished
-
-        # health reduction
-        # 20k   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53/rl_model_finished
-        # 100k(!!):     so many steps... /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bbf27c/le-walker2d-v4/13-41-53_restored/rl_model_finished
-
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
@@ -304,10 +261,6 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_states = []
         self.ep_is_perfect = False
         print('desired_obs', self.desired_obs)
-        # reset nudging every ep.?
-        # 20k /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-42-29/rl_model_finished
-        # 50k: not good, no fall, but no walk /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-walker2d-v4/12-42-29_restored/rl_model_finished
-        # self.goaldist_personal_best = np.inf
         print('goaldist_personal_best', self.goaldist_personal_best)
 
     def _get_idx_for_trajectory_halving(self, strat):
