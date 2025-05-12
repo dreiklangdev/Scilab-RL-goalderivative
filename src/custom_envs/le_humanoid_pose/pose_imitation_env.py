@@ -118,14 +118,15 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_feps_consecutive_neg = 0
         self.tr_total_zero_sum_eps = 0
         self.tr_total_zero_sum_eps_steps = 0
-        self.tr_goaldist_personal_best: float = np.inf
+        self.tr_goaldist_personal_best = np.inf
         self.fep_rewards_sum = -1
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
+        self.ep_goaldist_min: float = np.inf
         # constant threshold
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * 3
-        
+
         self.landmarker_achieved = None
         self.landmarker_desired = None
         self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
@@ -143,6 +144,15 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def step(self, action):
+        # burning health (default)
+        # TODO starting contingent (health) + terminate at zero? (time constraint)
+        # 40k:  correct turning, some standing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59/rl_model_finished
+        # 100k: turns on one foot? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored/rl_model_finished
+        # 140k: worsens, collapses without turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored_restored/rl_model_finished
+        # 180k: still bad, collapes without turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored_restored_restored/rl_model_finished
+        # 260k: 
+        reward = -1
+
         self.do_simulation(action, self.frame_skip)
 
         info = {}
@@ -154,21 +164,17 @@ class PoseImitationEnv(HumanoidEnv):
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
 
-        # nudging every n steps for pos. trainsum? ('seek+')
-        # 20k, 10       slow turn, slow stand /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-pose-imitation-v4/10-50-01/rl_model_finished
-        # 20k, 100      bit better, correct turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-pose-imitation-v4/11-16-59/rl_model_finished
-        if self.ep_num_steps % 100 == 0:
-            print('reset personal best.')
-            self.tr_goaldist_personal_best = np.inf
-
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
+
+        # healing health
+        if obs['achieved_goal'] < self.ep_goaldist_min:
+            print(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
+            self.ep_goaldist_min = obs['achieved_goal']
+            reward = 1
+
         if reward:
             if self.ep_first_reward_step < 0:
                 self.ep_first_reward_step = self.ep_num_steps
-
-        # long duration eps. rewards (standing, vs. neg. trainsum)
-        # if self.ep_num_steps % 10 == 0:
-        #     reward = 1
 
         terminated = False
         truncated = False
@@ -180,23 +186,10 @@ class PoseImitationEnv(HumanoidEnv):
                 # TODO learn default standing-pose first?
                 print('OUTSIDE: FELL DOWN!', height)
                 terminated = True
-                # dont neutralize already pos. eps.
-                if not self.ep_rewards_mean and not reward:
-                    reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
-
-        # time constraint
-        if self.cfg.PracticeTime.IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE:
-            grace_steps = self.cfg.PracticeTime.GRACE_STEPS
-            if len(self.ep_goaldists) >= grace_steps:
-                is_goal_reached = obs['achieved_goal'] < obs['desired_goal']
-                is_goal_converging = self.ep_goaldists[-grace_steps] - self.ep_goaldists[-1] < 0
-                # is_converging = np.median(np.gradient(self.ep_goaldists_nld[:GRACE_STEPS])) < 0
-                if not is_goal_reached and not is_goal_converging:
-                    print('NO GOAL CONVERGENCE AFTER GRACE STEPS!', grace_steps)
-                    terminated = True
-                    # dont neutralize already pos. eps.
-                    if not self.ep_rewards_mean and not reward:
-                        reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                # dont neutralize already pos. eps.?
+                # if not self.ep_rewards_mean and not reward:
+                # if not reward:
+                #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
 
         self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -212,10 +205,6 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     # obs = superobs(phys.) + achieved_obs(vis.) + metaobs
-    # 40k, unnormalized, pen.:    slow, tries standing, no turning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/28af96a/le-pose-imitation-v4/01-22-59/rl_model_finished
-    # 40k!, norm., pen.:   best, turns, resembles strongly, inverted x-axis pose? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3bd7c5c/le-pose-imitation-v4/19-36-59/rl_model_finished 
-    # 100k, norm., pen.:   worsens, converges to same action (dont do anything except bend legs), barely pos. rewards, only neg. rewards ("avoid&no-seek", neg. train-rewardsum) -> "fear" (min. pen. at near zero trainsum) => should: pos. rewards > neg. rewards? (pos. trainsum/-mean)
-    # 40k, norm., duration-reward:  standing, turning, weak resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/785d4a5/le-pose-imitation-v4/10-21-49/rl_model_finished
     def _get_obs(self):
         obs = []
         superobs = super()._get_obs()
@@ -291,7 +280,7 @@ class PoseImitationEnv(HumanoidEnv):
             if len(self.ep_goaldists) > 1:
                 goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
                 metaobs.append(goal_convergence)
-                is_converging = np.sign(self.ep_goaldists[-2] - self.ep_goaldists[-1])
+                is_converging = np.sign(goal_convergence)
                 metaobs.append(is_converging)
             else:
                 metaobs.extend([0,0])
@@ -318,20 +307,9 @@ class PoseImitationEnv(HumanoidEnv):
     def compute_reward(
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
-
         reward = (achieved_goal < desired_goal)
-
-        if achieved_goal.ndim == 0:
-            # single live step (no replay)
-
-            if self.cfg.GoalRewardThreshold.IS_NUDGING:
-                if achieved_goal < self.tr_goaldist_personal_best:
-                    print(f'NEW PERSONAL BEST! {achieved_goal} < {self.tr_goaldist_personal_best}')
-                    self.tr_goaldist_personal_best = achieved_goal
-                    reward = np.bool_(True)
-
         return reward.astype(np.float64)
-    
+
 
     def reset_model(self):
         obs_init = None
@@ -342,6 +320,7 @@ class PoseImitationEnv(HumanoidEnv):
             print('ep_first_reward_step', self.ep_first_reward_step)
             print('ep_goal_desired', self.ep_obs_cur['desired_goal'])
             print('ep_goal_achieved', self.ep_obs_cur['achieved_goal'])
+            print('ep_goaldist_first', self.ep_goaldists[0])
             print('ep_goaldist_min', min(self.ep_goaldists))
             print('ep_goaldist_mean', np.mean(self.ep_goaldists))
             print('ep_goaldist_max', max(self.ep_goaldists))
@@ -356,9 +335,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps > 1:
             if self.cfg.TrajectoryHalving.IS_ENABLED:
-                ep_goaldist_min = min(self.ep_goaldists)
-                if ep_goaldist_min < self.last_ep_goaldist_min:
-                    obs_init = self._reset_half_episode(ep_goaldist_min)
+                if self.ep_goaldist_min < self.last_ep_goaldist_min:
+                    obs_init = self._reset_half_episode()
 
         if not obs_init:
             obs_init = self._reset_full_episode()
@@ -369,30 +347,14 @@ class PoseImitationEnv(HumanoidEnv):
 
     def _reset_full_episode(self):
         obs_init = super().reset_model()
+        self.tr_goaldist_personal_best = min(self.tr_goaldist_personal_best, self.ep_goaldist_min)
         # self.desired_obs = self._get_desired_obs()
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
-
-        # 40k, 1, noPen:    worst, no learning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-36-44/rl_model_finished
-        # 40k, 10, pen, no zero-eps.:   worse, no learning /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-23-38/rl_model_finished
-        # 40k, 10, pen:     not better, collapses fast, trying /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/18-32-28/rl_model_finished
-        # 40k, inf/none, noPen:     bad, but trying /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/17-30-34/rl_model_finished
-        # 40k, 10, noPen:   better, some standing and turning, some straight legs /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f438218/le-pose-imitation-v4/16-10-26/rl_model_finished
-        # 40k, none, pen:   better, some turning, one-legged /home/t500/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/17-37-41/rl_model_finished
-        # 40k, none, pen, less zero-eps.:   good, reliable turning, one-legged, resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/19-57-30/rl_model_finished
-        # 40k, none, pen, min. zero-eps.:   best, reliable turning, hand moves up /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07/rl_model_finished
-        # 100k,                         : falling to knees (more stable position? does not know ground/height (ob dim./sense))  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07_restored/rl_model_finished
-        # 200k,                         : barely pos. rewards anymore, rather tries to sit down (only avoids falling / penalties), no resemblence anymore /home/t14/Documents/tuhh/dsf/Scilab-RL/data/835ce73/le-pose-imitation-v4/20-59-07_restored_restored/rl_model_finished
-        CONSECUTIVE_NEG_FEPS_UNTIL_PERSONAL_RESET = 10
-        if self.tr_goaldist_personal_best < 0: # or self.tr_feps_consecutive_neg >= CONSECUTIVE_NEG_FEPS_UNTIL_PERSONAL_RESET:
-            print('reset personal best.')
-            self.tr_goaldist_personal_best = np.inf
-
-        if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-            self.ep_reward_threshold = (1 - self.ep_rewards_mean) * (obs_init['achieved_goal'])
+        self.ep_goaldist_min = obs_init['achieved_goal']
 
         self.tr_feps_total += 1
         if self.fep_rewards_sum < 0:
@@ -412,7 +374,7 @@ class PoseImitationEnv(HumanoidEnv):
         return obs_init
 
 
-    def _reset_half_episode(self, ep_goaldist_min):
+    def _reset_half_episode(self):
         idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
         print('halving!', idx_halving)
         qpos, qvel = self.ep_states[idx_halving]
@@ -420,7 +382,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.set_state(qpos, qvel)
         self.ep_traj_is_halved = True
         self.last_ep_rewards_mean = self.ep_rewards_mean
-        self.last_ep_goaldist_min = ep_goaldist_min
+        self.last_ep_goaldist_min = self.ep_goaldist_min
 
         obs_init = self._get_obs()
         self._reset()
