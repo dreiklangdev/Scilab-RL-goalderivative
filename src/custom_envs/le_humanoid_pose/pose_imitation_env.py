@@ -8,11 +8,12 @@ from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
 
 import multiprocessing
+from multiprocessing.queues import Empty
 import matplotlib.pyplot as plt
 from matplotlib import image
 from mpl_toolkits.mplot3d import Axes3D
 
-from gymnasium.envs.mujoco.humanoid_v4 import HumanoidEnv
+from gymnasium.envs.mujoco.humanoid_v5 import HumanoidEnv
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -63,7 +64,11 @@ class PoseImitationEnv(HumanoidEnv):
 
     def __init__(self, is_plot=True):
 
-        HumanoidEnv.__init__(self, exclude_current_positions_from_observation=True, width=cfg.General.RENDER_IMAGE_SIZE, height=cfg.General.RENDER_IMAGE_SIZE)
+        HumanoidEnv.__init__(self,
+                             exclude_current_positions_from_observation=True,
+                             width=cfg.General.RENDER_IMAGE_SIZE,
+                             height=cfg.General.RENDER_IMAGE_SIZE,
+                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid_face.xml')
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
         assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
@@ -76,7 +81,7 @@ class PoseImitationEnv(HumanoidEnv):
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = PoseLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/pose_landmarker_lite.task',            
+                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/pose_landmarker_full.task',            
                 # cpu vs gpu
                 # https://forums.developer.nvidia.com/t/how-to-install-opengl-libs-of-nvidia/175409
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
@@ -118,6 +123,7 @@ class PoseImitationEnv(HumanoidEnv):
         )
 
         # once
+        self.init_qpos[6] = -1.4 # face towards camera
         self.tr_feps_total = 0
         self.tr_feps_consecutive_neg = 0
         self.tr_total_zero_sum_eps = 0
@@ -172,7 +178,7 @@ class PoseImitationEnv(HumanoidEnv):
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
         if reward:
             print(f"GOAL(-ZONE) REACHED. {obs['achieved_goal']} < {obs['desired_goal']}")
-            tr_count_goal_reached += 1
+            self.tr_count_goal_reached += 1
 
         # healing health
         if obs['achieved_goal'] < self.ep_goaldist_min:
@@ -247,7 +253,7 @@ class PoseImitationEnv(HumanoidEnv):
         if achieved_pose.pose_world_landmarks:
             # only first detected pose
             for landmark in achieved_pose.pose_world_landmarks[0]:
-                # landmark.y -= superobs[0]
+                landmark.y -= superobs[0]
                 achieved_obs = np.append(achieved_obs, (landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_achieved = achieved_obs
         else:
@@ -255,20 +261,20 @@ class PoseImitationEnv(HumanoidEnv):
             achieved_obs = self.last_detected_obs_achieved
 
         achieved_obs = self._normalize(achieved_obs, -1, 1)
-        
+
         achieved_ob_height = superobs[0]
         achieved_ob_height = self._normalize(achieved_ob_height, 1.0, 2.0)
         achieved_obs = np.append(achieved_obs, achieved_ob_height)
-
+        
         obs.extend(achieved_obs)
 
 
         desired_obs = np.array([])
-
+        
         if desired_pose.pose_world_landmarks:
             # only first detected pose
             for landmark in desired_pose.pose_world_landmarks[0]:
-                # landmark.y -= 1.2
+                landmark.y -= 1.2
                 desired_obs = np.append(desired_obs, (landmark.x, landmark.y, landmark.z))
             self.last_detected_obs_desired = desired_obs
         else:
@@ -281,7 +287,24 @@ class PoseImitationEnv(HumanoidEnv):
         desired_ob_height = self._normalize(desired_ob_height, 1.0, 2.0)
         desired_obs = np.append(desired_obs, desired_ob_height)
 
-        goaldist = np.linalg.norm(achieved_obs - desired_obs, axis=-1)
+
+        # consecutive subgoals
+        # 100k:     turning, not collapsing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c1fc0ff/le-pose-imitation-v4/02-31-56_restored/rl_model_finished
+        weight = np.zeros(desired_obs.shape)
+        for i, desired_ob in enumerate(desired_obs):
+            obdist = np.linalg.norm(achieved_obs[i] - desired_obs[i])
+            # print(obdist)
+            weight[i] = int(obdist < 0.1)
+        # print(weight)
+        # weight = (np.linalg.norm(achieved_obs - desired_obs) < 0.1)
+        # print(weight)
+
+        weight[np.argmax(weight == 0)] = 1
+        # weight[-1] = 1
+        # print('subgoals reached', np.count_nonzero(weight), len(weight))
+
+        goaldiff_weighted = weight * (achieved_obs - desired_obs)  
+        goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
 
         if self.cfg.MetaObservation.IS_ENABLED:
@@ -351,7 +374,9 @@ class PoseImitationEnv(HumanoidEnv):
         if not obs_init:
             obs_init = self._reset_full_episode()
 
-        self.ep_goaldists.append(obs_init['achieved_goal'])
+        # self.ep_goaldists.append(obs_init['achieved_goal']) # idx mismatch between eps list and their states list
+        print('ep_goaldist_init', obs_init['achieved_goal'])
+
         return obs_init
     
 
@@ -376,6 +401,7 @@ class PoseImitationEnv(HumanoidEnv):
         print('tr_feps_consecutive_neg', self.tr_feps_consecutive_neg)
         print('tr_total_zero_sum_eps', self.tr_total_zero_sum_eps)
         print('tr_total_zero_sum_eps_steps', self.tr_total_zero_sum_eps_steps)
+        print('self.tr_count_goal_reached', self.tr_count_goal_reached)
         print('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
         print('fep_rewards_sum', self.fep_rewards_sum)
         self.fep_rewards_sum = 0
@@ -487,8 +513,9 @@ def parallel_plot(queue: multiprocessing.Queue):
     extplot = fig.add_subplot(133, projection="3d")
 
     while True:
+        # while not queue.empty(): # get only latest
         achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
-        
+    
         plot_desired.set_data(desired_img)
         plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
 

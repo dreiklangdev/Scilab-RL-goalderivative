@@ -9,7 +9,7 @@ from utils.animation_util import LiveAnimationPlot
 from gymnasium.envs.mujoco import MujocoEnv
 from moviepy.editor import vfx
 
-from gymnasium.wrappers.monitoring import video_recorder
+# from gymnasium.wrappers.monitoring import video_recorder
 from moviepy.editor import VideoFileClip, clips_array
 from gymnasium import spaces
 from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE as METAWORLD_ENVS
@@ -242,11 +242,11 @@ class RecordVideo(gym.Wrapper):
 
         self.base_path = os.path.join(self.video_folder, video_name)
         # self.env.unwrapped.render_mode = 'rgb_array'
-        self.video_recorder = video_recorder.VideoRecorder(
-            env=self.env,
-            base_path=self.base_path,
-            metadata={"step_id": self.step_id, "episode_id": self.episode_id},
-        )
+        # self.video_recorder = video_recorder.VideoRecorder(
+        #     env=self.env,
+        #     base_path=self.base_path,
+        #     metadata={"step_id": self.step_id, "episode_id": self.episode_id},
+        # )
 
         # self.video_recorder.capture_frame()
         # if self.record_metrics:
