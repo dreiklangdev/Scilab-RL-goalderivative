@@ -288,22 +288,19 @@ class PoseImitationEnv(HumanoidEnv):
         desired_obs = np.append(desired_obs, desired_ob_height)
 
 
+        goaldiff_weighted = 1 * (achieved_obs - desired_obs)
         # consecutive subgoals
         # 100k:     turning, not collapsing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c1fc0ff/le-pose-imitation-v4/02-31-56_restored/rl_model_finished
-        weight = np.zeros(desired_obs.shape)
-        for i, desired_ob in enumerate(desired_obs):
-            obdist = np.linalg.norm(achieved_obs[i] - desired_obs[i])
-            # print(obdist)
-            weight[i] = int(obdist < 0.1)
-        # print(weight)
-        # weight = (np.linalg.norm(achieved_obs - desired_obs) < 0.1)
-        # print(weight)
+        # 100k, frontal face:    slow, no progress? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/13-50-25_restored/rl_model_finished
+        # 200k:     still no noticeable progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/13-50-25_restored_restored/rl_model_finished
+        # 100k, frontal face, non-consec.:   worsens again, no improvement, immediate collase /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/15-03-05/rl_model_finished
+        # weight = np.zeros(desired_obs.shape)
+        # for i, desired_ob in enumerate(desired_obs):
+        #     obdist = np.linalg.norm(achieved_obs[i] - desired_obs[i])
+        #     weight[i] = int(obdist < 0.1)
+        # weight[np.argmax(weight == 0)] = 1
+        # goaldiff_weighted = weight * (achieved_obs - desired_obs)
 
-        weight[np.argmax(weight == 0)] = 1
-        # weight[-1] = 1
-        # print('subgoals reached', np.count_nonzero(weight), len(weight))
-
-        goaldiff_weighted = weight * (achieved_obs - desired_obs)  
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
 
