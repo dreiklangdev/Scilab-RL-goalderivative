@@ -105,10 +105,13 @@ class PoseImitationEnv(HumanoidEnv):
 
         obspace_total_dims = 0
         obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION + 1 # achieved
+        obspace_total_dims += 2 # falling, height
+        obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION + 4 # desired etc.
+            obspace_total_dims += 2 # falling, height
+            obspace_total_dims += 3 # goaldist, goal_convergence, is_converging
+            obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -128,20 +131,21 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_feps_consecutive_neg = 0
         self.tr_total_zero_sum_eps = 0
         self.tr_total_zero_sum_eps_steps = 0
-        self.tr_count_goal_reached = 0
         self.tr_goaldist_personal_best = np.inf
         self.fep_rewards_sum = -1
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
         self.ep_goaldist_min: float = np.inf
+        self.ep_goaldim_current = -1
+        self.ep_goalweight = -1
         # constant threshold
-        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * 3
+        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
         self.landmarker_achieved = None
         self.landmarker_desired = None
-        self.last_detected_obs_achieved = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
-        self.last_detected_obs_desired = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+        self.last_ob_pose_achieved = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+        self.last_ob_pose_desired = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -155,15 +159,6 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def step(self, action):
-        # idle health (default)
-        # TODO starting contingent (health) + terminate at zero? (time constraint)
-        # 40k:  correct turning, some standing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59/rl_model_finished
-        # 100k: turns on one foot? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored/rl_model_finished
-        # 140k: worsens, collapses without turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored_restored/rl_model_finished
-        # 180k: still bad, collapes without turn /home/t14/Documents/tuhh/dsf/Scilab-RL/data/e1203ba/le-pose-imitation-v4/14-12-59_restored_restored_restored/rl_model_finished
-        # 260k: 
-        reward = 0
-
         self.do_simulation(action, self.frame_skip)
 
         info = {}
@@ -177,10 +172,9 @@ class PoseImitationEnv(HumanoidEnv):
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
         if reward:
-            print(f"GOAL(-ZONE) REACHED. {obs['achieved_goal']} < {obs['desired_goal']}")
-            self.tr_count_goal_reached += 1
+            self.ep_num_steps_goal_zone += 1
 
-        # healing health
+        # NUDGING (healing health)
         if obs['achieved_goal'] < self.ep_goaldist_min:
             print(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
             self.ep_goaldist_min = obs['achieved_goal']
@@ -250,57 +244,75 @@ class PoseImitationEnv(HumanoidEnv):
         # get normalized goal distance
         achieved_obs = np.array([])
 
-        if achieved_pose.pose_world_landmarks:
-            # only first detected pose
-            for landmark in achieved_pose.pose_world_landmarks[0]:
-                landmark.y -= superobs[0]
-                achieved_obs = np.append(achieved_obs, (landmark.x, landmark.y, landmark.z))
-            self.last_detected_obs_achieved = achieved_obs
-        else:
-            # no detected achieved pose. fallback...
-            achieved_obs = self.last_detected_obs_achieved
+        achieved_ob_fall = self._normalize(superobs[24], 0, -2.5)
+        achieved_obs = np.append(achieved_obs, achieved_ob_fall)
 
-        achieved_obs = self._normalize(achieved_obs, -1, 1)
+        # achieved_ob_steps = self._normalize(self.ep_num_steps % 100, 0, 100)
+        # achieved_obs = np.append(achieved_obs, achieved_ob_steps)
 
         achieved_ob_height = superobs[0]
         achieved_ob_height = self._normalize(achieved_ob_height, 1.0, 2.0)
         achieved_obs = np.append(achieved_obs, achieved_ob_height)
-        
+
+        achieved_ob_pose = []
+        if achieved_pose.pose_world_landmarks:
+            # only first detected pose
+            achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
+            achieved_ob_pose = self._normalize(np.array(achieved_ob_pose), -1, 1)
+            self.last_ob_pose_achieved = achieved_ob_pose
+        else:
+            # no detected achieved pose. fallback...
+            achieved_ob_pose = self.last_ob_pose_achieved
+        achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+
         obs.extend(achieved_obs)
 
 
         desired_obs = np.array([])
-        
-        if desired_pose.pose_world_landmarks:
-            # only first detected pose
-            for landmark in desired_pose.pose_world_landmarks[0]:
-                landmark.y -= 1.2
-                desired_obs = np.append(desired_obs, (landmark.x, landmark.y, landmark.z))
-            self.last_detected_obs_desired = desired_obs
-        else:
-            # no detected desired pose. fallback...
-            desired_obs = self.last_detected_obs_desired
 
-        desired_obs = self._normalize(desired_obs, -1, 1)
+        desired_ob_fall = 0
+        desired_obs = np.append(desired_obs, desired_ob_fall)
+
+        # desired_ob_steps = self._normalize(100, 0, 100)
+        # desired_obs = np.append(desired_obs, desired_ob_steps)
 
         desired_ob_height = 1.3
         desired_ob_height = self._normalize(desired_ob_height, 1.0, 2.0)
         desired_obs = np.append(desired_obs, desired_ob_height)
 
+        desired_ob_pose = []
+        if desired_pose.pose_world_landmarks:
+            # only first detected pose
+            desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
+            desired_ob_pose = self._normalize(np.array(desired_ob_pose), -1, 1)
+            self.last_ob_pose_desired = desired_ob_pose
+        else:
+            # no detected desired pose. fallback...
+            desired_ob_pose = self.last_ob_pose_desired
+        desired_obs = np.append(desired_obs, desired_ob_pose)
 
-        goaldiff_weighted = 1 * (achieved_obs - desired_obs)
-        # consecutive subgoals
+
+        # goaldiff_weighted = 1 * (achieved_obs - desired_obs)
+        # consecutive subgoals per step
         # 100k:     turning, not collapsing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c1fc0ff/le-pose-imitation-v4/02-31-56_restored/rl_model_finished
         # 100k, frontal face:    slow, no progress? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/13-50-25_restored/rl_model_finished
         # 200k:     still no noticeable progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/13-50-25_restored_restored/rl_model_finished
         # 100k, frontal face, non-consec.:   worsens again, no improvement, immediate collase /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/15-03-05/rl_model_finished
-        # weight = np.zeros(desired_obs.shape)
-        # for i, desired_ob in enumerate(desired_obs):
-        #     obdist = np.linalg.norm(achieved_obs[i] - desired_obs[i])
-        #     weight[i] = int(obdist < 0.1)
-        # weight[np.argmax(weight == 0)] = 1
-        # goaldiff_weighted = weight * (achieved_obs - desired_obs)
 
+        # conseq. subdims. per training
+        # 100k, 1 dim. (fall):  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/21-23-11_restored/rl_model_finished
+
+        # conseq. one-timed subdim. ("comb-through" training)
+        # very different goaldists per ep.!
+        # 40k, th0.1, skips:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04/rl_model_finished
+        # 100k, th0.1, skips:     tumbles /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04_restored/rl_model_finished
+        # 40k, th0.05, skips:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10/rl_model_finished
+        # 100k, th0.05, skips:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored/rl_model_finished
+        # 200k, th0.05, skips:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
+        # 400k, th0.05, skips:  left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
+        self.ep_goalweight = np.zeros(desired_obs.shape)
+        self.ep_goalweight[self.ep_goaldim_current] = 1
+        goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
 
@@ -328,7 +340,7 @@ class PoseImitationEnv(HumanoidEnv):
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
-            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_ob_pose, desired_ob_pose))
 
         return dictobs
 
@@ -347,13 +359,15 @@ class PoseImitationEnv(HumanoidEnv):
         if self.ep_num_steps > 0:
             # episode report
             print('ep_num_steps', self.ep_num_steps)
+            print('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goal_desired', self.ep_obs_cur['desired_goal'])
-            print('ep_goal_achieved', self.ep_obs_cur['achieved_goal'])
+            print('ep_goaldim_current', self.ep_goaldim_current)
+            print('ep_goaldist_desired', self.ep_obs_cur['desired_goal'])
             print('ep_goaldist_first', self.ep_goaldists[0])
             print('ep_goaldist_min', min(self.ep_goaldists))
             print('ep_goaldist_mean', np.mean(self.ep_goaldists))
             print('ep_goaldist_max', max(self.ep_goaldists))
+            print('ep_goaldist_last', self.ep_obs_cur['achieved_goal'])
             print('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             print('ep_traj_is_halved', self.ep_traj_is_halved)
             print('ep_rewards_mean', self.ep_rewards_mean)
@@ -371,8 +385,8 @@ class PoseImitationEnv(HumanoidEnv):
         if not obs_init:
             obs_init = self._reset_full_episode()
 
-        # self.ep_goaldists.append(obs_init['achieved_goal']) # idx mismatch between eps list and their states list
-        print('ep_goaldist_init', obs_init['achieved_goal'])
+        self.ep_goaldists.append(obs_init['achieved_goal'])
+        self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
 
         return obs_init
     
@@ -384,6 +398,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
+        self.ep_goaldim_current = (self.ep_goaldim_current + 1) % len(self.ep_goalweight)
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
         self.ep_goaldist_min = obs_init['achieved_goal']
@@ -398,7 +413,7 @@ class PoseImitationEnv(HumanoidEnv):
         print('tr_feps_consecutive_neg', self.tr_feps_consecutive_neg)
         print('tr_total_zero_sum_eps', self.tr_total_zero_sum_eps)
         print('tr_total_zero_sum_eps_steps', self.tr_total_zero_sum_eps_steps)
-        print('self.tr_count_goal_reached', self.tr_count_goal_reached)
+        print('tr_count_goal_reached', self.ep_num_steps_goal_zone)
         print('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
         print('fep_rewards_sum', self.fep_rewards_sum)
         self.fep_rewards_sum = 0
@@ -430,22 +445,24 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldists = []
         self.ep_states = []
         self.ep_is_perfect = False
+        self.ep_num_steps_goal_zone = 0
         # print('desired_obs', self.desired_obs)
 
         # landmarker reset: better/correct detection of start pose
         # TODO wait for efficient reset() implementation in API
         # workaround by re-create
-        if self.landmarker_achieved:
-            self.landmarker_achieved.close()
-            del self.landmarker_achieved
-            self.landmarker_achieved = None
-        if self.landmarker_desired:
-            self.landmarker_desired.close()
-            del self.landmarker_desired
-            self.landmarker_desired = None
+        # if self.landmarker_achieved:
+        #     self.landmarker_achieved.close()
+        #     del self.landmarker_achieved
+        #     self.landmarker_achieved = None
+        # if self.landmarker_desired:
+        #     self.landmarker_desired.close()
+        #     del self.landmarker_desired
+        #     self.landmarker_desired = None
 
-        self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
-        self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
+        if not self.landmarker_achieved:
+            self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
+            self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
 
     def _get_idx_for_trajectory_halving(self, strat):
@@ -511,7 +528,7 @@ def parallel_plot(queue: multiprocessing.Queue):
 
     while True:
         # while not queue.empty(): # get only latest
-        achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
+        achieved_img, desired_img, achieved_ob_pose, desired_ob_pose = queue.get()
     
         plot_desired.set_data(desired_img)
         plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
@@ -522,25 +539,25 @@ def parallel_plot(queue: multiprocessing.Queue):
         # plot topology connections
         # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
         extplot.clear()
-        extplot.set_xlim3d(-1, 1)
-        extplot.set_ylim3d(-1, 1)
-        extplot.set_zlim3d(1, -1) # flip z-axis 
+        extplot.set_xlim3d(0, 1)
+        extplot.set_ylim3d(0, 1)
+        extplot.set_zlim3d(1, 0) # flip z-axis
 
-        if achieved_pose.pose_world_landmarks:
+        if len(achieved_ob_pose):
             for group in LANDMARK_GROUPS:
-                plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
-                plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
-                plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
+                plotX = [achieved_ob_pose[i][0] for i in group]
+                plotY = [achieved_ob_pose[i][1] for i in group]
+                plotZ = [achieved_ob_pose[i][2] for i in group]
                 if 11 in group: # right side
                     extplot.plot(plotX, plotZ, plotY, color='red')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='red', linestyle = 'dashed')
 
-        if desired_pose.pose_world_landmarks:
+        if len(desired_ob_pose):
             for group in LANDMARK_GROUPS:
-                plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
-                plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
-                plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
+                plotX = [desired_ob_pose[i][0] for i in group]
+                plotY = [desired_ob_pose[i][1] for i in group]
+                plotZ = [desired_ob_pose[i][2] for i in group]
                 if 11 in group: # right side
                     extplot.plot(plotX, plotZ, plotY, color='green')
                 else:

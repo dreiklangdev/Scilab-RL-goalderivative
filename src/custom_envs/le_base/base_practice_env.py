@@ -1,12 +1,12 @@
 
 import numpy as np
 from gymnasium import spaces
-from gymnasium.envs.mujoco.mujoco_env import BaseMujocoEnv
+from gymnasium.envs.mujoco.mujoco_env import MujocoEnv
 from ..le_base import base_practice_cfg
 
 # TODO disable traj-halving, th-halving etc. in eval env
 
-class BasePracticeEnv(BaseMujocoEnv):
+class BasePracticeEnv(MujocoEnv):
 
 
     def __init__(self, cfg: base_practice_cfg):
@@ -264,7 +264,7 @@ class BasePracticeEnv(BaseMujocoEnv):
         self.ep_obs_cur = None
         self.ep_goaldists = []
         self.ep_states = []
-        self.ep_is_perfect = False
+        self.ep_health = 100
         print('desired_obs', self.desired_obs)
         print('goaldist_personal_best', self.goaldist_personal_best)
 
