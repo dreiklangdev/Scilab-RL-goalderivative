@@ -20,8 +20,8 @@
         <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="60 60" texture="texplane"/>
         <material name="geom" texture="texgeom" texuniform="true"/>
 
-        <texture name="clock" file="texture.png" type="2d"/>
-        <material name="clock" texture="clock" specular="1" shininess="1"/>
+        <texture name="face" fileright="face_zoomed.png" type="cube"/>
+        <material name="face" texture="face" specular="1" shininess="1"/>
     </asset>
     <worldbody>
         <light cutoff="100" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1"/>
@@ -33,7 +33,7 @@
             <geom fromto="0 -.07 0 0 .07 0" name="torso1" size="0.07" type="capsule"/>
 
 
-            <geom name="head" pos="0 0 .19" size=".09" type="sphere" user="258" material="MatPlane"/>
+            <geom name="head" pos="0 0 .19" size=".15" xyaxes="1 0 0 0 0 1" type="sphere" user="258" material="face"/>
 
 
             <geom fromto="-.01 -.06 -.12 -.01 .06 -.12" name="uwaist" size="0.06" type="capsule"/>
