@@ -302,14 +302,15 @@ class PoseImitationEnv(HumanoidEnv):
         # conseq. subdims. per training
         # 100k, 1 dim. (fall):  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/21-23-11_restored/rl_model_finished
 
-        # conseq. one-timed subdim. ("comb-through" training)
+        # conseq. one-timed subdim. ("comb-through" training), bigger stepskips
         # very different goaldists per ep.!
-        # 40k, th0.1, skips:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04/rl_model_finished
-        # 100k, th0.1, skips:     tumbles /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04_restored/rl_model_finished
-        # 40k, th0.05, skips:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10/rl_model_finished
-        # 100k, th0.05, skips:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored/rl_model_finished
-        # 200k, th0.05, skips:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
-        # 400k, th0.05, skips:  left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
+        # 40k, th0.1:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04/rl_model_finished
+        # 100k, th0.1:     tumbles /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04_restored/rl_model_finished
+        # 40k, th0.05:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10/rl_model_finished
+        # 100k, th0.05:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored/rl_model_finished
+        # 200k, th0.05:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
+        # 400k, th0.05:  left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
+        # 2.4M(!!) th0.05:  improvement! attempting resemblence, still too much falling? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored_restored/rl_model_finished
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[self.ep_goaldim_current] = 1
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
