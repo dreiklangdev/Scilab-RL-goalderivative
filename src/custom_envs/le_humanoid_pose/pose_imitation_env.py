@@ -137,7 +137,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
         self.ep_goaldist_min: float = np.inf
-        self.ep_goaldim_current = -1
+        self.ep_goaldim_active = -1
         self.ep_goalweight = -1
         # constant threshold
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
@@ -292,27 +292,28 @@ class PoseImitationEnv(HumanoidEnv):
         desired_obs = np.append(desired_obs, desired_ob_pose)
 
 
-        # goaldiff_weighted = 1 * (achieved_obs - desired_obs)
-        # consecutive subgoals per step
-        # 100k:     turning, not collapsing /home/t14/Documents/tuhh/dsf/Scilab-RL/data/c1fc0ff/le-pose-imitation-v4/02-31-56_restored/rl_model_finished
-        # 100k, frontal face:    slow, no progress? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/13-50-25_restored/rl_model_finished
-        # 200k:     still no noticeable progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/13-50-25_restored_restored/rl_model_finished
-        # 100k, frontal face, non-consec.:   worsens again, no improvement, immediate collase /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b479fa7/le-pose-imitation-v4/15-03-05/rl_model_finished
-
-        # conseq. subdims. per training
-        # 100k, 1 dim. (fall):  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/21-23-11_restored/rl_model_finished
-
-        # conseq. one-timed subdim. ("comb-through" training), bigger stepskips
+        # conseq. one-timed single subdim. ("comb-through" training), bigger stepskips
         # very different goaldists per ep.!
         # 40k, th0.1:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04/rl_model_finished
         # 100k, th0.1:     tumbles /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04_restored/rl_model_finished
-        # 40k, th0.05:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10/rl_model_finished
-        # 100k, th0.05:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored/rl_model_finished
-        # 200k, th0.05:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
-        # 400k, th0.05:  left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
-        # 2.4M(!!) th0.05:  improvement! attempting resemblence, still too much falling? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored_restored/rl_model_finished
+        # 40k, th0.05:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10/rl_model_finished
+        # 100k:         /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored/rl_model_finished
+        # 200k:         /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
+        # 400k:         left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
+        # 2.4M(!!):     improvement! attempting resemblence, still too much falling? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored_restored/rl_model_finished
+        # 40k, base-dims, sac:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34/rl_model_finished
+        # 100k               :  attempting, resemblence, stabilising? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored/rl_model_finished
+        # 200k               :  stronger attempts, both arms wildly moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored/rl_model_finished
+        # 1M(!!!)            :  stable, closest resemblence without falling (no feet!) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored/rl_model_finished
+        # 40k, base-dims, ppo:  more exploration, more dynamic, less careful, more curious/eager to learn?  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/19-59-06/rl_model_finished
+        # 40k                :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16/rl_model_finished  
+        # 100k               :  more eager, resemblence, still unstable /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored/rl_model_finished
+        # 200k               :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored/rl_model_finished
+
         self.ep_goalweight = np.zeros(desired_obs.shape)
-        self.ep_goalweight[self.ep_goaldim_current] = 1
+        self.ep_goalweight[0] = 1 # base dim
+        self.ep_goalweight[1] = 1 # base dim
+        self.ep_goalweight[self.ep_goaldim_active] = 1
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
@@ -362,7 +363,7 @@ class PoseImitationEnv(HumanoidEnv):
             print('ep_num_steps', self.ep_num_steps)
             print('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goaldim_current', self.ep_goaldim_current)
+            print('ep_goaldim_active', self.ep_goaldim_active)
             print('ep_goaldist_desired', self.ep_obs_cur['desired_goal'])
             print('ep_goaldist_first', self.ep_goaldists[0])
             print('ep_goaldist_min', min(self.ep_goaldists))
@@ -399,7 +400,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
-        self.ep_goaldim_current = (self.ep_goaldim_current + 1) % len(self.ep_goalweight)
+        self.ep_goaldim_active = (self.ep_goaldim_active + 1) % len(self.ep_goalweight)
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
         self.ep_goaldist_min = obs_init['achieved_goal']
