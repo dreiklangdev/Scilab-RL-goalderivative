@@ -43,6 +43,7 @@ LANDMARK_GROUPS = [
 # https://stable-baselines3.readthedocs.io/en/master/modules/her.html
 # https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/benchmark.md
 # https://huggingface.co/sb3
+# https://thegradient.pub/learning-from-humans-what-is-inverse-reinforcement-learning/
 
 # https://chuoling.github.io/mediapipe/solutions/pose.html
 # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
@@ -323,7 +324,8 @@ class PoseImitationEnv(HumanoidEnv):
         # 100k                      :   attempting, resemblence, stabilising? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored/rl_model_finished
         # 200k                      :   stronger attempts, both arms wildly moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored/rl_model_finished
         # 1M(!!!)                   :   truncation, stable, closest resemblence without falling (no feet!) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored/rl_model_finished
-        # 1.2M                      :   WIP   
+        # 1.2M, pose2               :   collapsing again (legs?), attempting arm resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored/rl_model_finished
+        # 2M                        :   slow, but noticeable progress (difficult humanoid?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored_restored/rl_model_finished
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[0] = 1 # base dim
         self.ep_goalweight[1] = 1 # base dim
