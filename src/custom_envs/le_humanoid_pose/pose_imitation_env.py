@@ -39,6 +39,11 @@ LANDMARK_GROUPS = [
     [23, 24],                      # waist
 ]
 
+# https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html
+# https://stable-baselines3.readthedocs.io/en/master/modules/her.html
+# https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/benchmark.md
+# https://huggingface.co/sb3
+
 # https://chuoling.github.io/mediapipe/solutions/pose.html
 # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
 # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
@@ -76,6 +81,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.cfg = cfg
         self.is_plot = is_plot
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
@@ -190,7 +196,7 @@ class PoseImitationEnv(HumanoidEnv):
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
             height = obs['observation'][0]
-            if height < 1.0 or height > 2.0:
+            if height < 0.5 or height > 2.0:
                 # TODO learn default standing-pose first?
                 print('OUTSIDE: FELL DOWN!', height)
                 terminated = True
@@ -301,15 +307,23 @@ class PoseImitationEnv(HumanoidEnv):
         # 200k:         /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
         # 400k:         left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
         # 2.4M(!!):     improvement! attempting resemblence, still too much falling? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored_restored/rl_model_finished
-        # 40k, base-dims, sac:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34/rl_model_finished
-        # 100k               :  attempting, resemblence, stabilising? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored/rl_model_finished
-        # 200k               :  stronger attempts, both arms wildly moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored/rl_model_finished
-        # 1M(!!!)            :  stable, closest resemblence without falling (no feet!) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored/rl_model_finished
         # 40k, base-dims, ppo:  more exploration, more dynamic, less careful, more curious/eager to learn?  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/19-59-06/rl_model_finished
         # 40k                :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16/rl_model_finished  
         # 100k               :  more eager, resemblence, still unstable /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored/rl_model_finished
         # 200k               :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored/rl_model_finished
+        # 1M                 :  no apparent progress/convergence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored_restored/rl_model_finished
+        # 2M                 :  still no progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored_restored_restored/rl_model_finished
+        # 100k, cleanParams  :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/23-43-30/rl_model_finished
+        # 1M                 :  still no progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/23-43-30_restored/rl_model_finished
+        # 200k, zooParams    :  no real progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/01-14-45/rl_model_finished
+        # 1M                 :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/01-14-45_restored/rl_model_finished
+        # maybe even more? (~5h sac)
 
+        # 40k, base-dims, (sbx.)sac :   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34/rl_model_finished
+        # 100k                      :   attempting, resemblence, stabilising? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored/rl_model_finished
+        # 200k                      :   stronger attempts, both arms wildly moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored/rl_model_finished
+        # 1M(!!!)                   :   truncation, stable, closest resemblence without falling (no feet!) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored/rl_model_finished
+        # 1.2M                      :   WIP   
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[0] = 1 # base dim
         self.ep_goalweight[1] = 1 # base dim

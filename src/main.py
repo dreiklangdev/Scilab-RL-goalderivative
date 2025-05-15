@@ -95,14 +95,20 @@ def get_env_instance(cfg, logger):
     return train_env, eval_env
 
 
-def get_algo_instance(cfg, logger, env):
+def  get_algo_instance(cfg, logger, env):
     algo_name = cfg['algorithm'].name
     alg_kwargs = OmegaConf.to_container(cfg.algorithm)
     del alg_kwargs['name']  # remove name as we pass all arguments to the model constructor
     try:
-        baseline_class = getattr(importlib.import_module('stable_baselines3.' + algo_name), algo_name.upper())
+        # https://github.com/araffin/sbx
+        # https://github.com/jax-ml/jax
+        # no MultiInputPolicy https://github.com/araffin/sbx/issues/48
+        baseline_class = getattr(importlib.import_module(algo_name), algo_name.upper())
     except ModuleNotFoundError:
-        baseline_class = getattr(importlib.import_module('custom_algorithms.' + algo_name), algo_name.upper())
+        try:
+            baseline_class = getattr(importlib.import_module('stable_baselines3.' + algo_name), algo_name.upper())
+        except ModuleNotFoundError:
+            baseline_class = getattr(importlib.import_module('custom_algorithms.' + algo_name), algo_name.upper())
     if 'replay_buffer_class' in alg_kwargs and alg_kwargs['replay_buffer_class'] == 'HerReplayBuffer':
         alg_kwargs['replay_buffer_class'] = HerReplayBuffer
         alg_kwargs = avoid_start_learn_before_first_episode_finishes(alg_kwargs, env)
