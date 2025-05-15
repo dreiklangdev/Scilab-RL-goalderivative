@@ -17,7 +17,7 @@ class General(base.General):
 
     OBSERVATION_DIMS_VISUAL_DETECTION = len(LANDMARK_GROUPS) * len(LANDMARK_GROUPS[0]) * 3
     RENDER_IMAGE_SIZE = 700
-    FRAMESKIP_STEP = np.random(100) # 5
+    FRAMESKIP_STEP = 5 # np.rand(100) # 5
     # vs. "lost in details"
     STEPSKIP_DETECT = 10
     STEPSKIP_PLOT = STEPSKIP_DETECT # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k

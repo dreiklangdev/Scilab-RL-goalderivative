@@ -349,8 +349,9 @@ class PoseImitationEnv(HumanoidEnv):
         # only base-dims (stabilize, vs termination), pen
         # 40k, pen      /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-28-52/rl_model_finished
         # 100k          /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-28-52_restored/rl_model_finished
-        # 100k(!), no pen   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08/rl_model_finished
-        # 300k              /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored/rl_model_finished
+        # 100k(!), no pen:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08/rl_model_finished
+        # 300k           :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored/rl_model_finished
+        # 1M             :  slightly walking to not fall, truncation /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored_restored/rl_model_finished
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
