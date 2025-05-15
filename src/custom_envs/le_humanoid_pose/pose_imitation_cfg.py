@@ -1,6 +1,5 @@
 
 from ..le_base import base_practice_cfg as base
-import numpy as np
 
 
 class General(base.General):
@@ -16,11 +15,13 @@ class General(base.General):
     ]
 
     OBSERVATION_DIMS_VISUAL_DETECTION = len(LANDMARK_GROUPS) * len(LANDMARK_GROUPS[0]) * 3
-    RENDER_IMAGE_SIZE = 700
-    FRAMESKIP_STEP = 5 # np.rand(100) # 5
+    RENDER_IMAGE_SIZE = 450
+    FRAMESKIP_STEP = 5
     # vs. "lost in details"
     STEPSKIP_DETECT = 10
     STEPSKIP_PLOT = STEPSKIP_DETECT # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
+
+    MAX_LIVES = 100
 
 
 # vs. single goal proficiency

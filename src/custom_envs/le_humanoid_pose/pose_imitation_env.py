@@ -6,6 +6,7 @@ import git
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
+import random
 
 import multiprocessing
 from multiprocessing.queues import Empty
@@ -150,8 +151,10 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
         self.ep_goaldist_min: float = np.inf
+        self.ep_goaldist_max: float = -np.inf
         self.ep_goaldim_active = -1
         self.ep_goalweight = -1
+        self.ep_lives = -1
         # constant threshold
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
@@ -172,6 +175,7 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def step(self, action):
+        # self.frame_skip = random.randint(0, 100)
         self.do_simulation(action, self.frame_skip)
 
         info = {}
@@ -191,7 +195,15 @@ class PoseImitationEnv(HumanoidEnv):
         if obs['achieved_goal'] < self.ep_goaldist_min:
             print(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
             self.ep_goaldist_min = obs['achieved_goal']
+            self.ep_lives = cfg.General.MAX_LIVES
             reward = 1
+        # DENUDGING
+        # 40k:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22/rl_model_finished
+        # 100k: /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored/rl_model_finished
+        elif obs['achieved_goal'] > self.ep_goaldist_max:
+            print(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_min}")
+            self.ep_goaldist_max = obs['achieved_goal']
+            reward = -1
 
         if reward:
             if self.ep_first_reward_step < 0:
@@ -210,6 +222,7 @@ class PoseImitationEnv(HumanoidEnv):
                 # dont neutralize already pos. eps.?
                 # if not self.ep_rewards_mean and not reward:
                 reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                self.ep_lives -= 1
 
         self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -398,6 +411,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps > 0:
             # episode report
+            print('ep_lives', self.ep_lives)
             print('ep_num_steps', self.ep_num_steps)
             print('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
             print('ep_first_reward_step', self.ep_first_reward_step)
@@ -419,12 +433,23 @@ class PoseImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps > 1:
             if self.cfg.TrajectoryHalving.IS_ENABLED:
-                if self.ep_goaldist_min < self.last_ep_goaldist_min:
+                # if self.ep_goaldist_min < self.last_ep_goaldist_min:
+                if self.ep_lives > 0:
+                    print('LAST SAVEPOINT')
                     obs_init = self._reset_half_episode()
 
         if not obs_init:
+            print('NEW GAME')
             obs_init = self._reset_full_episode()
 
+        # WIP half vs. full
+        self.ep_goaldist_min = obs_init['achieved_goal']
+        self.ep_goaldist_max = obs_init['achieved_goal']
+
+
+        if self.ep_lives <= 0:
+            self.ep_lives = cfg.General.MAX_LIVES
+        self._reset()
         self.ep_goaldists.append(obs_init['achieved_goal'])
         self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
 
@@ -441,7 +466,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldim_active = (self.ep_goaldim_active + 1) % len(self.ep_goalweight)
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
-        self.ep_goaldist_min = obs_init['achieved_goal']
+        # self.ep_goaldist_min = obs_init['achieved_goal']
+        # self.ep_goaldist_max = obs_init['achieved_goal']
 
         self.tr_feps_total += 1
         if self.fep_rewards_sum < 0:
@@ -457,8 +483,6 @@ class PoseImitationEnv(HumanoidEnv):
         print('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
         print('fep_rewards_sum', self.fep_rewards_sum)
         self.fep_rewards_sum = 0
-
-        self._reset()
         return obs_init
 
 
@@ -473,7 +497,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = self.ep_goaldist_min
 
         obs_init = self._get_obs()
-        self._reset()
         return obs_init
 
 
