@@ -16,12 +16,16 @@ policy: 'MultiInputPolicy' # MlpPolicy
 # normalize: True
 buffer_size: 1000000
 ent_coef: 'auto'
-batch_size: 256
+batch_size: 1024
 gamma: 0.95
 learning_rate: 0.001
 learning_starts: 1000
-# replay_buffer_kwargs: "dict(
-#   goal_selection_strategy='future',
-#   n_sampled_goal=4
-# )"
 # policy_kwargs: "dict(net_arch=[64, 64])"
+# policy_kwargs:
+#   net_arch:
+#     - 256
+#     - 256
+#     - 256
+replay_buffer_kwargs:
+  n_sampled_goal: 4
+  goal_selection_strategy: 'future'

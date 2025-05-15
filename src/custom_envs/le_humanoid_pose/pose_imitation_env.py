@@ -28,22 +28,15 @@ PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
 PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tree_dir
 
-LANDMARK_GROUPS = [
-    [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
-    [10, 9],                       # mouth
-    [11, 13, 15, 17, 19, 15, 21],  # right arm
-    [11, 23, 25, 27, 29, 31, 27],  # right body side
-    [12, 14, 16, 18, 20, 16, 22],  # left arm
-    [12, 24, 26, 28, 30, 32, 28],  # left body side
-    [11, 12],                      # shoulder
-    [23, 24],                      # waist
-]
-
 # https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html
 # https://stable-baselines3.readthedocs.io/en/master/modules/her.html
 # https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/benchmark.md
 # https://huggingface.co/sb3
 # https://thegradient.pub/learning-from-humans-what-is-inverse-reinforcement-learning/
+# https://github.com/yosider/ml-agents-1/blob/master/docs/Training-SAC.md
+# https://old.reddit.com/r/MachineLearning/comments/xfmqny/d_what_happened_to_reinforcement_learning/
+# https://paperswithcode.com/
+# https://paperswithcode.com/task/humanoid-control
 
 # https://chuoling.github.io/mediapipe/solutions/pose.html
 # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
@@ -53,13 +46,23 @@ LANDMARK_GROUPS = [
 
 # https://pytorch.org/rl/0.6/reference/generated/knowledge_base/MUJOCO_INSTALLATION.html
 # https://colab.research.google.com/github/deepmind/mujoco/blob/main/python/tutorial.ipynb
+# https://github.com/google-deepmind/mujoco/issues/85
 
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
 # https://github.com/google-ai-edge/mediapipe/issues/5325
-# TODO reduce goal features?
+# https://github.com/google-deepmind/mujoco/issues/85
 # TODO terminate on missing pose detection?
 
+# https://www.reddit.com/r/reinforcementlearning/comments/18v50ai/conventions_to_write_a_custom_vectorized_gym/
+# https://github.com/roboterax/humanoid-gym
+
+# vs. scilab-rl
+# no envpool, no mjx (3.0)
+# https://github.com/sail-sg/envpool
+# https://mujoco.readthedocs.io/en/stable/mjx.html
+# https://github.com/google-deepmind/mujoco_menagerie
+# https://mujoco.readthedocs.io/en/stable/models.html
 
 # 40k, noPen:   slow turn, little standing
 # 100k, noPen:  worsens again significantly (bend legs, early termination)
@@ -92,6 +95,8 @@ class PoseImitationEnv(HumanoidEnv):
                 # cpu vs gpu
                 # https://forums.developer.nvidia.com/t/how-to-install-opengl-libs-of-nvidia/175409
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
+                # https://stackoverflow.com/questions/74048393/can-i-speed-up-processing-live-video-from-webcam
+                # https://raw.githubusercontent.com/opencv/opencv_zoo/main/benchmark/color_table.svg
                 # prime-select nvidia
                 # glxinfo | grep -i opengl
                 # MUJOCO_GL=egl|glfw|osmesa %python ...% (glfw seems fastest)
@@ -114,6 +119,7 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += 2 # falling, height
         obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
+        print(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION)
 
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 2 # falling, height
@@ -203,7 +209,7 @@ class PoseImitationEnv(HumanoidEnv):
                 terminated = True
                 # dont neutralize already pos. eps.?
                 # if not self.ep_rewards_mean and not reward:
-                #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+                reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
 
         self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -264,8 +270,11 @@ class PoseImitationEnv(HumanoidEnv):
         achieved_ob_pose = []
         if achieved_pose.pose_world_landmarks:
             # only first detected pose
-            achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
-            achieved_ob_pose = self._normalize(np.array(achieved_ob_pose), -1, 1)
+            # height-dependent vs. -independent
+            # achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
+            achieved_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
+            achieved_ob_pose = np.array(achieved_ob_pose)[cfg.General.LANDMARK_GROUPS]
+            achieved_ob_pose = self._normalize(achieved_ob_pose, -1, 1)
             self.last_ob_pose_achieved = achieved_ob_pose
         else:
             # no detected achieved pose. fallback...
@@ -290,8 +299,10 @@ class PoseImitationEnv(HumanoidEnv):
         desired_ob_pose = []
         if desired_pose.pose_world_landmarks:
             # only first detected pose
-            desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-            desired_ob_pose = self._normalize(np.array(desired_ob_pose), -1, 1)
+            # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
+            desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
+            desired_ob_pose = np.array(desired_ob_pose)[cfg.General.LANDMARK_GROUPS]
+            desired_ob_pose = self._normalize(desired_ob_pose, -1, 1)
             self.last_ob_pose_desired = desired_ob_pose
         else:
             # no detected desired pose. fallback...
@@ -324,12 +335,22 @@ class PoseImitationEnv(HumanoidEnv):
         # 100k                      :   attempting, resemblence, stabilising? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored/rl_model_finished
         # 200k                      :   stronger attempts, both arms wildly moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored/rl_model_finished
         # 1M(!!!)                   :   truncation, stable, closest resemblence without falling (no feet!) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored/rl_model_finished
-        # 1.2M, pose2               :   collapsing again (legs?), attempting arm resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored/rl_model_finished
+        # 1.2M, pose2               :   collapsing again (legs?), attempting arm resemblance /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored/rl_model_finished
         # 2M                        :   slow, but noticeable progress (difficult humanoid?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored_restored/rl_model_finished
+
+        # 100k, arms-only :    simplified, arms resemblance, avoid falling by jumping? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/14-19-48_restored/rl_model_finished
+        # 200k, arms-only, frameskip10 :    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/15-28-00/rl_model_finished
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[0] = 1 # base dim
         self.ep_goalweight[1] = 1 # base dim
-        self.ep_goalweight[self.ep_goaldim_active] = 1
+        # comb-through (only after stable/nonterminating? truncation + success cond.)
+        # self.ep_goalweight[self.ep_goaldim_active] = 1
+
+        # only base-dims (stabilize, vs termination), pen
+        # 40k, pen      /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-28-52/rl_model_finished
+        # 100k          /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-28-52_restored/rl_model_finished
+        # 100k(!), no pen   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08/rl_model_finished
+        # 300k              /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored/rl_model_finished
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
@@ -358,7 +379,7 @@ class PoseImitationEnv(HumanoidEnv):
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
-            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_ob_pose, desired_ob_pose))
+            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
 
@@ -546,7 +567,7 @@ def parallel_plot(queue: multiprocessing.Queue):
 
     while True:
         # while not queue.empty(): # get only latest
-        achieved_img, desired_img, achieved_ob_pose, desired_ob_pose = queue.get()
+        achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
     
         plot_desired.set_data(desired_img)
         plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
@@ -557,29 +578,30 @@ def parallel_plot(queue: multiprocessing.Queue):
         # plot topology connections
         # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
         extplot.clear()
-        extplot.set_xlim3d(0, 1)
-        extplot.set_ylim3d(0, 1)
-        extplot.set_zlim3d(1, 0) # flip z-axis
+        extplot.set_xlim3d(-1, 1)
+        extplot.set_ylim3d(-1, 1)
+        extplot.set_zlim3d(1, -1) # flip z-axis
 
-        if len(achieved_ob_pose):
-            for group in LANDMARK_GROUPS:
-                plotX = [achieved_ob_pose[i][0] for i in group]
-                plotY = [achieved_ob_pose[i][1] for i in group]
-                plotZ = [achieved_ob_pose[i][2] for i in group]
+        if achieved_pose.pose_world_landmarks:
+            for group in cfg.General.LANDMARK_GROUPS:
+                plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
+                plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
+                plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
                 if 11 in group: # right side
                     extplot.plot(plotX, plotZ, plotY, color='red')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='red', linestyle = 'dashed')
 
-        if len(desired_ob_pose):
-            for group in LANDMARK_GROUPS:
-                plotX = [desired_ob_pose[i][0] for i in group]
-                plotY = [desired_ob_pose[i][1] for i in group]
-                plotZ = [desired_ob_pose[i][2] for i in group]
+        if desired_pose.pose_world_landmarks:
+            for group in cfg.General.LANDMARK_GROUPS:
+                plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
+                plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
+                plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
                 if 11 in group: # right side
                     extplot.plot(plotX, plotZ, plotY, color='green')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='green', linestyle = 'dashed')
+        
         
         extplot.draw(extplot.get_figure().canvas.get_renderer())
         plt.pause(0.00001)

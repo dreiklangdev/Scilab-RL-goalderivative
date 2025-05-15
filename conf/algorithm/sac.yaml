@@ -6,6 +6,8 @@ replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to 
 
 policy: 'MultiInputPolicy' # MlpPolicy
 
+# device: cpu
+
 # learning_starts: 1000
 
 # https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml
