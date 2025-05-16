@@ -445,9 +445,10 @@ class PoseImitationEnv(HumanoidEnv):
                 if self.ep_lives > 0:
                     print('LAST SAVEPOINT.') # noisy?
                     obs_init = self._reset_half_episode()
-                    if(obs_init['achieved_goal'] > self.fep_goaldist_init):
-                        print('SAVEPOINT IS OFF-GRID (NOISY?)', self.fep_savepoint_steps, obs_init['achieved_goal'])
-                        obs_init = None
+                    if(obs_init['achieved_goal'] > self.ep_goaldist_min):
+                        print('SAVEPOINT HAS DRIFTED OFF-GRID (NOISY?). correcting...', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
+                        # obs_init = None
+                        obs_init['achieved_goal'] = self.ep_goaldist_min
 
         if not obs_init:
             print('NEW GAME.')
