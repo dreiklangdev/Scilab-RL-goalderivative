@@ -89,6 +89,7 @@ class PoseImitationEnv(HumanoidEnv):
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
+        self.desired_pose = None
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = PoseLandmarkerOptions(
@@ -207,7 +208,8 @@ class PoseImitationEnv(HumanoidEnv):
         # 200k: natural+robust stabilization? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored/rl_model_finished
         # 400k: /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored/rl_model_finished
         # 1M:   a little bit slower than without SAG (due less same init state (full resets)? -> adjust num lives?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored/rl_model_finished
-        # 1.5M, comb-through:    WIP
+        # 1.5M, comb-through, off-grid, lives100:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored_restored/rl_model_finished
+        # 1.5M, com-through, on-grid, lives100:     WIP
         elif obs['achieved_goal'] > self.ep_goaldist_max:
             print(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
             self.ep_goaldist_max = obs['achieved_goal']
@@ -251,8 +253,8 @@ class PoseImitationEnv(HumanoidEnv):
         superobs = super()._get_obs()
         obs.extend(superobs)
 
-        achieved_pose = SimpleNamespace(pose_world_landmarks=[])
-        desired_pose = SimpleNamespace(pose_world_landmarks=[])
+        achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
+        desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
 
         # detect pose only every nth step, else use last valid
         if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
@@ -263,13 +265,17 @@ class PoseImitationEnv(HumanoidEnv):
             achieved_img = self.render().copy() # MUJOCO_GL=glfw
             achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
             # TODO get desired img from video?
+            desired_img = self.desired_img
 
             # bottleneck start
             # t = time.perf_counter()
             # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
             video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
             achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
-            desired_pose = self.landmarker_desired.detect(self.desired_img)
+            if not self.desired_pose:
+                # only once at the beginning (still image)
+                self.desired_pose = self.landmarker_desired.detect(desired_img)
+            desired_pose = self.desired_pose
             # print(time.perf_counter() - t)
             # bottleneck end
 
@@ -394,7 +400,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-            desired_img_annotated = draw_landmarks_on_image(self.desired_img.numpy_view(), desired_pose)
+            desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
             self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
@@ -417,7 +423,7 @@ class PoseImitationEnv(HumanoidEnv):
             print('ep_num_steps', self.ep_num_steps)
             print('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
             print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goaldim_active', self.ep_goaldim_active, np.nonzero(self.ep_goalweight))
+            print('ep_goaldim_active', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
             print('ep_goaldist_desired', self.ep_obs_cur['desired_goal'])
             print('ep_goaldist_first', self.ep_goaldists[0])
             print('ep_goaldist_min', min(self.ep_goaldists))
@@ -439,10 +445,9 @@ class PoseImitationEnv(HumanoidEnv):
                 if self.ep_lives > 0:
                     print('LAST SAVEPOINT.') # noisy?
                     obs_init = self._reset_half_episode()
-
-        if obs_init['achieved_goal'] > self.fep_goaldist_init:
-            print('(NOISY) SAVEPOINT IS OFF-GRID.')
-            obs_init = None
+                    if(obs_init['achieved_goal'] > self.fep_goaldist_init):
+                        print('SAVEPOINT IS OFF-GRID (NOISY?)', self.fep_savepoint_steps, obs_init['achieved_goal'])
+                        obs_init = None
 
         if not obs_init:
             print('NEW GAME.')
@@ -460,7 +465,7 @@ class PoseImitationEnv(HumanoidEnv):
         print('fep_savepoint_steps', self.fep_savepoint_steps)
         print('fep_savepoint_goaldist', obs_init['achieved_goal'])
         print('fep_goaldist_init', self.fep_goaldist_init)
-        print('fep_goaldist_min', self.fep_goaldist_min)
+        print('fep_goaldist_min', self.fep_goaldist_min) # may be noisy and not (easily) repeatable
 
         return obs_init
     
