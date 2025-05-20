@@ -29,7 +29,7 @@ OmegaConf.register_new_resolver("git_label", get_git_label)
 
 def get_env_instance(cfg, logger):
     train_env = gym.make(cfg.env, **cfg.env_kwargs)
-    eval_env = gym.make(cfg.env, **cfg.env_kwargs)
+    eval_env = gym.make(cfg.env, is_eval=True, **cfg.env_kwargs)
 
     # wrappers for rendering
     train_render_schedule = get_train_render_schedule(cfg.render_freq)
@@ -76,7 +76,7 @@ def get_env_instance(cfg, logger):
         train_env = gym.wrappers.ClipAction(train_env)
         eval_env = gym.wrappers.ClipAction(eval_env)
 
-    if 'normalize_obs' in cfg and cfg.normalize_obs:
+    if 'normalize_obs' in cfg and cfg.normalize_obs:        
         train_env = gym.wrappers.NormalizeObservation(train_env)
         eval_env = gym.wrappers.NormalizeObservation(eval_env)
 

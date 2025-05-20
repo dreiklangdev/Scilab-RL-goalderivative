@@ -6,7 +6,7 @@ import git
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
-import random
+from gymnasium.wrappers.utils import RunningMeanStd
 
 import multiprocessing
 from multiprocessing.queues import Empty
@@ -50,6 +50,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://colab.research.google.com/github/deepmind/mujoco/blob/main/python/tutorial.ipynb
 # https://github.com/google-deepmind/mujoco/issues/85
 
+# https://github.com/huggingface/lerobot
+
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
 # https://github.com/google-ai-edge/mediapipe/issues/5325
@@ -66,6 +68,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://github.com/google-deepmind/mujoco_menagerie
 # https://mujoco.readthedocs.io/en/stable/models.html
 
+OBS_NORMALIZE_Z_SCORE = False
+
 # 40k, noPen:   slow turn, little standing
 # 100k, noPen:  worsens again significantly (bend legs, early termination)
 # 40k, correctHeight:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f4559e6/le-pose-imitation-v4/23-19-34/rl_model_finished
@@ -73,7 +77,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 class PoseImitationEnv(HumanoidEnv):
 
 
-    def __init__(self, is_plot=True):
+    def __init__(self, is_plot=True, is_eval=False):
 
         HumanoidEnv.__init__(self,
                              exclude_current_positions_from_observation=True,
@@ -86,6 +90,9 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.cfg = cfg
         self.is_plot = is_plot
+        self.is_eval = is_eval
+        self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'w')
+
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
@@ -122,8 +129,7 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += 2 # falling, height
         obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
-        print(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION)
-
+        
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 2 # falling, height
             obspace_total_dims += 3 # goaldist, goal_convergence, is_converging
@@ -131,6 +137,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
+
+        self.tr_obs_rms = RunningMeanStd(shape=observation_space.shape, dtype=observation_space.dtype)
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -148,6 +156,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_total_zero_sum_eps = 0
         self.tr_total_zero_sum_eps_steps = 0
         self.tr_goaldist_personal_best = np.inf
+        self.tr_num_steps: int = 0
         self.fep_savepoint_steps = 0
         self.fep_goaldist_init = np.inf
         self.fep_rewards_sum = -1
@@ -208,8 +217,15 @@ class PoseImitationEnv(HumanoidEnv):
         # 200k: natural+robust stabilization? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored/rl_model_finished
         # 400k: /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored/rl_model_finished
         # 1M:   a little bit slower than without SAG (due less same init state (full resets)? -> adjust num lives?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored/rl_model_finished
-        # 1.5M, comb-through, off-grid, lives100:   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored_restored/rl_model_finished
-        # 1.5M, com-through, on-grid, lives100:     WIP
+        # 1.5M, comb-through, off-grid, lives100, goalpos:   slow /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored_restored/rl_model_finished
+        # 1.5M(!), comb-through, on-grid, lives100, goalpos:    better /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored_restored/rl_model_finished
+        #                                                    stands faster than goaldir /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/07-11-30/rl_model_finished
+        # 1.0M, comb-through, on-grid, lives100, goaldir, z-standard:   not working at all /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-24-30/rl_model_finished
+        # 0.5M, comb-through, on-grid, lives100, goaldir:   fast resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09/rl_model_finished
+        # 1.0M,                                         :   clearly attempting /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored/rl_model_finished
+        # 2M,                                           :   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored/rl_model_finished
+        # 3M,                                           :   progress, but slower than goalpos (but maybe more general?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored_restored/rl_model_finished
+        # 1M, comb-through, on-grid, lives10, goalpos:  :   slower on arms moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-48-33/rl_model_finished
         elif obs['achieved_goal'] > self.ep_goaldist_max:
             print(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
             self.ep_goaldist_max = obs['achieved_goal']
@@ -224,7 +240,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
-            height = obs['observation'][0]
+            height = super()._get_obs()[0]
             if height < 0.5 or height > 2.0:
                 # TODO learn default standing-pose first?
                 print('OUTSIDE: FELL DOWN!', height)
@@ -283,14 +299,14 @@ class PoseImitationEnv(HumanoidEnv):
         # get normalized goal distance
         achieved_obs = np.array([])
 
-        achieved_ob_fall = self._normalize(superobs[24], 0, -2.5)
+        achieved_ob_fall = self._normalize_to_limits(superobs[24], 0, -2.5)
         achieved_obs = np.append(achieved_obs, achieved_ob_fall)
 
         # achieved_ob_steps = self._normalize(self.ep_num_steps % 100, 0, 100)
         # achieved_obs = np.append(achieved_obs, achieved_ob_steps)
 
         achieved_ob_height = superobs[0]
-        achieved_ob_height = self._normalize(achieved_ob_height, 1.0, 2.0)
+        achieved_ob_height = self._normalize_to_limits(achieved_ob_height, 1.0, 2.0)
         achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
         # achieved_ob_pose = []
@@ -301,7 +317,7 @@ class PoseImitationEnv(HumanoidEnv):
             # achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
             achieved_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
             achieved_ob_pose = np.array(achieved_ob_pose)[cfg.General.LANDMARK_GROUPS]
-            achieved_ob_pose = self._normalize(achieved_ob_pose, -1, 1)
+            achieved_ob_pose = self._normalize_to_limits(achieved_ob_pose, -1, 1)
             self.last_ob_pose_achieved = achieved_ob_pose
         achieved_obs = np.append(achieved_obs, achieved_ob_pose)
         obs.extend(achieved_obs)
@@ -316,7 +332,7 @@ class PoseImitationEnv(HumanoidEnv):
         # desired_obs = np.append(desired_obs, desired_ob_steps)
 
         desired_ob_height = 1.3
-        desired_ob_height = self._normalize(desired_ob_height, 1.0, 2.0)
+        desired_ob_height = self._normalize_to_limits(desired_ob_height, 1.0, 2.0)
         desired_obs = np.append(desired_obs, desired_ob_height)
 
         # desired_ob_pose = []
@@ -326,7 +342,7 @@ class PoseImitationEnv(HumanoidEnv):
             # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
             desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
             desired_ob_pose = np.array(desired_ob_pose)[cfg.General.LANDMARK_GROUPS]
-            desired_ob_pose = self._normalize(desired_ob_pose, -1, 1)
+            desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
             self.last_ob_pose_desired = desired_ob_pose
         desired_obs = np.append(desired_obs, desired_ob_pose)
 
@@ -375,11 +391,19 @@ class PoseImitationEnv(HumanoidEnv):
         # 1M             :  slightly walking to not fall, truncation /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored_restored/rl_model_finished
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
-
+        self.ep_goaldists.append(goaldist)
 
         if self.cfg.MetaObservation.IS_ENABLED:
             metaobs = []
+
+            metaobs.append(goaldist)
+            # TODO test/dev in specialized env. (eg. reach-env.)
+            # meta-observe normalized direction instead of pose coords (more general?)
+            # TODO or both?
             metaobs.extend(desired_obs)
+            # goaldirection = goaldiff_weighted / np.linalg.norm(goaldiff_weighted)
+            # metaobs.extend(goaldirection)
+
             if len(self.ep_goaldists) > 1:
                 goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
                 metaobs.append(goal_convergence)
@@ -387,14 +411,20 @@ class PoseImitationEnv(HumanoidEnv):
                 metaobs.append(is_converging)
             else:
                 metaobs.extend([0,0])
-            metaobs.append(goaldist)
             obs.extend(metaobs)
 
-        self.ep_goaldists.append(goaldist)
+        obs = np.array(obs)
+        goaldist = np.array(goaldist)
+
+        if OBS_NORMALIZE_Z_SCORE:
+            # /home/t14/miniforge3/envs/scilabrl/lib/python3.11/site-packages/gymnasium/wrappers/stateful_observation.py#540
+            # TODO order?
+            self.tr_obs_rms.update(obs)
+            obs = (obs - self.tr_obs_rms.mean) / np.sqrt(self.tr_obs_rms.var + 1e-8)
 
         dictobs = dict(
-                observation=np.array(obs),
-                achieved_goal=np.array(goaldist),
+                observation=obs,
+                achieved_goal=goaldist,
                 desired_goal=self.ep_reward_threshold,
             )
 
@@ -438,9 +468,12 @@ class PoseImitationEnv(HumanoidEnv):
                 self.tr_total_zero_sum_eps += 1
                 self.tr_total_zero_sum_eps_steps += self.ep_num_steps
             print('\n')
-
+            if self.is_eval:
+                self.outfile_ep_rewards_mean.write(f"{self.ep_rewards_mean}\n")
+                self.outfile_ep_rewards_mean.flush()
+        
         if self.ep_num_steps > 1:
-            if self.cfg.TrajectoryHalving.IS_ENABLED:
+            if self.cfg.TrajectoryHalving.IS_ENABLED and not self.is_eval:
                 # if self.ep_goaldist_min < self.last_ep_goaldist_min:
                 if self.ep_lives > 0:
                     print('LAST SAVEPOINT.') # noisy?
@@ -483,6 +516,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_traj_is_halved = False
         self.ep_goaldim_active = (self.ep_goaldim_active + 1) % len(self.ep_goalweight)
         self.ep_lives = cfg.General.MAX_LIVES
+        # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
         # self.ep_goaldist_min = obs_init['achieved_goal']
@@ -572,7 +606,7 @@ class PoseImitationEnv(HumanoidEnv):
         return qpos, qvel
 
 
-    def _normalize(self, val, min_val, max_val):
+    def _normalize_to_limits(self, val, min_val, max_val):
         # manual normalization (obs fairness)
         # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range

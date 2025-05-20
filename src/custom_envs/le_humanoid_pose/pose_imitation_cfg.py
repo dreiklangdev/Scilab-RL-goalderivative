@@ -21,7 +21,7 @@ class General(base.General):
     STEPSKIP_DETECT = 10
     STEPSKIP_PLOT = STEPSKIP_DETECT # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
-    MAX_LIVES = 100
+    MAX_LIVES = 10
 
 
 # vs. single goal proficiency
