@@ -93,8 +93,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.is_eval = is_eval
         self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'w')
 
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
         self.desired_pose = None
 
@@ -220,16 +220,19 @@ class PoseImitationEnv(HumanoidEnv):
         # 1.5M, comb-through, off-grid, lives100, goalpos:   slow /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored_restored/rl_model_finished
         # 1.5M(!), comb-through, on-grid, lives100, goalpos:    better /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22_restored_restored_restored_restored_restored/rl_model_finished
         #                                                    stands faster than goaldir /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/07-11-30/rl_model_finished
-        # 1.0M, comb-through, on-grid, lives100, goaldir, z-standard:   not working at all /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-24-30/rl_model_finished
+        # 3M                                            :   is it slightly better? or not progressing further? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/07-11-30_restored/rl_model_finished
+        # 1.0M, comb-through, on-grid, lives100, goaldir, z-standard:   not working at all (lossfunc degen.) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-24-30/rl_model_finished
         # 0.5M, comb-through, on-grid, lives100, goaldir:   fast resemblence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09/rl_model_finished
         # 1.0M,                                         :   clearly attempting /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored/rl_model_finished
         # 2M,                                           :   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored/rl_model_finished
         # 3M,                                           :   progress, but slower than goalpos (but maybe more general?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored_restored/rl_model_finished
         # 1M, comb-through, on-grid, lives10, goalpos:  :   slower on arms moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-48-33/rl_model_finished
-        elif obs['achieved_goal'] > self.ep_goaldist_max:
-            print(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
-            self.ep_goaldist_max = obs['achieved_goal']
-            reward = -1
+        # 100k,                                      , noDenudge:
+
+        # elif obs['achieved_goal'] > self.ep_goaldist_max:
+        #     print(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
+        #     self.ep_goaldist_max = obs['achieved_goal']
+        #     reward = -1
 
         if reward:
             if self.ep_first_reward_step < 0:
@@ -479,7 +482,7 @@ class PoseImitationEnv(HumanoidEnv):
                     print('LAST SAVEPOINT.') # noisy?
                     obs_init = self._reset_half_episode()
                     if(obs_init['achieved_goal'] > self.ep_goaldist_min):
-                        print('SAVEPOINT HAS DRIFTED OFF-GRID (NOISY?). correcting...', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
+                        print('SAVEPOINT HAS DRIFTED OFF-GRID (NOISE?). correcting...', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
                         # obs_init = None
                         obs_init['achieved_goal'] = self.ep_goaldist_min
 
