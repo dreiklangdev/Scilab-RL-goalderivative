@@ -4,15 +4,17 @@ import numpy as np
 
 
 class General(base.General):
-    LANDMARK_GROUPS = [
-    #    [8, 6, 5, 4, 0, 1, 2, 3, 7],   # eyes
-    #    [10, 9],                       # mouth
+    LANDMARK_GROUPS = [ # redundant duplicates?
+        [0],                            # nose
+        [29, 30],                      # feet
+        [23, 24],                      # waist
         [11, 13, 15, 17, 19, 15, 21],  # right arm
-    #    [11, 23, 25, 27, 29, 31, 27],  # right body side
         [12, 14, 16, 18, 20, 16, 22],  # left arm
-    #    [12, 24, 26, 28, 30, 32, 28],  # left body side
-    #    [11, 12],                      # shoulder
-    #    [23, 24],                      # waist
+        [8, 6, 5, 4, 1, 2, 3, 7],       # face
+        [10, 9],                       # mouth
+        [11, 23, 25, 27, 29, 31, 27],  # right body side
+        [12, 24, 26, 28, 30, 32, 28],  # left body side
+        [11, 12],                      # shoulder
     ]
     LANDMARK_GROUPS_FLAT = np.hstack(LANDMARK_GROUPS)
 
@@ -28,7 +30,7 @@ class General(base.General):
 
 # vs. single goal proficiency
 class MetaObservation(base.MetaObservation):
-    pass
+    IS_ENABLED = True
 
 
 # vs. too big search space

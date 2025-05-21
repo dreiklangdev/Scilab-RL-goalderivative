@@ -137,11 +137,11 @@ class PoseImitationEnv(HumanoidEnv):
 
         obspace_total_dims = 0
         # obspace_total_dims += self.observation_space.shape[0] # super
-        # obspace_total_dims += 2 # falling, height
+        obspace_total_dims += 1 # height
         obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
         
         if self.cfg.MetaObservation.IS_ENABLED:
-            # obspace_total_dims += 2 # falling, height
+            obspace_total_dims += 1 # height
             obspace_total_dims += 3 # goaldist, goal_convergence, is_converging
             obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
 
@@ -156,6 +156,7 @@ class PoseImitationEnv(HumanoidEnv):
                 achieved_goal=goal_space,
             )
         )
+        self.test_init = None
 
         # once
         self.init_qpos[6] = -1.4 # face towards camera
@@ -168,6 +169,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_savepoint_steps = 0
         self.fep_goaldist_init = np.inf
         self.fep_rewards_sum = -1
+        self.fep_obs_init = None
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
@@ -235,12 +237,12 @@ class PoseImitationEnv(HumanoidEnv):
         # 2M,                                           :   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored/rl_model_finished
         # 3M,                                           :   progress, but slower than goalpos (but maybe more general?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored_restored/rl_model_finished
         # 1M, comb-through, on-grid, lives10, goalpos:  :   slower on arms moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-48-33/rl_model_finished
-        # 3M,                                      , noDenudge:
-
-        # elif obs['achieved_goal'] > self.ep_goaldist_max:
-        #     LOG.debug(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
-        #     self.ep_goaldist_max = obs['achieved_goal']
-        #     reward = -1
+        # 3M,                                      , noDenudge:     not converging, not standing /mnt/t500/tuhh/dsf/Scilab-RL/data/beb02be/le-pose-imitation-v4/03-44-41/rl_model_finished
+        # 1M, comb-through, on-grid, lives10, goalpos, noSuperObs:  WIP
+        elif obs['achieved_goal'] > self.ep_goaldist_max:
+            LOG.debug(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
+            self.ep_goaldist_max = obs['achieved_goal']
+            reward = -1
 
         if reward:
             if self.ep_first_reward_step < 0:
@@ -250,20 +252,25 @@ class PoseImitationEnv(HumanoidEnv):
         truncated = False
 
         # space constraint
-        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
-            height = super()._get_obs()[0]
-
+        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:            
             if obs['achieved_goal'] > self.fep_goaldist_init * 1.1:
                 LOG.info('GOAL TOO FAR AWAY.')
                 terminated = True
                 self.ep_lives -= 1
+                reward = -1
 
             if self.ep_count_fails_pose_detection > 10:
                 LOG.info('TOO MANY DETECTION FAILURES.')
                 terminated = True
                 self.ep_lives -= 1
+                reward = -1
 
-            
+            if obs['observation'][0] < 0.25:
+                LOG.info('HEIGHT TOO LOW.')
+                terminated = True
+                self.ep_lives -= 1
+                reward = -1
+
             # if height < 0.5 or height > 2.0:
             #     # TODO learn default standing-pose first?
             #     LOG.debug('OUTSIDE: FELL DOWN! %s', height)
@@ -278,7 +285,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_num_steps += 1
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
-            LOG.debug('TRUNCATED.')
+            LOG.info('TRUNCATED.')
             info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             truncated = True
 
@@ -286,7 +293,7 @@ class PoseImitationEnv(HumanoidEnv):
         return result
 
 
-    # obs = superobs(phys.) + achieved_obs(vis.) + metaobs
+    # obs = achieved_obs(vis.) + metaobs
     def _get_obs(self):
         obs = []
         superobs = super()._get_obs()
@@ -347,8 +354,15 @@ class PoseImitationEnv(HumanoidEnv):
             self.ep_count_fails_pose_detection = 0
         else:
             self.ep_count_fails_pose_detection += 1
-            
+
+        achieved_ob_height = min(achieved_ob_pose[1][1], achieved_ob_pose[2][1]) - achieved_ob_pose[3][1]
+        achieved_obs = np.append(achieved_obs, achieved_ob_height)
         achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+
+        # if self.fep_obs_init:
+        #     achieved_ob_fall = self.fep_obs_init['observation'][1] - achieved_ob_pose[0][1]
+        #     print(achieved_ob_fall)
+
         obs.extend(achieved_obs)
 
 
@@ -370,51 +384,18 @@ class PoseImitationEnv(HumanoidEnv):
             desired_ob_pose = np.array(desired_ob_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
             desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
             self.last_ob_pose_desired = desired_ob_pose
+
+        desired_ob_height = 0.4
+        desired_obs = np.append(desired_obs, desired_ob_height)
         desired_obs = np.append(desired_obs, desired_ob_pose)
 
 
-        # conseq. one-timed single subdim. ("comb-through" training), bigger stepskips
-        # very different goaldists per ep.!
-        # 40k, th0.1:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04/rl_model_finished
-        # 100k, th0.1:     tumbles /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/23-58-04_restored/rl_model_finished
-        # 40k, th0.05:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10/rl_model_finished
-        # 100k:         /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored/rl_model_finished
-        # 200k:         /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored/rl_model_finished
-        # 400k:         left arm moves up? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored/rl_model_finished
-        # 2.4M(!!):     improvement! attempting resemblence, still too much falling? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/00-23-10_restored_restored_restored_restored/rl_model_finished
-        # 40k, base-dims, ppo:  more exploration, more dynamic, less careful, more curious/eager to learn?  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8bc7ad5/le-pose-imitation-v4/19-59-06/rl_model_finished
-        # 40k                :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16/rl_model_finished  
-        # 100k               :  more eager, resemblence, still unstable /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored/rl_model_finished
-        # 200k               :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored/rl_model_finished
-        # 1M                 :  no apparent progress/convergence /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored_restored/rl_model_finished
-        # 2M                 :  still no progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/11-44-16_restored_restored_restored_restored/rl_model_finished
-        # 100k, cleanParams  :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/23-43-30/rl_model_finished
-        # 1M                 :  still no progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/23-43-30_restored/rl_model_finished
-        # 200k, zooParams    :  no real progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/01-14-45/rl_model_finished
-        # 1M                 :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/f5b5c5f/le-pose-imitation-v4/01-14-45_restored/rl_model_finished
-        # maybe even more? (~5h sac)
-
-        # 40k, base-dims, (sbx.)sac :   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34/rl_model_finished
-        # 100k                      :   attempting, resemblence, stabilising? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored/rl_model_finished
-        # 200k                      :   stronger attempts, both arms wildly moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored/rl_model_finished
-        # 1M(!!!)                   :   truncation, stable, closest resemblence without falling (no feet!) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored/rl_model_finished
-        # 1.2M, pose2               :   collapsing again (legs?), attempting arm resemblance /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored/rl_model_finished
-        # 2M                        :   slow, but noticeable progress (difficult humanoid?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/15372b1/le-pose-imitation-v4/10-49-34_restored_restored_restored_restored_restored/rl_model_finished
-
-        # 100k, arms-only :    simplified, arms resemblance, avoid falling by jumping? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/14-19-48_restored/rl_model_finished
-        # 200k, arms-only, frameskip10 :    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/15-28-00/rl_model_finished
         self.ep_goalweight = np.zeros(desired_obs.shape)
-        # self.ep_goalweight[0] = 1 # base dim
+        self.ep_goalweight[0] = 1 # base dim
         # self.ep_goalweight[1] = 1 # base dim
         # comb-through (only after stable/nonterminating? truncation + success cond.)
         self.ep_goalweight[self.ep_goaldim_active] = 1
-
-        # only base-dims (stabilize, vs termination), pen
-        # 40k, pen      /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-28-52/rl_model_finished
-        # 100k          /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-28-52_restored/rl_model_finished
-        # 100k(!), no pen:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08/rl_model_finished
-        # 300k           :  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored/rl_model_finished
-        # 1M             :  slightly walking to not fall, truncation /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/17-54-08_restored_restored/rl_model_finished
+        
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
@@ -451,8 +432,8 @@ class PoseImitationEnv(HumanoidEnv):
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
-            if self.parallel_plot_queue.empty:
-                self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+            if self.parallel_plot_queue.empty():
+                self.parallel_plot_queue.put_nowait((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
 
@@ -531,6 +512,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_savepoint_steps = 0
         self.fep_goaldist_init = obs_init['achieved_goal']
         self.fep_goaldist_min = obs_init['achieved_goal']
+        self.fep_obs_init = obs_init
         # self.desired_obs = self._get_desired_obs()
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
@@ -584,19 +566,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states = []
         self.ep_is_perfect = False
         self.ep_num_steps_goal_zone = 0
-        # LOG.debug('desired_obs', self.desired_obs)
-
-        # landmarker reset: better/correct detection of start pose
-        # TODO wait for efficient reset() implementation in API
-        # workaround by re-create
-        # if self.landmarker_achieved:
-        #     self.landmarker_achieved.close()
-        #     del self.landmarker_achieved
-        #     self.landmarker_achieved = None
-        # if self.landmarker_desired:
-        #     self.landmarker_desired.close()
-        #     del self.landmarker_desired
-        #     self.landmarker_desired = None
 
         if not self.landmarker_achieved:
             self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
@@ -665,8 +634,6 @@ def parallel_plot(queue: multiprocessing.Queue):
     extplot = fig.add_subplot(133, projection="3d")
 
     while True:
-        # achieved_img, desired_img, achieved_pose, desired_pose = 0
-        # while not queue.empty(): # get only latest
         achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
     
         plot_desired.set_data(desired_img)
