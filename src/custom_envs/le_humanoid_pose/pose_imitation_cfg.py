@@ -23,7 +23,7 @@ class General(base.General):
     FRAMESKIP_STEP = 5
     # vs. "lost in details"
     STEPSKIP_DETECT = 2 # 10
-    STEPSKIP_PLOT = STEPSKIP_DETECT # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
+    STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
     MAX_LIVES = 10
 

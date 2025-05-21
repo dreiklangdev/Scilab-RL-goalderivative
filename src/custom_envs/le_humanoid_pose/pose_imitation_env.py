@@ -265,7 +265,7 @@ class PoseImitationEnv(HumanoidEnv):
                 self.ep_lives -= 1
                 reward = -1
 
-            if obs['observation'][0] < 0.25:
+            if self.ep_num_steps > 10 and obs['observation'][0] < 0.25:
                 LOG.info('HEIGHT TOO LOW.')
                 terminated = True
                 self.ep_lives -= 1
