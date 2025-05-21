@@ -23,6 +23,11 @@ from mediapipe.framework.formats import landmark_pb2
 
 import logging
 LOG = logging.getLogger(__name__)
+LOG.propagate = False
+consoleHandler = logging.StreamHandler()
+consoleHandler.setLevel(logging.INFO)
+consoleHandler.setFormatter(logging.Formatter(fmt='%(message)s'))
+LOG.addHandler(consoleHandler)
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
@@ -187,8 +192,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         self._reset()
         LOG.debug('le-walker-2d initialized.')
-        LOG.debug('observation_space', observation_space)
-        LOG.debug('goal_space', goal_space)
+        LOG.debug('observation_space %s', observation_space)
+        LOG.debug('goal_space %s', goal_space)
 
 
     def step(self, action):
@@ -250,7 +255,7 @@ class PoseImitationEnv(HumanoidEnv):
             height = super()._get_obs()[0]
             if height < 0.5 or height > 2.0:
                 # TODO learn default standing-pose first?
-                LOG.debug('OUTSIDE: FELL DOWN!', height)
+                LOG.debug('OUTSIDE: FELL DOWN! %s', height)
                 terminated = True
                 # dont neutralize already pos. eps.?
                 # if not self.ep_rewards_mean and not reward:
@@ -450,20 +455,20 @@ class PoseImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps > 0 and self.is_eval:
             # episode report
-            LOG.debug('ep_lives', self.ep_lives)
-            LOG.debug('ep_num_steps', self.ep_num_steps)
-            LOG.debug('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
-            LOG.debug('ep_first_reward_step', self.ep_first_reward_step)
-            LOG.debug('ep_goaldim_active', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
-            LOG.debug('ep_goaldist_desired', self.ep_obs_cur['desired_goal'])
-            LOG.debug('ep_goaldist_first', self.ep_goaldists[0])
-            LOG.debug('ep_goaldist_min', min(self.ep_goaldists))
-            LOG.debug('ep_goaldist_mean', np.mean(self.ep_goaldists))
-            LOG.debug('ep_goaldist_max', max(self.ep_goaldists))
-            LOG.debug('ep_goaldist_last', self.ep_obs_cur['achieved_goal'])
-            LOG.debug('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
-            LOG.debug('ep_traj_is_halved', self.ep_traj_is_halved)
-            LOG.debug('ep_rewards_mean', self.ep_rewards_mean)
+            LOG.debug('ep_lives %s', self.ep_lives)
+            LOG.debug('ep_num_steps %s', self.ep_num_steps)
+            LOG.debug('ep_num_steps_goal_zone %s', self.ep_num_steps_goal_zone)
+            LOG.debug('ep_first_reward_step %s', self.ep_first_reward_step)
+            LOG.debug('ep_goaldim_active %s', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
+            LOG.debug('ep_goaldist_desired %s', self.ep_obs_cur['desired_goal'])
+            LOG.debug('ep_goaldist_first %s', self.ep_goaldists[0])
+            LOG.debug('ep_goaldist_min %s', min(self.ep_goaldists))
+            LOG.debug('ep_goaldist_mean %s', np.mean(self.ep_goaldists))
+            LOG.debug('ep_goaldist_max %s', max(self.ep_goaldists))
+            LOG.debug('ep_goaldist_last %s', self.ep_obs_cur['achieved_goal'])
+            LOG.debug('ep_reward_threshold %s', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
+            LOG.debug('ep_traj_is_halved %s', self.ep_traj_is_halved)
+            LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
             if self.ep_rewards_mean == 0:
                 LOG.debug('WARNING: zero-sum-ep. => wasted ep.?')
                 self.tr_total_zero_sum_eps += 1
@@ -480,7 +485,7 @@ class PoseImitationEnv(HumanoidEnv):
                     LOG.debug('LAST SAVEPOINT.') # noisy?
                     obs_init = self._reset_half_episode()
                     if(obs_init['achieved_goal'] > self.ep_goaldist_min):
-                        LOG.debug('SAVEPOINT HAS DRIFTED OFF-GRID (NOISE?). correcting...', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
+                        LOG.debug('SAVEPOINT HAS DRIFTED OFF-GRID (NOISE?). correcting... %s %s', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
                         # obs_init = None
                         obs_init['achieved_goal'] = self.ep_goaldist_min
 
@@ -497,10 +502,10 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldists.append(obs_init['achieved_goal'])
         self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
         self.fep_goaldist_min = min(self.fep_goaldist_min, self.ep_goaldist_min)
-        LOG.debug('fep_savepoint_steps', self.fep_savepoint_steps)
-        LOG.debug('fep_savepoint_goaldist', obs_init['achieved_goal'])
-        LOG.debug('fep_goaldist_init', self.fep_goaldist_init)
-        LOG.debug('fep_goaldist_min', self.fep_goaldist_min) # may be noisy and not (easily) repeatable
+        LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
+        LOG.debug('fep_savepoint_goaldist %s', obs_init['achieved_goal'])
+        LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
+        LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min) # may be noisy and not (easily) repeatable
 
         return obs_init
     
@@ -529,14 +534,14 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             self.tr_feps_consecutive_neg = 0
 
-        LOG.debug('tr_feps_total', self.tr_feps_total)
-        LOG.debug('tr_feps_consecutive_neg', self.tr_feps_consecutive_neg)
-        LOG.debug('tr_total_zero_sum_eps', self.tr_total_zero_sum_eps)
-        LOG.debug('tr_total_zero_sum_eps_steps', self.tr_total_zero_sum_eps_steps)
-        LOG.debug('tr_count_goal_reached', self.ep_num_steps_goal_zone)
-        LOG.debug('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
-        LOG.debug('fep_goaldist_init', self.fep_goaldist_init)
-        LOG.debug('fep_rewards_sum', self.fep_rewards_sum)
+        LOG.debug('tr_feps_total %s', self.tr_feps_total)
+        LOG.debug('tr_feps_consecutive_neg %s', self.tr_feps_consecutive_neg)
+        LOG.debug('tr_total_zero_sum_eps %s', self.tr_total_zero_sum_eps)
+        LOG.debug('tr_total_zero_sum_eps_steps %s', self.tr_total_zero_sum_eps_steps)
+        LOG.debug('tr_count_goal_reached %s', self.ep_num_steps_goal_zone)
+        LOG.debug('tr_goaldist_personal_best %s', self.tr_goaldist_personal_best)
+        LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
+        LOG.debug('fep_rewards_sum %s', self.fep_rewards_sum)
         self.fep_rewards_sum = 0
         return obs_init
 
