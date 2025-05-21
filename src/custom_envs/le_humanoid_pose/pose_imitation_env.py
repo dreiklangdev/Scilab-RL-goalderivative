@@ -6,7 +6,6 @@ import git
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
-from gymnasium.wrappers.utils import RunningMeanStd
 
 import multiprocessing
 from multiprocessing.queues import Empty
@@ -25,7 +24,6 @@ import logging
 LOG = logging.getLogger(__name__)
 LOG.propagate = False
 consoleHandler = logging.StreamHandler()
-consoleHandler.setLevel(logging.INFO)
 consoleHandler.setFormatter(logging.Formatter(fmt='%(message)s'))
 LOG.addHandler(consoleHandler)
 
@@ -146,8 +144,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
-
-        self.tr_obs_rms = RunningMeanStd(shape=observation_space.shape, dtype=observation_space.dtype)
 
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
@@ -421,12 +417,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs = np.array(obs)
         goaldist = np.array(goaldist)
-
-        if OBS_NORMALIZE_Z_SCORE:
-            # /home/t14/miniforge3/envs/scilabrl/lib/python3.11/site-packages/gymnasium/wrappers/stateful_observation.py#540
-            # TODO order?
-            self.tr_obs_rms.update(obs)
-            obs = (obs - self.tr_obs_rms.mean) / np.sqrt(self.tr_obs_rms.var + 1e-8)
 
         dictobs = dict(
                 observation=obs,
