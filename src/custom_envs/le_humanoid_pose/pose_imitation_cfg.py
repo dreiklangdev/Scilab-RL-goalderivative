@@ -1,5 +1,6 @@
 
 from ..le_base import base_practice_cfg as base
+import numpy as np
 
 
 class General(base.General):
@@ -13,15 +14,16 @@ class General(base.General):
     #    [11, 12],                      # shoulder
     #    [23, 24],                      # waist
     ]
+    LANDMARK_GROUPS_FLAT = np.hstack(LANDMARK_GROUPS)
 
-    OBSERVATION_DIMS_VISUAL_DETECTION = len(LANDMARK_GROUPS) * len(LANDMARK_GROUPS[0]) * 3
-    RENDER_IMAGE_SIZE = 450
+    OBSERVATION_DIMS_VISUAL_DETECTION = LANDMARK_GROUPS_FLAT.size * 3
+    RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 5
     # vs. "lost in details"
-    STEPSKIP_DETECT = 10 # 10
+    STEPSKIP_DETECT = 2 # 10
     STEPSKIP_PLOT = STEPSKIP_DETECT # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
-    MAX_LIVES = 100
+    MAX_LIVES = 10
 
 
 # vs. single goal proficiency

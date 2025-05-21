@@ -57,6 +57,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 
 # https://github.com/huggingface/lerobot
 # https://www.reddit.com/r/reinforcementlearning/comments/vqb2wu/tips_and_tricks_for_rl_from_experimental_data/
+# https://gymnasium.farama.org/tutorials/gymnasium_basics/load_quadruped_model/
 
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
@@ -73,6 +74,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://mujoco.readthedocs.io/en/stable/mjx.html
 # https://github.com/google-deepmind/mujoco_menagerie
 # https://mujoco.readthedocs.io/en/stable/models.html
+# https://github.com/clvrai/awesome-rl-envs?tab=readme-ov-file#humanoid
 
 OBS_NORMALIZE_Z_SCORE = False
 
@@ -91,6 +93,7 @@ class PoseImitationEnv(HumanoidEnv):
                              width=cfg.General.RENDER_IMAGE_SIZE,
                              height=cfg.General.RENDER_IMAGE_SIZE,
                              xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid_face.xml')
+                            #  xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/robotis_op3/scene.xml')
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
         assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
@@ -100,8 +103,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.is_eval = is_eval
         self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'w')
 
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
         self.desired_pose = None
 
@@ -119,8 +122,8 @@ class PoseImitationEnv(HumanoidEnv):
                 # MUJOCO_GL=egl|glfw|osmesa %python ...% (glfw seems fastest)
                 delegate=BaseOptions.Delegate.GPU),
             running_mode=VisionRunningMode.VIDEO,
-            min_pose_detection_confidence=0.1,
-            min_pose_presence_confidence=0.1)
+            min_pose_detection_confidence=0.5,
+            min_pose_presence_confidence=0.5)
         self.landmarker_achieved = PoseLandmarker.create_from_options(self.landmarker_options_achieved)
 
         self.landmarker_options_desired = PoseLandmarkerOptions(
@@ -133,12 +136,12 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
         obspace_total_dims = 0
-        obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += 2 # falling, height
+        # obspace_total_dims += self.observation_space.shape[0] # super
+        # obspace_total_dims += 2 # falling, height
         obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
         
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += 2 # falling, height
+            # obspace_total_dims += 2 # falling, height
             obspace_total_dims += 3 # goaldist, goal_convergence, is_converging
             obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
 
@@ -249,14 +252,26 @@ class PoseImitationEnv(HumanoidEnv):
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:
             height = super()._get_obs()[0]
-            if height < 0.5 or height > 2.0:
-                # TODO learn default standing-pose first?
-                LOG.debug('OUTSIDE: FELL DOWN! %s', height)
+
+            if obs['achieved_goal'] > self.fep_goaldist_init * 1.1:
+                LOG.info('GOAL TOO FAR AWAY.')
                 terminated = True
-                # dont neutralize already pos. eps.?
-                # if not self.ep_rewards_mean and not reward:
-                reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
                 self.ep_lives -= 1
+
+            if self.ep_count_fails_pose_detection > 10:
+                LOG.info('TOO MANY DETECTION FAILURES.')
+                terminated = True
+                self.ep_lives -= 1
+
+            
+            # if height < 0.5 or height > 2.0:
+            #     # TODO learn default standing-pose first?
+            #     LOG.debug('OUTSIDE: FELL DOWN! %s', height)
+            #     terminated = True
+            #     # dont neutralize already pos. eps.?
+            #     # if not self.ep_rewards_mean and not reward:
+            #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
+            #     self.ep_lives -= 1
 
         self.fep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -275,7 +290,7 @@ class PoseImitationEnv(HumanoidEnv):
     def _get_obs(self):
         obs = []
         superobs = super()._get_obs()
-        obs.extend(superobs)
+        # obs.extend(superobs)
 
         achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
         desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
@@ -283,10 +298,12 @@ class PoseImitationEnv(HumanoidEnv):
         # detect pose only every nth step, else use last valid
         if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
             # renders only rgb (cant render multiple modes simultanously)
+            render_tmp = self.render_mode
             self.render_mode = 'rgb_array'
 
             # https://github.com/jurgisp/memory-maze/issues/26
             achieved_img = self.render().copy() # MUJOCO_GL=glfw
+            self.render_mode = render_tmp
             achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
             # TODO get desired img from video?
             desired_img = self.desired_img
@@ -303,16 +320,19 @@ class PoseImitationEnv(HumanoidEnv):
             # LOG.debug(time.perf_counter() - t)
             # bottleneck end
 
+        elif self.render_mode == 'human':
+            self.render()
+
 
         # get normalized goal distance
         achieved_obs = np.array([])
 
-        achieved_ob_fall = self._normalize_to_limits(superobs[24], 0, -2.5)
-        achieved_obs = np.append(achieved_obs, achieved_ob_fall)
+        # achieved_ob_fall = self._normalize_to_limits(superobs[24], 0, -2.5)
+        # achieved_obs = np.append(achieved_obs, achieved_ob_fall)
 
-        achieved_ob_height = superobs[0]
-        achieved_ob_height = self._normalize_to_limits(achieved_ob_height, 1.0, 2.0)
-        achieved_obs = np.append(achieved_obs, achieved_ob_height)
+        # achieved_ob_height = superobs[0]
+        # achieved_ob_height = self._normalize_to_limits(achieved_ob_height, 1.0, 2.0)
+        # achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
         # achieved_ob_pose = []
         achieved_ob_pose = self.last_ob_pose_achieved
@@ -321,21 +341,25 @@ class PoseImitationEnv(HumanoidEnv):
             # height-dependent vs. -independent
             # achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
             achieved_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
-            achieved_ob_pose = np.array(achieved_ob_pose)[cfg.General.LANDMARK_GROUPS]
+            achieved_ob_pose = np.array(achieved_ob_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
             achieved_ob_pose = self._normalize_to_limits(achieved_ob_pose, -1, 1)
             self.last_ob_pose_achieved = achieved_ob_pose
+            self.ep_count_fails_pose_detection = 0
+        else:
+            self.ep_count_fails_pose_detection += 1
+            
         achieved_obs = np.append(achieved_obs, achieved_ob_pose)
         obs.extend(achieved_obs)
 
 
         desired_obs = np.array([])
 
-        desired_ob_fall = 0
-        desired_obs = np.append(desired_obs, desired_ob_fall)
+        # desired_ob_fall = 0
+        # desired_obs = np.append(desired_obs, desired_ob_fall)
 
-        desired_ob_height = 1.3
-        desired_ob_height = self._normalize_to_limits(desired_ob_height, 1.0, 2.0)
-        desired_obs = np.append(desired_obs, desired_ob_height)
+        # desired_ob_height = 1.3
+        # desired_ob_height = self._normalize_to_limits(desired_ob_height, 1.0, 2.0)
+        # desired_obs = np.append(desired_obs, desired_ob_height)
 
         # desired_ob_pose = []
         desired_ob_pose = self.last_ob_pose_desired
@@ -343,7 +367,7 @@ class PoseImitationEnv(HumanoidEnv):
             # only first detected pose
             # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
             desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-            desired_ob_pose = np.array(desired_ob_pose)[cfg.General.LANDMARK_GROUPS]
+            desired_ob_pose = np.array(desired_ob_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
             desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
             self.last_ob_pose_desired = desired_ob_pose
         desired_obs = np.append(desired_obs, desired_ob_pose)
@@ -380,8 +404,8 @@ class PoseImitationEnv(HumanoidEnv):
         # 100k, arms-only :    simplified, arms resemblance, avoid falling by jumping? /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/14-19-48_restored/rl_model_finished
         # 200k, arms-only, frameskip10 :    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/b799fe5/le-pose-imitation-v4/15-28-00/rl_model_finished
         self.ep_goalweight = np.zeros(desired_obs.shape)
-        self.ep_goalweight[0] = 1 # base dim
-        self.ep_goalweight[1] = 1 # base dim
+        # self.ep_goalweight[0] = 1 # base dim
+        # self.ep_goalweight[1] = 1 # base dim
         # comb-through (only after stable/nonterminating? truncation + success cond.)
         self.ep_goalweight[self.ep_goaldim_active] = 1
 
@@ -427,7 +451,8 @@ class PoseImitationEnv(HumanoidEnv):
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
             achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
-            self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+            if self.parallel_plot_queue.empty:
+                self.parallel_plot_queue.put((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
 
@@ -443,20 +468,20 @@ class PoseImitationEnv(HumanoidEnv):
     def reset_model(self):
         obs_init = None
 
-        if self.ep_num_steps > 0 and self.is_eval:
+        if self.ep_num_steps > 0:
             # episode report
             LOG.debug('ep_lives %s', self.ep_lives)
             LOG.debug('ep_num_steps %s', self.ep_num_steps)
             LOG.debug('ep_num_steps_goal_zone %s', self.ep_num_steps_goal_zone)
             LOG.debug('ep_first_reward_step %s', self.ep_first_reward_step)
-            LOG.debug('ep_goaldim_active %s', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
+            LOG.debug('ep_goaldim_active %s %s', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
             LOG.debug('ep_goaldist_desired %s', self.ep_obs_cur['desired_goal'])
             LOG.debug('ep_goaldist_first %s', self.ep_goaldists[0])
             LOG.debug('ep_goaldist_min %s', min(self.ep_goaldists))
             LOG.debug('ep_goaldist_mean %s', np.mean(self.ep_goaldists))
             LOG.debug('ep_goaldist_max %s', max(self.ep_goaldists))
             LOG.debug('ep_goaldist_last %s', self.ep_obs_cur['achieved_goal'])
-            LOG.debug('ep_reward_threshold %s', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
+            LOG.debug('ep_reward_threshold %s %s', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             LOG.debug('ep_traj_is_halved %s', self.ep_traj_is_halved)
             LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
             if self.ep_rewards_mean == 0:
@@ -640,6 +665,7 @@ def parallel_plot(queue: multiprocessing.Queue):
     extplot = fig.add_subplot(133, projection="3d")
 
     while True:
+        # achieved_img, desired_img, achieved_pose, desired_pose = 0
         # while not queue.empty(): # get only latest
         achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
     
