@@ -18,7 +18,7 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 450
     FRAMESKIP_STEP = 5
     # vs. "lost in details"
-    STEPSKIP_DETECT = 10
+    STEPSKIP_DETECT = 10 # 10
     STEPSKIP_PLOT = STEPSKIP_DETECT # 10 >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
     MAX_LIVES = 100

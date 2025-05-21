@@ -25,6 +25,7 @@ from utils.custom_wrappers import DisplayWrapper, RecordVideo
 
 # make git_label available in hydra
 OmegaConf.register_new_resolver("git_label", get_git_label)
+OmegaConf.register_new_resolver("as_tuple", tuple)
 
 
 def get_env_instance(cfg, logger):
@@ -99,6 +100,12 @@ def  get_algo_instance(cfg, logger, env):
     algo_name = cfg['algorithm'].name
     alg_kwargs = OmegaConf.to_container(cfg.algorithm)
     del alg_kwargs['name']  # remove name as we pass all arguments to the model constructor
+    try:
+        # may be tuple
+        alg_kwargs['train_freq'] = tuple(alg_kwargs['train_freq']) 
+    except:
+        pass
+
     try:
         # https://github.com/araffin/sbx
         # https://github.com/jax-ml/jax

@@ -21,6 +21,8 @@ from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 
+import logging
+LOG = logging.getLogger(__name__)
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
@@ -51,6 +53,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://github.com/google-deepmind/mujoco/issues/85
 
 # https://github.com/huggingface/lerobot
+# https://www.reddit.com/r/reinforcementlearning/comments/vqb2wu/tips_and_tricks_for_rl_from_experimental_data/
 
 # https://github.com/google-ai-edge/mediapipe/issues/5325
 # https://ai.google.dev/edge/api/mediapipe/java/com/google/mediapipe/tasks/components/containers/NormalizedLandmark
@@ -77,7 +80,8 @@ OBS_NORMALIZE_Z_SCORE = False
 class PoseImitationEnv(HumanoidEnv):
 
 
-    def __init__(self, is_plot=True, is_eval=False):
+    def __init__(self, is_eval=False, is_plot=True, log_level=logging.INFO):
+        LOG.setLevel(log_level)
 
         HumanoidEnv.__init__(self,
                              exclude_current_positions_from_observation=True,
@@ -93,8 +97,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.is_eval = is_eval
         self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'w')
 
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
         self.desired_pose = None
 
@@ -182,9 +186,9 @@ class PoseImitationEnv(HumanoidEnv):
             multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
 
         self._reset()
-        print('le-walker-2d initialized.')
-        print('observation_space', observation_space)
-        print('goal_space', goal_space)
+        LOG.debug('le-walker-2d initialized.')
+        LOG.debug('observation_space', observation_space)
+        LOG.debug('goal_space', goal_space)
 
 
     def step(self, action):
@@ -206,7 +210,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # NUDGING (healing health)
         if obs['achieved_goal'] < self.ep_goaldist_min:
-            print(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
+            LOG.debug(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
             self.ep_goaldist_min = obs['achieved_goal']
             self.ep_lives = cfg.General.MAX_LIVES
             reward = 1
@@ -227,10 +231,10 @@ class PoseImitationEnv(HumanoidEnv):
         # 2M,                                           :   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored/rl_model_finished
         # 3M,                                           :   progress, but slower than goalpos (but maybe more general?) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/15-50-09_restored_restored_restored/rl_model_finished
         # 1M, comb-through, on-grid, lives10, goalpos:  :   slower on arms moving /home/t14/Documents/tuhh/dsf/Scilab-RL/data/39e45d1/le-pose-imitation-v4/12-48-33/rl_model_finished
-        # 100k,                                      , noDenudge:
+        # 3M,                                      , noDenudge:
 
         # elif obs['achieved_goal'] > self.ep_goaldist_max:
-        #     print(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
+        #     LOG.debug(f"DETERIORATE: {obs['achieved_goal']} > {self.ep_goaldist_max}")
         #     self.ep_goaldist_max = obs['achieved_goal']
         #     reward = -1
 
@@ -246,7 +250,7 @@ class PoseImitationEnv(HumanoidEnv):
             height = super()._get_obs()[0]
             if height < 0.5 or height > 2.0:
                 # TODO learn default standing-pose first?
-                print('OUTSIDE: FELL DOWN!', height)
+                LOG.debug('OUTSIDE: FELL DOWN!', height)
                 terminated = True
                 # dont neutralize already pos. eps.?
                 # if not self.ep_rewards_mean and not reward:
@@ -258,7 +262,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_num_steps += 1
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
-            print('TRUNCATED.')
+            LOG.debug('TRUNCATED.')
             info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             truncated = True
 
@@ -295,7 +299,7 @@ class PoseImitationEnv(HumanoidEnv):
                 # only once at the beginning (still image)
                 self.desired_pose = self.landmarker_desired.detect(desired_img)
             desired_pose = self.desired_pose
-            # print(time.perf_counter() - t)
+            # LOG.debug(time.perf_counter() - t)
             # bottleneck end
 
 
@@ -304,9 +308,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         achieved_ob_fall = self._normalize_to_limits(superobs[24], 0, -2.5)
         achieved_obs = np.append(achieved_obs, achieved_ob_fall)
-
-        # achieved_ob_steps = self._normalize(self.ep_num_steps % 100, 0, 100)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_steps)
 
         achieved_ob_height = superobs[0]
         achieved_ob_height = self._normalize_to_limits(achieved_ob_height, 1.0, 2.0)
@@ -330,9 +331,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         desired_ob_fall = 0
         desired_obs = np.append(desired_obs, desired_ob_fall)
-
-        # desired_ob_steps = self._normalize(100, 0, 100)
-        # desired_obs = np.append(desired_obs, desired_ob_steps)
 
         desired_ob_height = 1.3
         desired_ob_height = self._normalize_to_limits(desired_ob_height, 1.0, 2.0)
@@ -450,27 +448,27 @@ class PoseImitationEnv(HumanoidEnv):
     def reset_model(self):
         obs_init = None
 
-        if self.ep_num_steps > 0:
+        if self.ep_num_steps > 0 and self.is_eval:
             # episode report
-            print('ep_lives', self.ep_lives)
-            print('ep_num_steps', self.ep_num_steps)
-            print('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
-            print('ep_first_reward_step', self.ep_first_reward_step)
-            print('ep_goaldim_active', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
-            print('ep_goaldist_desired', self.ep_obs_cur['desired_goal'])
-            print('ep_goaldist_first', self.ep_goaldists[0])
-            print('ep_goaldist_min', min(self.ep_goaldists))
-            print('ep_goaldist_mean', np.mean(self.ep_goaldists))
-            print('ep_goaldist_max', max(self.ep_goaldists))
-            print('ep_goaldist_last', self.ep_obs_cur['achieved_goal'])
-            print('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
-            print('ep_traj_is_halved', self.ep_traj_is_halved)
-            print('ep_rewards_mean', self.ep_rewards_mean)
+            LOG.debug('ep_lives', self.ep_lives)
+            LOG.debug('ep_num_steps', self.ep_num_steps)
+            LOG.debug('ep_num_steps_goal_zone', self.ep_num_steps_goal_zone)
+            LOG.debug('ep_first_reward_step', self.ep_first_reward_step)
+            LOG.debug('ep_goaldim_active', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
+            LOG.debug('ep_goaldist_desired', self.ep_obs_cur['desired_goal'])
+            LOG.debug('ep_goaldist_first', self.ep_goaldists[0])
+            LOG.debug('ep_goaldist_min', min(self.ep_goaldists))
+            LOG.debug('ep_goaldist_mean', np.mean(self.ep_goaldists))
+            LOG.debug('ep_goaldist_max', max(self.ep_goaldists))
+            LOG.debug('ep_goaldist_last', self.ep_obs_cur['achieved_goal'])
+            LOG.debug('ep_reward_threshold', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
+            LOG.debug('ep_traj_is_halved', self.ep_traj_is_halved)
+            LOG.debug('ep_rewards_mean', self.ep_rewards_mean)
             if self.ep_rewards_mean == 0:
-                print('WARNING: zero-sum-ep. => wasted ep.?')
+                LOG.debug('WARNING: zero-sum-ep. => wasted ep.?')
                 self.tr_total_zero_sum_eps += 1
                 self.tr_total_zero_sum_eps_steps += self.ep_num_steps
-            print('\n')
+            LOG.debug('\n')
             if self.is_eval:
                 self.outfile_ep_rewards_mean.write(f"{self.ep_rewards_mean}\n")
                 self.outfile_ep_rewards_mean.flush()
@@ -479,15 +477,15 @@ class PoseImitationEnv(HumanoidEnv):
             if self.cfg.TrajectoryHalving.IS_ENABLED and not self.is_eval:
                 # if self.ep_goaldist_min < self.last_ep_goaldist_min:
                 if self.ep_lives > 0:
-                    print('LAST SAVEPOINT.') # noisy?
+                    LOG.debug('LAST SAVEPOINT.') # noisy?
                     obs_init = self._reset_half_episode()
                     if(obs_init['achieved_goal'] > self.ep_goaldist_min):
-                        print('SAVEPOINT HAS DRIFTED OFF-GRID (NOISE?). correcting...', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
+                        LOG.debug('SAVEPOINT HAS DRIFTED OFF-GRID (NOISE?). correcting...', self.fep_savepoint_steps, self.ep_goaldist_min - obs_init['achieved_goal'])
                         # obs_init = None
                         obs_init['achieved_goal'] = self.ep_goaldist_min
 
         if not obs_init:
-            print('NEW GAME.')
+            LOG.debug('NEW GAME.')
             obs_init = self._reset_full_episode()
 
         # WIP half (more nudging, minigame) vs. full (once nudging, orig.game)
@@ -499,10 +497,10 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldists.append(obs_init['achieved_goal'])
         self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
         self.fep_goaldist_min = min(self.fep_goaldist_min, self.ep_goaldist_min)
-        print('fep_savepoint_steps', self.fep_savepoint_steps)
-        print('fep_savepoint_goaldist', obs_init['achieved_goal'])
-        print('fep_goaldist_init', self.fep_goaldist_init)
-        print('fep_goaldist_min', self.fep_goaldist_min) # may be noisy and not (easily) repeatable
+        LOG.debug('fep_savepoint_steps', self.fep_savepoint_steps)
+        LOG.debug('fep_savepoint_goaldist', obs_init['achieved_goal'])
+        LOG.debug('fep_goaldist_init', self.fep_goaldist_init)
+        LOG.debug('fep_goaldist_min', self.fep_goaldist_min) # may be noisy and not (easily) repeatable
 
         return obs_init
     
@@ -531,14 +529,14 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             self.tr_feps_consecutive_neg = 0
 
-        print('tr_feps_total', self.tr_feps_total)
-        print('tr_feps_consecutive_neg', self.tr_feps_consecutive_neg)
-        print('tr_total_zero_sum_eps', self.tr_total_zero_sum_eps)
-        print('tr_total_zero_sum_eps_steps', self.tr_total_zero_sum_eps_steps)
-        print('tr_count_goal_reached', self.ep_num_steps_goal_zone)
-        print('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
-        print('fep_goaldist_init', self.fep_goaldist_init)
-        print('fep_rewards_sum', self.fep_rewards_sum)
+        LOG.debug('tr_feps_total', self.tr_feps_total)
+        LOG.debug('tr_feps_consecutive_neg', self.tr_feps_consecutive_neg)
+        LOG.debug('tr_total_zero_sum_eps', self.tr_total_zero_sum_eps)
+        LOG.debug('tr_total_zero_sum_eps_steps', self.tr_total_zero_sum_eps_steps)
+        LOG.debug('tr_count_goal_reached', self.ep_num_steps_goal_zone)
+        LOG.debug('tr_goaldist_personal_best', self.tr_goaldist_personal_best)
+        LOG.debug('fep_goaldist_init', self.fep_goaldist_init)
+        LOG.debug('fep_rewards_sum', self.fep_rewards_sum)
         self.fep_rewards_sum = 0
         return obs_init
 
@@ -566,7 +564,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states = []
         self.ep_is_perfect = False
         self.ep_num_steps_goal_zone = 0
-        # print('desired_obs', self.desired_obs)
+        # LOG.debug('desired_obs', self.desired_obs)
 
         # landmarker reset: better/correct detection of start pose
         # TODO wait for efficient reset() implementation in API

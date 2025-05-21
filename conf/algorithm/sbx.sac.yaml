@@ -18,7 +18,7 @@ buffer_size: 1000000
 ent_coef: 'auto'
 batch_size: 1024
 gamma: 0.95
-learning_rate: 0.001
+learning_rate: 0.001 # 0.001
 learning_starts: 1000
 # policy_kwargs: "dict(net_arch=[64, 64])"
 # policy_kwargs:
