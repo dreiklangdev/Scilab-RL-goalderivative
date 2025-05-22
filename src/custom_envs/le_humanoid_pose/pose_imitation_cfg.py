@@ -20,9 +20,9 @@ class General(base.General):
 
     OBSERVATION_DIMS_VISUAL_DETECTION = LANDMARK_GROUPS_FLAT.size * 3
     RENDER_IMAGE_SIZE = 1000
-    FRAMESKIP_STEP = 5
+    FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
-    STEPSKIP_DETECT = 2 # 10
+    STEPSKIP_DETECT = 2 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
     MAX_LIVES = 10
@@ -36,6 +36,7 @@ class MetaObservation(base.MetaObservation):
 # vs. too big search space
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
+    STEPS_START_INVINCIBLE = 50
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
@@ -49,7 +50,7 @@ class PracticeTime(base.PracticeTime):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    MAX_FRAC_DEFAULT = 0.1 # should be greater than drift/noise
+    MAX_FRAC_DEFAULT = 0.05 # should be greater than drift/noise
     # vs. not finding goal (sparse rewards) (no direction/orientation: headless wandering)
     IS_NUDGING = True
     IS_ADAPTIVE = False

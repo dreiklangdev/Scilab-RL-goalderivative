@@ -99,7 +99,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.cfg = cfg
         self.is_plot = is_plot
         self.is_eval = is_eval
-        self.outfile_ep_num_steps_goal_zone = open('fep_savepoint_steps.dat', 'a')
+        self.outfile_ep_num_steps_goal_zone = open('ep_num_steps_goal_zone.dat', 'a')
 
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
@@ -172,7 +172,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_num_steps_max: int = 0
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = -np.inf
-        self.ep_goaldim_active = -1
+        self.ep_goaldims_secondary = -1
         self.ep_goalweight = -1
         self.ep_lives = cfg.General.MAX_LIVES
         # constant threshold
@@ -224,6 +224,7 @@ class PoseImitationEnv(HumanoidEnv):
         # elif:
 
         # SPACE-NUDGING (healing health, only if very difficult goalzone? maybe only once in whole training?)
+        # TODO enable? disable?
         # if obs['achieved_goal'] < self.ep_goaldist_min:
         #     LOG.debug(f"IMPROVED SPACE: {obs['achieved_goal']} < {self.ep_goaldist_min}")
         #     self.ep_goaldist_min = obs['achieved_goal']
@@ -259,13 +260,16 @@ class PoseImitationEnv(HumanoidEnv):
         terminated = False
         truncated = False
 
+        self.fep_rewards_sum += reward
+        self.ep_rewards_sum += reward
+
         # space constraint
-        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE:            
-            if obs['achieved_goal'] > self.fep_goaldist_init * 1.1:
+        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:            
+            if obs['achieved_goal'] > max(obs['desired_goal'], self.fep_goaldist_init * 1.5):
                 LOG.info('GOAL TOO FAR AWAY.')
                 terminated = True
                 self.ep_lives -= 1
-                # reward = min(reward, -self.ep_rewards_sum)
+                # reward "drop" (vs. premature cash-out)
                 # TODO lose only half of total rewards? (still rewarding goalzone reach)
                 reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
 
@@ -275,14 +279,14 @@ class PoseImitationEnv(HumanoidEnv):
                 self.ep_lives -= 1
                 reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
                 
-            if self.ep_num_steps > 10 and obs['observation'][0] < 0.25:
+            if obs['observation'][0] > 0.40:
                 LOG.info('HEIGHT TOO LOW.')
                 terminated = True
                 self.ep_lives -= 1
                 reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum                
 
             if self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
-                LOG.info('LEFT GOAL-ZONE.')
+                LOG.info('GOAL-ZONE LEFT.')
                 terminated = True
                 self.ep_lives -= 1
                 reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
@@ -296,8 +300,6 @@ class PoseImitationEnv(HumanoidEnv):
             #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
             #     self.ep_lives -= 1
 
-        self.fep_rewards_sum += reward
-        self.ep_rewards_sum += reward
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
 
@@ -372,7 +374,9 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             self.ep_count_fails_pose_detection += 1
 
-        achieved_ob_height = min(achieved_ob_pose[1][1], achieved_ob_pose[2][1]) - achieved_ob_pose[3][1]
+
+        # add extra base dim. (vs. select base dim. index in obs.)
+        achieved_ob_height = achieved_ob_pose[0][1]
         achieved_obs = np.append(achieved_obs, achieved_ob_height)
         achieved_obs = np.append(achieved_obs, achieved_ob_pose)
 
@@ -402,7 +406,7 @@ class PoseImitationEnv(HumanoidEnv):
             desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
             self.last_ob_pose_desired = desired_ob_pose
 
-        desired_ob_height = 0.4
+        desired_ob_height = desired_ob_pose[0][1]
         desired_obs = np.append(desired_obs, desired_ob_height)
         desired_obs = np.append(desired_obs, desired_ob_pose)
 
@@ -414,8 +418,8 @@ class PoseImitationEnv(HumanoidEnv):
         # 500k, baseDim+randomDim, totalLossTerminate:  no real progress
         # 100k, base-dim only, totalLossTerminate, noDenudge:
         self.ep_goalweight = np.zeros(desired_obs.shape)
-        self.ep_goalweight[0] = 1 # base-dim (height)
-        # self.ep_goalweight[self.ep_goaldim_active] = 1            
+        self.ep_goalweight[0] = 1 # base primary dim (height)
+        self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
@@ -476,7 +480,7 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_num_steps_goal_zone %s', self.ep_num_steps_goal_zone)
             LOG.debug('ep_num_steps_max %s', self.ep_num_steps_max)
             LOG.debug('ep_first_reward_step %s', self.ep_first_reward_step)
-            LOG.debug('ep_goaldim_active %s %s', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
+            LOG.debug('ep_goaldims_active %s', np.nonzero(self.ep_goalweight)[0])
             LOG.debug('ep_goaldist_desired %s', self.ep_obs_cur['desired_goal'])
             LOG.debug('ep_goaldist_first %s', self.ep_goaldists[0])
             LOG.debug('ep_goaldist_min %s', min(self.ep_goaldists))
@@ -499,8 +503,8 @@ class PoseImitationEnv(HumanoidEnv):
                         drift = self.ep_goaldist_min - obs_init['achieved_goal']
                         LOG.debug('SAVEPOINT STATE HAS DRIFTED OFF-GRID (NOISE?). correcting... %s %s', self.fep_savepoint_steps, drift)
                         obs_init['achieved_goal'] = self.ep_goaldist_min
-                        if np.abs(drift) > self.ep_reward_threshold / 2:
-                            LOG.warning('DRIFT IS GREATER THAN THRESHOLD÷2! CONSIDER REDUCE NOISE OR INCREASE THRESHOLD.')
+                        if np.abs(drift) > self.ep_reward_threshold:
+                            LOG.warning('DRIFT IS GREATER THAN THRESHOLD! CONSIDER REDUCE NOISE OR INCREASE THRESHOLD.')
                         # obs_init = None
 
         if not obs_init:
@@ -539,9 +543,9 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
-        # self.ep_goaldim_active = (self.ep_goaldim_active + 1) % len(self.ep_goalweight)
-        # self.ep_goaldim_active = np.random.randint(len(self.ep_goalweight), size=1)
-        self.ep_goaldim_active = np.random.randint(10, size=1)
+        # self.ep_goaldims_secondary = (ep_goaldims_secondary + 1) % len(self.ep_goalweight)
+        self.ep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
+        # self.ep_goaldims_secondary = np.random.randint(10, size=1)
         self.ep_lives = cfg.General.MAX_LIVES
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
@@ -670,6 +674,9 @@ def parallel_plot(queue: multiprocessing.Queue):
         # plot topology connections
         # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
         extplot.clear()
+        extplot.set_xlabel('x')
+        extplot.set_ylabel('z')
+        extplot.set_zlabel('y')
         extplot.set_xlim3d(-1, 1)
         extplot.set_ylim3d(-1, 1)
         extplot.set_zlim3d(1, -1) # flip z-axis
