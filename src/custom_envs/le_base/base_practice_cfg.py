@@ -8,6 +8,8 @@ import numpy as np
 # tmux
 # MUJOCO_GL=egl %python ...%
 
+# gnuplot -p -e "while (1) {plot 'fep_savepoint_steps.dat' w l; pause 2; replot}"
+
 # TODO transform/move to dict? (immutable as configs should be)
 
 class General:
