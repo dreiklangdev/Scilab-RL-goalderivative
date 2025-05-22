@@ -160,8 +160,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.init_qpos[6] = -1.4 # face towards camera
         self.tr_feps_total = 0
         self.tr_feps_consecutive_neg = 0
-        self.tr_total_zero_sum_eps = 0
-        self.tr_total_zero_sum_eps_steps = 0
         self.tr_goaldist_personal_best = np.inf
         self.tr_num_steps: int = 0
         self.fep_savepoint_steps = 0
@@ -215,7 +213,7 @@ class PoseImitationEnv(HumanoidEnv):
             if not self.ep_goal_zone_reached_before:
                 LOG.info('GOAL-ZONE REACHED.') # no need for further exploration
                 self.ep_goal_zone_reached_before = True
-                # self.ep_lives = 0 # spend more training time reaching goalzone first
+                self.ep_lives = 0 # spend more training time reaching goalzone first
 
         # TIME-NUDGING? (not needed with walker2d?)
         # if self.ep_num_steps > self.ep_num_steps_max:
@@ -475,8 +473,8 @@ class PoseImitationEnv(HumanoidEnv):
             # episode report
             LOG.debug('ep_lives %s', self.ep_lives)
             LOG.debug('ep_num_steps %s', self.ep_num_steps)
-            LOG.debug('ep_num_steps_max %s', self.ep_num_steps_max)
             LOG.debug('ep_num_steps_goal_zone %s', self.ep_num_steps_goal_zone)
+            LOG.debug('ep_num_steps_max %s', self.ep_num_steps_max)
             LOG.debug('ep_first_reward_step %s', self.ep_first_reward_step)
             LOG.debug('ep_goaldim_active %s %s', self.ep_goaldim_active, np.nonzero(self.ep_goalweight)[0])
             LOG.debug('ep_goaldist_desired %s', self.ep_obs_cur['desired_goal'])
@@ -488,10 +486,7 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_reward_threshold %s %s', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             LOG.debug('ep_traj_is_halved %s', self.ep_traj_is_halved)
             LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
-            if self.ep_rewards_mean == 0:
-                LOG.debug('WARNING: zero-sum-ep. => wasted ep.?')
-                self.tr_total_zero_sum_eps += 1
-                self.tr_total_zero_sum_eps_steps += self.ep_num_steps
+            LOG.debug('ep_goalzone_per_step %s', np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2))
             LOG.debug('\n')
         
         if self.ep_num_steps > 1:
@@ -562,8 +557,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         LOG.debug('tr_feps_total %s', self.tr_feps_total)
         LOG.debug('tr_feps_consecutive_neg %s', self.tr_feps_consecutive_neg)
-        LOG.debug('tr_total_zero_sum_eps %s', self.tr_total_zero_sum_eps)
-        LOG.debug('tr_total_zero_sum_eps_steps %s', self.tr_total_zero_sum_eps_steps)
         LOG.debug('tr_goaldist_personal_best %s', self.tr_goaldist_personal_best)
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_rewards_sum %s', self.fep_rewards_sum)
