@@ -81,7 +81,9 @@ OBS_NORMALIZE_Z_SCORE = False
 
 # 1M    /home/t500/tuhh/dsf/Scilab-RL/data/beb02be/le-pose-imitation-v4/03-44-41/rl_model_finished
 # 1M, noPen, noNudge, noPreCashout, terminateOnLeave, posePrimarySensor:     not working (bad prim. sensor?) /mnt/t500/tuhh/dsf/Scilab-RL/data/95ea064/le-pose-imitation-v4/02-04-33/rl_model_finished
-# 100k(!),                                          , superHeightSensor:     definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/75dd266/le-pose-imitation-v4/12-08-39/rl_model_finished
+
+# 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim. only, superHeightSensor:    definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/75dd266/le-pose-imitation-v4/12-08-39/rl_model_finished
+# 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim, single random secDim, superHeightSensor:    definite progress 
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -387,6 +389,7 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             self.ep_count_fails_pose_detection += 1
 
+        # TODO try visual height primary from (normalized) image (non-world) 2d landmark? (head-to-waist or to-feet/floor)
         # pose detection only: cant detect fall/height? (origin (torso) is also falling)
         # achieved_ob_height = achieved_ob_pose[0][1] # nose-to-waist
         # achieved_ob_height = min(achieved_ob_pose[1][1], achieved_ob_pose[2][1]) - achieved_ob_pose[3][1] # feet-to-waist
@@ -430,7 +433,7 @@ class PoseImitationEnv(HumanoidEnv):
         # 100k, base-dim only, totalLossTerminate, noDenudge:
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[0] = 1 # base primary dim (height)
-        # self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+        self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
