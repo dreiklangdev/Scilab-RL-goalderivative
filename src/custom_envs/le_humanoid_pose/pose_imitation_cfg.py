@@ -36,7 +36,7 @@ class MetaObservation(base.MetaObservation):
 # vs. too big search space
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
-    STEPS_START_INVINCIBLE = 50 # eg. if instable start (falling)
+    STEPS_START_INVINCIBLE = 5 # eg. if instable start (falling)
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):

@@ -83,7 +83,8 @@ OBS_NORMALIZE_Z_SCORE = False
 # 1M, noPen, noNudge, noPreCashout, terminateOnLeave, posePrimarySensor:     not working (bad prim. sensor?) /mnt/t500/tuhh/dsf/Scilab-RL/data/95ea064/le-pose-imitation-v4/02-04-33/rl_model_finished
 
 # 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim. only, superHeightSensor:    definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/75dd266/le-pose-imitation-v4/12-08-39/rl_model_finished
-# 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim, single random secDim, superHeightSensor:    definite progress 
+# 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim, single random secDim, superHeightSensor:    definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/bb75ff5/le-pose-imitation-v4/12-35-23/rl_model_finished
+# 1.0M,                                                                                                                perfect progress in phase 1 (until goalzone reached), no progress in phase 2 /home/t14/Documents/tuhh/dsf/Scilab-RL/data/bb75ff5/le-pose-imitation-v4/12-35-23_restored/rl_model_finished
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -213,7 +214,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states.append((qpos, qvel))
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
-        if reward:
+        if reward: # phase 2: inside goal-zone (no diverging exploration anymore, seek perfection) TODO why not always phase 2?
             self.ep_num_steps_goal_zone += 1
             if not self.ep_goal_zone_reached_before:
                 LOG.info('GOAL-ZONE REACHED.') # no need for further exploration
@@ -230,11 +231,11 @@ class PoseImitationEnv(HumanoidEnv):
 
         # SPACE-NUDGING (healing health, only if very difficult goalzone? maybe only once in whole training?)
         # TODO enable? disable?
-        # if obs['achieved_goal'] < self.ep_goaldist_min:
-        #     LOG.debug(f"IMPROVED SPACE: {obs['achieved_goal']} < {self.ep_goaldist_min}")
-        #     self.ep_goaldist_min = obs['achieved_goal']
-        #     self.ep_lives = cfg.General.MAX_LIVES
-        #     reward = 1
+        if obs['achieved_goal'] < self.ep_goaldist_min:
+            LOG.debug(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
+            self.ep_goaldist_min = obs['achieved_goal']
+            self.ep_lives = cfg.General.MAX_LIVES
+            reward = 1
         # DENUDGING
         # save-and-go ("souls-like emulator")
         # 40k:  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ee8db7f/le-pose-imitation-v4/23-20-22/rl_model_finished
@@ -270,9 +271,10 @@ class PoseImitationEnv(HumanoidEnv):
 
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:            
-            # TODO what if instable fep_goaldist_init?
-            if obs['achieved_goal'] > max(obs['desired_goal'], self.fep_goaldist_init * 1.5):
-                LOG.info('GOAL TOO FAR AWAY.')
+            # carefully find good terminate goaldist. (very depends on goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
+            goaldist_terminate = obs['desired_goal'] * 6
+            if obs['achieved_goal'] > goaldist_terminate:
+                LOG.info('GOAL TOO FAR AWAY. %s > %s', obs['achieved_goal'], goaldist_terminate)
                 terminated = True
                 self.ep_lives -= 1
                 # reward "drop" (vs. premature cash-out)
@@ -302,12 +304,12 @@ class PoseImitationEnv(HumanoidEnv):
             #     self.ep_lives -= 1
 
             # possibly non-termin. cond. in the end
-            elif self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
-                LOG.info('GOAL-ZONE LEFT.')
-                # TODO allow (wider) recovery? (outside goal-zone, != reaction inside; or just increase goal-threshold/-zone?) (reset reward sum)
-                terminated = True
-                self.ep_lives -= 1
-                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
+            # elif self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
+            #     LOG.info('GOAL-ZONE LEFT.')
+            #     # TODO allow (wider) recovery? (outside goal-zone, != reaction inside; or just increase goal-threshold/-zone?) (reset reward sum)
+            #     terminated = True
+            #     self.ep_lives -= 1
+            #     reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
 
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -433,7 +435,7 @@ class PoseImitationEnv(HumanoidEnv):
         # 100k, base-dim only, totalLossTerminate, noDenudge:
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[0] = 1 # base primary dim (height)
-        self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+        # self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
@@ -449,14 +451,23 @@ class PoseImitationEnv(HumanoidEnv):
             # goaldirection = goaldiff_weighted / np.linalg.norm(goaldiff_weighted)
             # metaobs.extend(goaldirection)
 
+            goal_convergence = 0
+            is_converging = 0
             if len(self.ep_goaldists) > 1:
                 goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
-                metaobs.append(goal_convergence)
                 is_converging = np.sign(goal_convergence)
-                metaobs.append(is_converging)
-            else:
-                metaobs.extend([0,0])
+            metaobs.append(goal_convergence)
+            metaobs.append(is_converging)
             obs.extend(metaobs)
+
+            # meta-goals
+            achieved_metaobs = np.array([goaldist, is_converging])
+            desired_metaobs = np.array([0, 1])
+            goaldiff_meta = achieved_metaobs - desired_metaobs
+            goaldist_meta = np.linalg.norm(goaldiff_meta, axis=-1)
+
+            # TODO different weighting (eg. meta-goals only??)
+            goaldist = 0.5 * goaldist + 0.5 * goaldist_meta
 
         obs = np.array(obs)
         goaldist = np.array(goaldist)

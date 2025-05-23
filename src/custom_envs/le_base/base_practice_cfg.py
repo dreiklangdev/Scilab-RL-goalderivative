@@ -9,6 +9,8 @@ import numpy as np
 # MUJOCO_GL=egl %python ...%
 
 # gnuplot -p -e "while (1) {plot 'fep_num_steps_goal_zone.dat' w l; pause 0.5; replot}"
+# https://pmitev.github.io/to-awk-or-not/More_awk/Running_average/
+# gnuplot -p -e "while (1) {plot 'fep_num_steps_goal_zone.dat' w l, '< /home/t14/Documents/tuhh/dsf/Scilab-RL/scripts/run-average.awk size=100 fep_num_steps_goal_zone.dat' w l lw 3 lc rgb 'blue'; pause 5; replot}"
 
 # TODO transform/move to dict? (immutable as configs should be)
 
