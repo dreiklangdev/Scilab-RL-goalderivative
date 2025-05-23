@@ -80,6 +80,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 OBS_NORMALIZE_Z_SCORE = False
 
 # 1M    /home/t500/tuhh/dsf/Scilab-RL/data/beb02be/le-pose-imitation-v4/03-44-41/rl_model_finished
+# 1M, noPen, noNudge, noPreCashout  /mnt/t500/tuhh/dsf/Scilab-RL/data/95ea064/le-pose-imitation-v4/02-04-33/rl_model_finished
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -410,7 +411,7 @@ class PoseImitationEnv(HumanoidEnv):
         desired_obs = np.append(desired_obs, desired_ob_height)
         desired_obs = np.append(desired_obs, desired_ob_pose)
 
-        self.ep_goalweight = np.ones(desired_obs.shape)
+        # self.ep_goalweight = np.ones(desired_obs.shape)
         # if not self.is_eval:
         # isolated (vs. overlapping (random) batches?)
         # comb-through (only after stable/nonterminating? truncation + success cond.)
@@ -419,7 +420,7 @@ class PoseImitationEnv(HumanoidEnv):
         # 100k, base-dim only, totalLossTerminate, noDenudge:
         self.ep_goalweight = np.zeros(desired_obs.shape)
         self.ep_goalweight[0] = 1 # base primary dim (height)
-        self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+        # self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
