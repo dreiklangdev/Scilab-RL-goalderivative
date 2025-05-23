@@ -80,7 +80,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 OBS_NORMALIZE_Z_SCORE = False
 
 # 1M    /home/t500/tuhh/dsf/Scilab-RL/data/beb02be/le-pose-imitation-v4/03-44-41/rl_model_finished
-# 1M, noPen, noNudge, noPreCashout  /mnt/t500/tuhh/dsf/Scilab-RL/data/95ea064/le-pose-imitation-v4/02-04-33/rl_model_finished
+# 1M, noPen, noNudge, noPreCashout, terminateOnLeave, posePrimarySensor:     not working (bad prim. sensor?) /mnt/t500/tuhh/dsf/Scilab-RL/data/95ea064/le-pose-imitation-v4/02-04-33/rl_model_finished
+# 100k(!),                                          , superHeightSensor:     definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/75dd266/le-pose-imitation-v4/12-08-39/rl_model_finished
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -100,7 +101,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.cfg = cfg
         self.is_plot = is_plot
         self.is_eval = is_eval
-        self.outfile_ep_num_steps_goal_zone = open('ep_num_steps_goal_zone.dat', 'a')
+        self.outfile_fep_num_steps_goal_zone = open('fep_num_steps_goal_zone.dat', 'a')
 
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
@@ -164,6 +165,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_goaldist_personal_best = np.inf
         self.tr_num_steps: int = 0
         self.fep_savepoint_steps = 0
+        self.fep_savepoint_steps_goal_zone: int = 0
         self.fep_goaldist_init = np.inf
         self.fep_rewards_sum = -1
         self.fep_obs_init = None
@@ -214,7 +216,7 @@ class PoseImitationEnv(HumanoidEnv):
             if not self.ep_goal_zone_reached_before:
                 LOG.info('GOAL-ZONE REACHED.') # no need for further exploration
                 self.ep_goal_zone_reached_before = True
-                self.ep_lives = 0 # spend more training time reaching goalzone first
+                # self.ep_lives = 0 # spend more training time reaching goalzone first
 
         # TIME-NUDGING? (not needed with walker2d?)
         # if self.ep_num_steps > self.ep_num_steps_max:
@@ -266,33 +268,29 @@ class PoseImitationEnv(HumanoidEnv):
 
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:            
+            # TODO what if instable fep_goaldist_init?
             if obs['achieved_goal'] > max(obs['desired_goal'], self.fep_goaldist_init * 1.5):
                 LOG.info('GOAL TOO FAR AWAY.')
                 terminated = True
                 self.ep_lives -= 1
                 # reward "drop" (vs. premature cash-out)
                 # TODO lose only half of total rewards? (still rewarding goalzone reach)
+                # TODO prefactor necessary?
                 reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
 
-            if self.ep_count_fails_pose_detection > 10:
+            elif self.ep_count_fails_pose_detection > 10:
                 LOG.info('TOO MANY DETECTION FAILURES. (better detection at higher res.?)')
                 terminated = True
                 self.ep_lives -= 1
                 reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
-                
-            if obs['observation'][0] > 0.40:
-                LOG.info('HEIGHT TOO LOW.')
-                terminated = True
-                self.ep_lives -= 1
-                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum                
 
-            if self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
-                LOG.info('GOAL-ZONE LEFT.')
-                terminated = True
-                self.ep_lives -= 1
-                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
+            # elif obs['observation'][0] > 0.20:
+            #     LOG.info('HEIGHT TOO LOW.')
+            #     terminated = True
+            #     self.ep_lives -= 1
+            #     reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum                
 
-            # if height < 0.5 or height > 2.0:
+            # elif height < 0.5 or height > 2.0:
             #     # TODO learn default standing-pose first?
             #     LOG.debug('OUTSIDE: FELL DOWN! %s', height)
             #     terminated = True
@@ -301,13 +299,25 @@ class PoseImitationEnv(HumanoidEnv):
             #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
             #     self.ep_lives -= 1
 
+            # possibly non-termin. cond. in the end
+            elif self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
+                LOG.info('GOAL-ZONE LEFT.')
+                # TODO allow (wider) recovery? (outside goal-zone, != reaction inside; or just increase goal-threshold/-zone?) (reset reward sum)
+                terminated = True
+                self.ep_lives -= 1
+                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
+
+
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
         self.ep_num_steps += 1
 
         if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             LOG.info('TRUNCATED.')
-            info['success'] = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             truncated = True
+            is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
+            info['success'] = is_success
+            if not is_success:
+                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
 
         result = obs, reward, terminated, truncated, info
         return result
@@ -354,12 +364,14 @@ class PoseImitationEnv(HumanoidEnv):
         # get normalized goal distance
         achieved_obs = np.array([])
 
-        # achieved_ob_fall = self._normalize_to_limits(superobs[24], 0, -2.5)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_fall)
-
-        # achieved_ob_height = superobs[0]
-        # achieved_ob_height = self._normalize_to_limits(achieved_ob_height, 1.0, 2.0)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_height)
+        # primary ob./sensor: stabilizing (better if accurate, fast and frequent?)
+        # y-velocity/-height (+ limits) of specific(!) robot
+        # TODO also visual fall/height detector? (new detector, != pose)
+        # achieved_ob_primary_fall = self._normalize_to_limits(superobs[24], 0, -3)
+        # achieved_obs = np.append(achieved_obs, achieved_ob_primary_fall)
+        achieved_ob_primary_height = superobs[0]
+        achieved_ob_primary_height = self._normalize_to_limits(achieved_ob_primary_height, 0.0, 2.0)
+        achieved_obs = np.append(achieved_obs, achieved_ob_primary_height)
 
         # achieved_ob_pose = []
         achieved_ob_pose = self.last_ob_pose_achieved
@@ -375,27 +387,23 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             self.ep_count_fails_pose_detection += 1
 
+        # pose detection only: cant detect fall/height? (origin (torso) is also falling)
+        # achieved_ob_height = achieved_ob_pose[0][1] # nose-to-waist
+        # achieved_ob_height = min(achieved_ob_pose[1][1], achieved_ob_pose[2][1]) - achieved_ob_pose[3][1] # feet-to-waist
+        #achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
-        # add extra base dim. (vs. select base dim. index in obs.)
-        achieved_ob_height = achieved_ob_pose[0][1]
-        achieved_obs = np.append(achieved_obs, achieved_ob_height)
         achieved_obs = np.append(achieved_obs, achieved_ob_pose)
-
-        # if self.fep_obs_init:
-        #     achieved_ob_fall = self.fep_obs_init['observation'][1] - achieved_ob_pose[0][1]
-        #     print(achieved_ob_fall)
 
         obs.extend(achieved_obs)
 
 
         desired_obs = np.array([])
 
-        # desired_ob_fall = 0
-        # desired_obs = np.append(desired_obs, desired_ob_fall)
-
-        # desired_ob_height = 1.3
-        # desired_ob_height = self._normalize_to_limits(desired_ob_height, 1.0, 2.0)
-        # desired_obs = np.append(desired_obs, desired_ob_height)
+        # desired_ob_primary_fall = 0
+        # desired_obs = np.append(desired_obs, desired_ob_primary_fall)
+        desired_ob_primary_height = 1.3
+        desired_ob_primary_height = self._normalize_to_limits(desired_ob_primary_height, 0.0, 2.0)
+        desired_obs = np.append(desired_obs, desired_ob_primary_height)
 
         # desired_ob_pose = []
         desired_ob_pose = self.last_ob_pose_desired
@@ -407,9 +415,11 @@ class PoseImitationEnv(HumanoidEnv):
             desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
             self.last_ob_pose_desired = desired_ob_pose
 
-        desired_ob_height = desired_ob_pose[0][1]
-        desired_obs = np.append(desired_obs, desired_ob_height)
+        # desired_ob_height = desired_ob_pose[0][1]
+        # desired_obs = np.append(desired_obs, desired_ob_height)
+
         desired_obs = np.append(desired_obs, desired_ob_pose)
+
 
         # self.ep_goalweight = np.ones(desired_obs.shape)
         # if not self.is_eval:
@@ -518,14 +528,16 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldist_min = obs_init['achieved_goal']
         self.ep_goaldist_max = obs_init['achieved_goal']
 
-        self.outfile_ep_num_steps_goal_zone.write('%s\n' % (self.ep_num_steps_goal_zone))
-        self.outfile_ep_num_steps_goal_zone.flush()
+        fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
+        self.outfile_fep_num_steps_goal_zone.write('%s\n' % (fep_num_steps_goal_zone))
+        self.outfile_fep_num_steps_goal_zone.flush()
 
         self._reset()
         self.ep_goaldists.append(obs_init['achieved_goal'])
         self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
         self.fep_goaldist_min = min(self.fep_goaldist_min, self.ep_goaldist_min)
         LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
+        LOG.debug('fep_num_steps_goal_zone %s', fep_num_steps_goal_zone)
         LOG.debug('fep_savepoint_goaldist %s', obs_init['achieved_goal'])
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min) # may be noisy and not (easily) repeatable
@@ -537,6 +549,7 @@ class PoseImitationEnv(HumanoidEnv):
         obs_init = super().reset_model()
         self.tr_goaldist_personal_best = min(self.tr_goaldist_personal_best, self.ep_goaldist_min)
         self.fep_savepoint_steps = 0
+        self.fep_savepoint_steps_goal_zone = 0
         self.fep_goaldist_init = obs_init['achieved_goal']
         self.fep_goaldist_min = obs_init['achieved_goal']
         self.fep_obs_init = obs_init
@@ -573,8 +586,12 @@ class PoseImitationEnv(HumanoidEnv):
     def _reset_half_episode(self):
         idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
         self.fep_savepoint_steps += idx_halving
+        if idx_halving > 0: # improved
+            self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
+            
         qpos, qvel = self.ep_states[idx_halving]
-        # qpos, qvel = self._add_noise(qpos, qvel)
+        # TODO remove or add noise?
+        qpos, qvel = self._add_noise(qpos, qvel)
         self.set_state(qpos, qvel)
         self.ep_traj_is_halved = True
         self.last_ep_rewards_mean = self.ep_rewards_mean

@@ -8,7 +8,7 @@ import numpy as np
 # tmux
 # MUJOCO_GL=egl %python ...%
 
-# gnuplot -p -e "while (1) {plot 'ep_num_steps_goal_zone.dat' w l; pause 0.5; replot}"
+# gnuplot -p -e "while (1) {plot 'fep_num_steps_goal_zone.dat' w l; pause 0.5; replot}"
 
 # TODO transform/move to dict? (immutable as configs should be)
 
