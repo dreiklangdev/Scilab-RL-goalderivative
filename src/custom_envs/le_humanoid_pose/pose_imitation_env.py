@@ -3,6 +3,7 @@ import numpy as np
 import time
 import logging
 import git
+from collections import deque
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
@@ -170,6 +171,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_savepoint_steps = 0
         self.fep_savepoint_steps_goal_zone: int = 0
         self.fep_goaldist_init = np.inf
+        self.fep_goaldist_top_records = deque([], maxlen=10)
         self.fep_rewards_sum = -1
         self.fep_obs_init = None
         self.last_ep_rewards_mean: float = 0
@@ -231,8 +233,9 @@ class PoseImitationEnv(HumanoidEnv):
 
         # SPACE-NUDGING (healing health, only if very difficult goalzone? maybe only once in whole training?)
         # TODO enable? disable?
-        if obs['achieved_goal'] < self.ep_goaldist_min:
+        if obs['achieved_goal'] < self.ep_goaldist_min: # TODO goaldists best record
             LOG.debug(f"IMPROVED: {obs['achieved_goal']} < {self.ep_goaldist_min}")
+            self.fep_goaldist_top_records.append(obs['achieved_goal'])
             self.ep_goaldist_min = obs['achieved_goal']
             self.ep_lives = cfg.General.MAX_LIVES
             reward = 1
@@ -272,7 +275,7 @@ class PoseImitationEnv(HumanoidEnv):
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:            
             # carefully find good terminate goaldist. (very depends on goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
-            goaldist_terminate = obs['desired_goal'] * 6
+            goaldist_terminate = 1.2 # TODO to max. times of neg. record steps (instead of distance)
             if obs['achieved_goal'] > goaldist_terminate:
                 LOG.info('GOAL TOO FAR AWAY. %s > %s', obs['achieved_goal'], goaldist_terminate)
                 terminated = True
@@ -280,13 +283,13 @@ class PoseImitationEnv(HumanoidEnv):
                 # reward "drop" (vs. premature cash-out)
                 # TODO lose only half of total rewards? (still rewarding goalzone reach)
                 # TODO prefactor necessary?
-                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
+                reward = 0
 
             elif self.ep_count_fails_pose_detection > 10:
                 LOG.info('TOO MANY DETECTION FAILURES. (better detection at higher res.?)')
                 terminated = True
                 self.ep_lives -= 1
-                reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
+                reward = 0
 
             # elif obs['observation'][0] > 0.20:
             #     LOG.info('HEIGHT TOO LOW.')
@@ -472,10 +475,14 @@ class PoseImitationEnv(HumanoidEnv):
         obs = np.array(obs)
         goaldist = np.array(goaldist)
 
+        if not self.fep_goaldist_top_records:
+            # empty
+            self.fep_goaldist_top_records.append(goaldist)
+
         dictobs = dict(
                 observation=obs,
                 achieved_goal=goaldist,
-                desired_goal=self.ep_reward_threshold,
+                desired_goal=self.fep_goaldist_top_records[0], # stay in top-k
             )
 
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
@@ -550,6 +557,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldists.append(obs_init['achieved_goal'])
         self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
         self.fep_goaldist_min = min(self.fep_goaldist_min, self.ep_goaldist_min)
+        LOG.debug('self.fep_goaldist_top_records %s', self.fep_goaldist_top_records)
         LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
         LOG.debug('fep_num_steps_goal_zone %s', fep_num_steps_goal_zone)
         LOG.debug('fep_savepoint_goaldist %s', obs_init['achieved_goal'])
@@ -561,7 +569,6 @@ class PoseImitationEnv(HumanoidEnv):
 
     def _reset_full_episode(self):
         obs_init = super().reset_model()
-        self.tr_goaldist_personal_best = min(self.tr_goaldist_personal_best, self.ep_goaldist_min)
         self.fep_savepoint_steps = 0
         self.fep_savepoint_steps_goal_zone = 0
         self.fep_goaldist_init = obs_init['achieved_goal']
@@ -593,6 +600,7 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_rewards_sum %s', self.fep_rewards_sum)
 
+        self.fep_goaldist_top_records.clear()
         self.fep_rewards_sum = 0
         return obs_init
 
