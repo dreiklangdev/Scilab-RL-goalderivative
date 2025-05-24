@@ -170,13 +170,15 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_feps_total = 0
         self.tr_feps_consecutive_neg = 0
         self.tr_goaldist_min: float = np.inf
-        self.tr_goaldist_max: float = -np.inf
+        self.tr_goaldist_max: float = 0
+        self.tr_goaldist_mins_mean: float = 0
+        self.tr_goaldist_maxs_mean: float = 0
         self.tr_num_steps: int = 0
         self.fep_savepoint_steps = 0
         self.fep_savepoint_steps_goal_zone: int = 0
         self.fep_goaldist_init = np.inf
         self.fep_goaldist_min: float = np.inf
-        self.fep_goaldist_max: float = -np.inf
+        self.fep_goaldist_max: float = 0
         self.fep_rewards_sum = -1
         self.fep_obs_init = None
         self.last_ep_rewards_mean: float = 0
@@ -184,7 +186,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_num_steps: int = 0
         self.ep_num_steps_max: int = 0
         self.ep_goaldist_min: float = np.inf
-        self.ep_goaldist_max: float = -np.inf
+        self.ep_goaldist_max: float = 0
         self.ep_goaldims_secondary = -1
         self.ep_goalweight = -1
         self.ep_lives = cfg.General.MAX_LIVES
@@ -254,7 +256,7 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug(f"TR DEPROVED: {obs['achieved_goal']} > {self.tr_goaldist_max}")
             self.tr_goaldist_max = obs['achieved_goal']
             # denudging
-            reward = -1
+            # reward = -1
 
 
         if reward:
@@ -577,8 +579,12 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
+        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * (self.tr_goaldist_maxs_mean - self.tr_goaldist_mins_mean)
         # self.ep_goaldist_min = obs_init['achieved_goal']
         # self.ep_goaldist_max = obs_init['achieved_goal']
+
+        self.tr_goaldist_mins_mean = ((self.tr_feps_total * self.tr_goaldist_mins_mean) + self.fep_goaldist_min) / (self.tr_feps_total + 1)
+        self.tr_goaldist_maxs_mean = ((self.tr_feps_total * self.tr_goaldist_maxs_mean) + self.fep_goaldist_max) / (self.tr_feps_total + 1)
 
         self.tr_feps_total += 1
         if self.fep_rewards_sum < 0:
@@ -590,6 +596,8 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('tr_feps_consecutive_neg %s', self.tr_feps_consecutive_neg)
         LOG.debug('tr_goaldist_min %s', self.tr_goaldist_min)
         LOG.debug('tr_goaldist_max %s', self.tr_goaldist_max)
+        LOG.debug('tr_goaldist_mins_mean %s', self.tr_goaldist_mins_mean)
+        LOG.debug('tr_goaldist_maxs_mean %s', self.tr_goaldist_maxs_mean)
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
