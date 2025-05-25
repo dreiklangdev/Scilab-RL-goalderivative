@@ -272,7 +272,8 @@ class PoseImitationEnv(HumanoidEnv):
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:            
             # carefully find good terminate goaldist. (very depends on goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
-            goaldist_terminate = 1.2 # TODO to max. times of neg. record steps (instead of distance)
+            # TODO also depending on mean goaldist_mins/maxs?
+            goaldist_terminate = 0.5
             if obs['achieved_goal'] > goaldist_terminate:
                 LOG.info('GOAL TOO FAR AWAY. %s > %s', obs['achieved_goal'], goaldist_terminate)
                 terminated = True
@@ -461,8 +462,8 @@ class PoseImitationEnv(HumanoidEnv):
             obs.extend(metaobs)
 
             # meta-goals
-            achieved_metaobs = np.array([goaldist, is_converging])
-            desired_metaobs = np.array([0, 1])
+            achieved_metaobs = np.array([goaldist])
+            desired_metaobs = np.array([0])
             goaldiff_meta = achieved_metaobs - desired_metaobs
             goaldist_meta = np.linalg.norm(goaldiff_meta, axis=-1)
 
