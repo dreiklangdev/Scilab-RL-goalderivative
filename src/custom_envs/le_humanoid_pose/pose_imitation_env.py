@@ -149,7 +149,7 @@ class PoseImitationEnv(HumanoidEnv):
         
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 4 # height, x-velo, y-velo, z-velo
-            obspace_total_dims += 3 # goaldist, goal_convergence, is_converging
+            obspace_total_dims += 4 # goaldist, personal_best, goal_convergence, is_converging
             # obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
@@ -169,7 +169,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.init_qpos[6] = -1.4 # face towards camera
         self.tr_feps_total = 0
         self.tr_feps_consecutive_neg = 0
-        self.tr_goaldist_min: float = np.inf
+        self.tr_goaldist_min: float = 1
         self.tr_goaldist_max: float = 0
         self.tr_goaldist_mins_mean: float = 0
         self.tr_goaldist_maxs_mean: float = 0
@@ -187,8 +187,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_num_steps_max: int = 0
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = 0
-        self.ep_goaldims_secondary = -1
-        self.ep_goalweight = -1
+        self.ep_goaldims_secondary = []
+        self.ep_goalweight = []
         self.ep_lives = cfg.General.MAX_LIVES
         # constant threshold
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
@@ -461,18 +461,20 @@ class PoseImitationEnv(HumanoidEnv):
             if len(self.ep_goaldists) > 1:
                 goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
                 is_converging = np.sign(goal_convergence)
+            metaobs.append(self.tr_goaldist_min)
             metaobs.append(goal_convergence)
             metaobs.append(is_converging)
             obs.extend(metaobs)
 
             # meta-goals
-            achieved_metaobs = np.array([])
-            desired_metaobs = np.array([])
+            record_dist = goaldist - self.tr_goaldist_min
+            achieved_metaobs = np.array([record_dist])
+            desired_metaobs = np.array([0])
             goaldiff_meta = achieved_metaobs - desired_metaobs
             goaldist_meta = np.linalg.norm(goaldiff_meta, axis=-1)
 
             # TODO different weighting (eg. meta-goals only??)
-            goaldist = 1.0 * goaldist + 0.0 * goaldist_meta
+            goaldist = 0.5 * goaldist + 0.5 * goaldist_meta
 
         obs = np.array(obs)
         goaldist = np.array(goaldist)
@@ -585,6 +587,7 @@ class PoseImitationEnv(HumanoidEnv):
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
         self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * (self.tr_goaldist_maxs_mean - self.tr_goaldist_mins_mean)
+        # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
         # self.ep_goaldist_min = obs_init['achieved_goal']
         # self.ep_goaldist_max = obs_init['achieved_goal']
 
