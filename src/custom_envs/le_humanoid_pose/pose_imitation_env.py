@@ -97,8 +97,8 @@ class PoseImitationEnv(HumanoidEnv):
                              exclude_current_positions_from_observation=True,
                              width=cfg.General.RENDER_IMAGE_SIZE,
                              height=cfg.General.RENDER_IMAGE_SIZE,
-                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid_face.xml')
-                            #  xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/robotis_op3/scene.xml')
+                             # xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid_face.xml')
+                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/robotis_op3/scene.xml')
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
         # self.mujoco_renderer.viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goal-zone')
@@ -143,14 +143,14 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
         obspace_total_dims = 0
-        # obspace_total_dims += self.observation_space.shape[0] # super
+        obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += 4 # height, x-velo, y-velo, z-velo
-        obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
+        # obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION
         
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 4 # height, x-velo, y-velo, z-velo
             obspace_total_dims += 3 # goaldist, goal_convergence, is_converging
-            obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
+            # obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -230,7 +230,6 @@ class PoseImitationEnv(HumanoidEnv):
                 self.ep_goal_zone_reached_before = True
                 # self.ep_lives = 0 # spend more training time reaching goalzone first
 
-
         if obs['achieved_goal'] < self.ep_goaldist_min:
             self.ep_goaldist_min = obs['achieved_goal']
             self.ep_lives = cfg.General.MAX_LIVES
@@ -268,10 +267,11 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_rewards_sum += reward
 
         # space constraint
-        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:            
-            # carefully find good terminate goaldist. (very depends on goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
+        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:
+            # carefully find good terminate goaldist. (very depends on body/goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
             # TODO also depending on mean goaldist_mins/maxs?
-            goaldist_terminate = 0.8
+            goaldist_terminate = 0.8 # gym humanoid
+            goaldist_terminate = 1.3 # op3
             if obs['achieved_goal'] > goaldist_terminate:
                 LOG.info('GOAL TOO FAR AWAY. %s > %s', obs['achieved_goal'], goaldist_terminate)
                 terminated = True
@@ -281,26 +281,17 @@ class PoseImitationEnv(HumanoidEnv):
                 # TODO prefactor necessary?
                 reward = 0
 
-            elif self.ep_count_fails_pose_detection > 10:
-                LOG.info('TOO MANY DETECTION FAILURES. (better detection at higher res.?)')
+            elif self.data.qpos[2] < 0.2:
+                LOG.info('HEIGHT TOO LOW.')
                 terminated = True
                 self.ep_lives -= 1
-                reward = 0
+                reward = 0      
 
-            # elif obs['observation'][0] > 0.20:
-            #     LOG.info('HEIGHT TOO LOW.')
+            # elif self.ep_count_fails_pose_detection > 10:
+            #     LOG.info('TOO MANY DETECTION FAILURES. (better detection at higher res.?)')
             #     terminated = True
             #     self.ep_lives -= 1
-            #     reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum                
-
-            # elif height < 0.5 or height > 2.0:
-            #     # TODO learn default standing-pose first?
-            #     LOG.debug('OUTSIDE: FELL DOWN! %s', height)
-            #     terminated = True
-            #     # dont neutralize already pos. eps.?
-            #     # if not self.ep_rewards_mean and not reward:
-            #     reward = self.cfg.PracticeSpace.REWARD_ON_TERMINATE
-            #     self.ep_lives -= 1
+            #     reward = 0
 
             # possibly non-termin. cond. in the end
             # elif self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
@@ -308,7 +299,7 @@ class PoseImitationEnv(HumanoidEnv):
             #     # TODO allow (wider) recovery? (outside goal-zone, != reaction inside; or just increase goal-threshold/-zone?) (reset reward sum)
             #     terminated = True
             #     self.ep_lives -= 1
-            #     reward = -self.ep_goal_zone_reached_before * self.ep_rewards_sum
+            #     reward = -1
 
 
         self.ep_rewards_mean = ((self.ep_num_steps * self.ep_rewards_mean) + reward) / (self.ep_num_steps + 1)
@@ -329,8 +320,6 @@ class PoseImitationEnv(HumanoidEnv):
     # obs = achieved_obs(vis.) + metaobs
     def _get_obs(self):
         obs = []
-        superobs = super()._get_obs()
-        # obs.extend(superobs)
 
         achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
         desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
@@ -371,10 +360,13 @@ class PoseImitationEnv(HumanoidEnv):
         # y-velocity/-height (+ limits) of specific(!) robot
         # maybe just not stabilizable without full superobs...
         # TODO also visual fall/height detector? (new detector, != pose)
-        achieved_ob_primary_height = self._normalize_to_limits(superobs[0], 0.0, 2.0)
-        achieved_ob_primary_velo_x = self._normalize_to_limits(superobs[22], 0, -3)
-        achieved_ob_primary_velo_y = self._normalize_to_limits(superobs[23], 0, -3)
-        achieved_ob_primary_velo_z = self._normalize_to_limits(superobs[24], 0, -3)
+
+        # achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # gym-humanoid
+        achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
+        # achieved_ob_primary_velo_x = self._normalize_to_limits(self.data.qvel[0], 0, -3) # gym-humanoid
+        achieved_ob_primary_velo_x = self._normalize_to_limits(self.data.qvel[0], 0, -1.5)
+        achieved_ob_primary_velo_y = self._normalize_to_limits(self.data.qvel[1], 0, -1.5)
+        achieved_ob_primary_velo_z = self._normalize_to_limits(self.data.qvel[2], 0, -1.5)
         achieved_obs = np.append(achieved_obs, achieved_ob_primary_height)
         achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_x)
         achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_y)
@@ -400,17 +392,21 @@ class PoseImitationEnv(HumanoidEnv):
         # achieved_ob_height = min(achieved_ob_pose[1][1], achieved_ob_pose[2][1]) - achieved_ob_pose[3][1] # feet-to-waist
         #achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
-        achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+        # achieved_obs = np.append(achieved_obs, achieved_ob_pose)
 
+        # primary obs first
         obs.extend(achieved_obs)
+        obs.extend(super()._get_obs()) # superobs
 
 
         desired_obs = np.array([])
 
-        desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0)
-        desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -3)
-        desired_ob_primary_velo_y = self._normalize_to_limits(0, 0, -3)
-        desired_ob_primary_velo_z = self._normalize_to_limits(0, 0, -3)
+        # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
+        desired_ob_primary_height = self._normalize_to_limits(0.3, 0.0, 0.3) # op3
+        # desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -3) # gym-humanoid
+        desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -1.5) # op3
+        desired_ob_primary_velo_y = self._normalize_to_limits(0, 0, -1.5)
+        desired_ob_primary_velo_z = self._normalize_to_limits(0, 0, -1.5)
         desired_obs = np.append(desired_obs, desired_ob_primary_height)
         desired_obs = np.append(desired_obs, desired_ob_primary_velo_x)
         desired_obs = np.append(desired_obs, desired_ob_primary_velo_y)
@@ -429,7 +425,7 @@ class PoseImitationEnv(HumanoidEnv):
         # desired_ob_height = desired_ob_pose[0][1]
         # desired_obs = np.append(desired_obs, desired_ob_height)
 
-        desired_obs = np.append(desired_obs, desired_ob_pose)
+        # desired_obs = np.append(desired_obs, desired_ob_pose)
 
 
         # self.ep_goalweight = np.ones(desired_obs.shape)
@@ -646,6 +642,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_is_perfect = False
         self.ep_num_steps_goal_zone = 0
         self.ep_goal_zone_reached_before = False
+        self.ep_count_fails_pose_detection = 0
 
         if not self.landmarker_achieved:
             self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
