@@ -36,7 +36,7 @@ class MetaObservation(base.MetaObservation):
 # vs. too big search space
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
-    STEPS_START_INVINCIBLE = 5 # eg. if instable start (falling)
+    STEPS_INVINCIBLE_SPAWN = 25 # eg. if instable start (falling)
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
@@ -45,12 +45,12 @@ class PracticeSpace(base.PracticeSpace):
 
 class PracticeTime(base.PracticeTime):    
     IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True # autom. decrease search-/practice-time
-    GRACE_STEPS = 100
     REWARD_ON_TERMINATE = 0
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    MAX_FRAC_DEFAULT = 0.05 # should be greater than drift/noise
+    # MAX_FRAC_DEFAULT = 0.05 # should be greater than drift/noise
+    MAX_FRAC_DEFAULT = 0.38196601125 # 1 - 1/phi
     # vs. not finding goal (sparse rewards) (no direction/orientation: headless wandering)
     IS_NUDGING = True
     IS_ADAPTIVE = False

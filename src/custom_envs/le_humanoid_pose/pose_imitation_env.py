@@ -222,18 +222,22 @@ class PoseImitationEnv(HumanoidEnv):
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
 
-        reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info)
+        reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info) 
         if reward: # phase 2: inside goal-zone (no diverging exploration anymore, seek perfection) TODO why not always phase 2?
             self.ep_num_steps_goal_zone += 1
             if not self.ep_goal_zone_reached_before:
                 LOG.info('GOAL-ZONE REACHED.') # no need for further exploration
                 self.ep_goal_zone_reached_before = True
                 # self.ep_lives = 0 # spend more training time reaching goalzone first
+        elif len(self.ep_goaldists) > 1: # phase 1: outside goalzone
+            goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
+            reward = min(goal_convergence, 0.5)
+
 
         if obs['achieved_goal'] < self.ep_goaldist_min:
             self.ep_goaldist_min = obs['achieved_goal']
             self.ep_lives = cfg.General.MAX_LIVES
-            
+
         if obs['achieved_goal'] < self.fep_goaldist_min:
             self.fep_goaldist_min = obs['achieved_goal']
             
@@ -242,7 +246,7 @@ class PoseImitationEnv(HumanoidEnv):
             self.tr_goaldist_min = obs['achieved_goal']
             # nudging
             reward = 1
-            
+
         if obs['achieved_goal'] > self.ep_goaldist_max:
             self.ep_goaldist_max = obs['achieved_goal']
             
@@ -267,7 +271,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_rewards_sum += reward
 
         # space constraint
-        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_START_INVINCIBLE:
+        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
             # carefully find good terminate goaldist. (very depends on body/goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
             # TODO also depending on mean goaldist_mins/maxs?
             goaldist_terminate = 0.8 # gym humanoid
@@ -276,16 +280,13 @@ class PoseImitationEnv(HumanoidEnv):
                 LOG.info('GOAL TOO FAR AWAY. %s > %s', obs['achieved_goal'], goaldist_terminate)
                 terminated = True
                 self.ep_lives -= 1
-                # reward "drop" (vs. premature cash-out)
-                # TODO lose only half of total rewards? (still rewarding goalzone reach)
-                # TODO prefactor necessary?
-                reward = 0
+                reward = -1
 
             elif self.data.qpos[2] < 0.2:
                 LOG.info('HEIGHT TOO LOW.')
                 terminated = True
                 self.ep_lives -= 1
-                reward = 0      
+                reward = -1
 
             # elif self.ep_count_fails_pose_detection > 10:
             #     LOG.info('TOO MANY DETECTION FAILURES. (better detection at higher res.?)')
@@ -470,11 +471,13 @@ class PoseImitationEnv(HumanoidEnv):
             record_dist = goaldist - self.tr_goaldist_min
             achieved_metaobs = np.array([record_dist])
             desired_metaobs = np.array([0])
+            # achieved_metaobs = np.array([])
+            # desired_metaobs = np.array([])
             goaldiff_meta = achieved_metaobs - desired_metaobs
             goaldist_meta = np.linalg.norm(goaldiff_meta, axis=-1)
 
             # TODO different weighting (eg. meta-goals only??)
-            goaldist = 0.5 * goaldist + 0.5 * goaldist_meta
+            goaldist = 0.5 * goaldist + 0.5 * goaldist_meta # 0.5
 
         obs = np.array(obs)
         goaldist = np.array(goaldist)
@@ -524,8 +527,8 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
             LOG.debug('ep_goalzone_per_step %s', np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2))
             LOG.debug('\n')
-        
-        if self.ep_num_steps > 1:
+
+        if self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
             if self.cfg.TrajectoryHalving.IS_ENABLED and not self.is_eval:
                 # if self.ep_goaldist_min < self.last_ep_goaldist_min:
                 if self.ep_lives > 0:
@@ -586,8 +589,8 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
-        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * (self.tr_goaldist_maxs_mean - self.tr_goaldist_mins_mean)
-        # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
+        # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * (self.tr_goaldist_maxs_mean - self.tr_goaldist_mins_mean)
+        self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
         # self.ep_goaldist_min = obs_init['achieved_goal']
         # self.ep_goaldist_max = obs_init['achieved_goal']
 
