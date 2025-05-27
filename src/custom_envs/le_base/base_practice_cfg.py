@@ -117,7 +117,8 @@ class TrajectoryHalving:
     class Strat(Enum):
         HALF = 0
         HIGHEST_GOAL_CONVERGENCE = 1
-        LOWEST_GOAL_DISTANCE = 2
+        LOWEST_GOAL_DISTANCE = 2 # reach
+        LAST_STEP_GOAL_ZONE = 3 # hold
     STRAT = Strat.LOWEST_GOAL_DISTANCE
 
 

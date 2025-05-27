@@ -50,7 +50,7 @@ class PracticeTime(base.PracticeTime):
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
     # MAX_FRAC_DEFAULT = 0.05 # should be greater than drift/noise
-    MAX_FRAC_DEFAULT = 0.38196601125 # 1 - 1/phi
+    MAX_FRAC_DEFAULT = 0.05
     # vs. not finding goal (sparse rewards) (no direction/orientation: headless wandering)
     IS_NUDGING = True
     IS_ADAPTIVE = False
@@ -58,6 +58,8 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
+    # good for envs where goal-state is far from the beginning
+    # bad for envs where start-state is in/near goalzone (too early savepoints)
     IS_ENABLED = True
 
 
