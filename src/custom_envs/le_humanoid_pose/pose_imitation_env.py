@@ -143,7 +143,7 @@ class PoseImitationEnv(HumanoidEnv):
         
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 4 # height, x-velo, y-velo, z-velo
-            obspace_total_dims += 4 # goaldist, personal_best, goal_convergence, is_converging
+            obspace_total_dims += 3 # goaldist, (personal_best), goal_convergence, is_converging
             # obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired etc.
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
@@ -174,6 +174,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_goaldist_init = np.inf
         self.fep_goaldist_min: float = np.inf
         self.fep_goaldist_max: float = 0
+        self.fep_goaldims_primary = []
+        self.fep_goaldims_secondary = []
         self.fep_rewards_sum = -1
         self.fep_obs_init = None
         self.last_ep_rewards_mean: float = 0
@@ -181,7 +183,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_num_steps: int = 0
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = 0
-        self.ep_goaldims_secondary = []
         self.ep_goalweight = []
         self.ep_lives = cfg.General.MAX_LIVES
         # constant threshold
@@ -244,7 +245,7 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug(f"TR IMPROVED: {obs['achieved_goal']} < {self.tr_goaldist_min}")
             self.tr_goaldist_min = obs['achieved_goal']
             # nudging
-            reward = 1
+            # reward = 1
 
         if obs['achieved_goal'] > self.ep_goaldist_max:
             self.ep_goaldist_max = obs['achieved_goal']
@@ -270,6 +271,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
+
             # carefully find good terminate goaldist. (very depends on body/goaldist. obs.-composition!) (big enough to allow search/reaction, small enough to reduce search space)
             # TODO also depending on mean goaldist_mins/maxs?
             goaldist_terminate = 0.8 # gym humanoid
@@ -279,6 +281,12 @@ class PoseImitationEnv(HumanoidEnv):
                 terminated = True
                 self.ep_lives -= 1
                 reward = -1
+
+            # elif self.ep_last_reward_step > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN and (obs['achieved_goal'] > obs['desired_goal']):
+            #     LOG.info('GOAL-ZONE LEFT.')
+            #     terminated = True
+            #     self.ep_lives -= 1
+            #     reward = -1
 
             elif self.data.qpos[2] < 0.25 or self.data.qpos[2] > 0.30:  # practice height (tight limit for efficiency)
                 LOG.info('HEIGHT TOO LOW/HIGH.')
@@ -292,19 +300,13 @@ class PoseImitationEnv(HumanoidEnv):
                 self.ep_lives -= 1
                 reward = -1
 
+            # min. convergence terminate? ("flaming wall")
+            
             # elif self.ep_count_fails_pose_detection > 10:
             #     LOG.info('TOO MANY DETECTION FAILURES. (better detection at higher res.?)')
             #     terminated = True
             #     self.ep_lives -= 1
             #     reward = 0
-
-            # possibly non-termin. cond. in the end
-            # elif self.ep_goal_zone_reached_before and (obs['achieved_goal'] > obs['desired_goal']):
-            #     LOG.info('GOAL-ZONE LEFT.')
-            #     # TODO allow (wider) recovery? (outside goal-zone, != reaction inside; or just increase goal-threshold/-zone?) (reset reward sum)
-            #     terminated = True
-            #     self.ep_lives -= 1
-            #     reward = -1
 
 
         self.ep_rewards_mean = (((self.ep_num_steps - 1) * self.ep_rewards_mean) + reward) / (self.ep_num_steps)
@@ -441,15 +443,15 @@ class PoseImitationEnv(HumanoidEnv):
         # if not self.is_eval:
         # isolated (vs. overlapping (random) batches?)
         # comb-through (only after stable/nonterminating? truncation + success cond.)
-        # 100k, base-dim only, totalLossTerminate:  definitely progress
-        # 500k, baseDim+randomDim, totalLossTerminate:  no real progress
-        # 100k, base-dim only, totalLossTerminate, noDenudge:
         self.ep_goalweight = np.zeros(desired_obs.shape)
-        self.ep_goalweight[0] = 1 # base primary dim (height)
-        self.ep_goalweight[1] = 1 # base primary dim (velo-x)
-        self.ep_goalweight[2] = 1 # base primary dim (velo-y)
-        self.ep_goalweight[3] = 1 # base primary dim (velo-z)
-        # self.ep_goalweight[self.ep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+
+        # self.ep_goalweight[0] = 1 # base primary dim (height)
+        # self.ep_goalweight[1] = 1 # base primary dim (velo-x)
+        # self.ep_goalweight[2] = 1 # base primary dim (velo-y)
+        # self.ep_goalweight[3] = 1 # base primary dim (velo-z)
+        self.ep_goalweight[self.fep_goaldims_primary] = 1.0
+        
+        # self.ep_goalweight[self.fep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
@@ -470,15 +472,15 @@ class PoseImitationEnv(HumanoidEnv):
             if len(self.ep_goaldists) > 1:
                 goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
                 is_converging = np.sign(goal_convergence) / 2
-            record_dist = max(0, goaldist - self.tr_goaldist_min)
-            metaobs.append(record_dist)
+            # record_dist = max(0, goaldist - self.tr_goaldist_min)
+            # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
             metaobs.append(goal_convergence)
             metaobs.append(is_converging)
             obs.extend(metaobs)
 
             # meta-goals
-            achieved_metaobs = np.array([record_dist, is_converging])
-            desired_metaobs = np.array([0, 0.5])
+            achieved_metaobs = np.array([is_converging])
+            desired_metaobs = np.array([0.5])
             # achieved_metaobs = np.array([])
             # desired_metaobs = np.array([])
             goaldiff_meta = achieved_metaobs - desired_metaobs
@@ -585,13 +587,12 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_goaldist_init = obs_init['achieved_goal']
         self.fep_goaldist_min = obs_init['achieved_goal']
         self.fep_obs_init = obs_init
+        self.fep_goaldims_primary = np.random.randint(4, size=1) # multiple?
+        self.fep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
         # self.desired_obs = self._get_desired_obs()
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
-        # self.ep_goaldims_secondary = (ep_goaldims_secondary + 1) % len(self.ep_goalweight)
-        self.ep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
-        # self.ep_goaldims_secondary = np.random.randint(10, size=1)
         self.ep_lives = cfg.General.MAX_LIVES
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
@@ -633,7 +634,7 @@ class PoseImitationEnv(HumanoidEnv):
             
         qpos, qvel = self.ep_states[idx_halving]
         # TODO remove or add noise?
-        qpos, qvel = self._add_noise(qpos, qvel)
+        # qpos, qvel = self._add_noise(qpos, qvel)
         self.set_state(qpos, qvel)
         self.ep_traj_is_halved = True
         self.last_ep_rewards_mean = self.ep_rewards_mean

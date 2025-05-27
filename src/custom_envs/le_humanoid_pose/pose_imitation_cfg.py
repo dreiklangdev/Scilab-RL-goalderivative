@@ -33,7 +33,7 @@ class MetaObservation(base.MetaObservation):
     IS_ENABLED = True
 
 
-# vs. too big search space
+# termination shaping (vs. too big search space)
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
     STEPS_INVINCIBLE_SPAWN = 25 # eg. if instable start (falling)
