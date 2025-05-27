@@ -81,13 +81,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 
 OBS_NORMALIZE_Z_SCORE = False
 
-# 1M    /home/t500/tuhh/dsf/Scilab-RL/data/beb02be/le-pose-imitation-v4/03-44-41/rl_model_finished
-# 1M, noPen, noNudge, noPreCashout, terminateOnLeave, posePrimarySensor:     not working (bad prim. sensor?) /mnt/t500/tuhh/dsf/Scilab-RL/data/95ea064/le-pose-imitation-v4/02-04-33/rl_model_finished
 
-# 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim. only, superHeightSensor:    definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/75dd266/le-pose-imitation-v4/12-08-39/rl_model_finished
-# 100k(!), noPen, noNudge, noPreCashout, terminateOnLeave, single primDim, single random secDim, superHeightSensor:    definite progress /home/t14/Documents/tuhh/dsf/Scilab-RL/data/bb75ff5/le-pose-imitation-v4/12-35-23/rl_model_finished
-# 1.0M,                                                                                                                perfect progress in phase 1 (until goalzone reached), no progress in phase 2 /home/t14/Documents/tuhh/dsf/Scilab-RL/data/bb75ff5/le-pose-imitation-v4/12-35-23_restored/rl_model_finished
-# (!!!), top10-reward-threshold:    distinct progress, confident efficient linear movement (straightforward) ~/Documents/tuhh/dsf/Scilab-RL/data/32216aa/le-pose-imitation-v4/12-32-45
+# 1M, convRewarding, groundContactTerm., metaGoals0.5, threshold0.05:  converging, no pleateaus yet /home/t14/Documents/tuhh/dsf/Scilab-RL/data/053b120/le-pose-imitation-v4/10-43-06/rl_model_finished
 class PoseImitationEnv(HumanoidEnv):
 
 
