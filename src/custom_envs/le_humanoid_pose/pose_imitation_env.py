@@ -204,8 +204,8 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def step(self, action):
-        # self.frame_skip = random.randint(0, 100)
-        action = np.clip(action, -0.5, 0.5)
+        # reduce action space?
+        # action = np.clip(action, -0.5, 0.5)
         self.do_simulation(action, self.frame_skip)
         self.ep_num_steps += 1
 
@@ -218,7 +218,7 @@ class PoseImitationEnv(HumanoidEnv):
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
 
-        # reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info) 
+        reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info) 
         # if reward: # phase 2: inside goal-zone (no diverging exploration anymore, seek perfection) TODO why not always phase 2?
         #     self.ep_num_steps_goal_zone += 1
         #     if self.ep_first_reward_step < 0:
@@ -229,17 +229,6 @@ class PoseImitationEnv(HumanoidEnv):
         #     if len(self.ep_goaldists) > 1: # phase 1: outside goalzone
         #         goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
         #         reward = min(goal_convergence, 0.5)
-
-        goal_convergence = 0
-        if len(self.ep_goaldists) > 1:
-            goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
-
-        # if goal_convergence >= 0:
-        #     reward = 1
-        # else:
-        #     reward = 0 # slower, but more stable than -1
-
-        reward = max(0, goal_convergence)
 
             # action norm multiplier
             # reward *= np.abs(np.linalg.norm(action, axis=-1))
@@ -323,13 +312,12 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.ep_rewards_mean = (((self.ep_num_steps - 1) * self.ep_rewards_mean) + reward) / (self.ep_num_steps)
 
-        if self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
+        # also skip first buggy render
+        if self.tr_feps_total == 1 or self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
             LOG.info('TRUNCATED.')
             truncated = True
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             info['success'] = is_success
-            if not is_success:
-                reward = 1
 
         human_viewer = self.mujoco_renderer._viewers.get('human')
         if human_viewer:
@@ -469,50 +457,36 @@ class PoseImitationEnv(HumanoidEnv):
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
 
+        goalconv = 0
+        is_converging = 0
+        if len(self.ep_goaldists) > 1:
+            goalconv = self.ep_goaldists[-2] - self.ep_goaldists[-1]
+            is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
+
         if self.cfg.MetaObservation.IS_ENABLED:
             metaobs = []
 
             goalweight_hash = vector_to_uniform_scalar(self.ep_goalweight, len(self.ep_goalweight))
             metaobs.append(goalweight_hash)
             metaobs.append(goaldist)
-            # TODO test/dev in specialized env. (eg. reach-env.)
-            # meta-observe normalized direction instead of pose coords (more general?)
-            # TODO or both?
             metaobs.extend(desired_obs)
-            # goaldirection = goaldiff_weighted / np.linalg.norm(goaldiff_weighted)
-            # metaobs.extend(goaldirection)
-
-            goal_convergence = 0
-            is_converging = 0
-            if len(self.ep_goaldists) > 1:
-                goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
-                is_converging = np.sign(goal_convergence) / 2 # normalized to [-0.5,0.5]
             # record_dist = max(0, goaldist - self.tr_goaldist_min)
             # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
-            metaobs.append(goal_convergence)
+            metaobs.append(goalconv)
             metaobs.append(is_converging)
             obs.extend(metaobs)
 
-            # meta-goals
-            # achieved_metaobs = np.array([is_converging])
-            # desired_metaobs = np.array([0.5])
-            # achieved_metaobs = np.array([goal_convergence])
-            # desired_metaobs = np.array([1]) # or arbitrary big number for max.??
-            achieved_metaobs = np.array([])
-            desired_metaobs = np.array([])
-            goaldiff_meta = achieved_metaobs - desired_metaobs
-            goaldist_meta = np.linalg.norm(goaldiff_meta, axis=-1)
 
-            # TODO different weighting (eg. meta-goals only?? (for goal-generality))
-            goaldist = 1.0 * goaldist + 0.0 * goaldist_meta # 0.5
-
-        obs = np.array(obs)
-        goaldist = np.array(goaldist)
+        # metagoal(s) only
+        # achieved_goal = 0.5 * goaldist + 0.5 * goalconv
+        achieved_goal = goalconv
+        # desired_goal = self.ep_reward_threshold
+        desired_goal = 1  # or arbitrary big number for max.??
 
         dictobs = dict(
-                observation=obs,
-                achieved_goal=goaldist,
-                desired_goal=self.ep_reward_threshold,
+                observation=np.array(obs),
+                achieved_goal=achieved_goal,
+                desired_goal=desired_goal,
             )
 
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
@@ -528,8 +502,7 @@ class PoseImitationEnv(HumanoidEnv):
     def compute_reward(
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
-        reward = (achieved_goal < desired_goal).astype(np.float64)
-        return reward
+        return np.clip(achieved_goal, 0, None)
 
 
     def reset_model(self):
@@ -578,8 +551,9 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldist_min = obs_init['achieved_goal']
         self.ep_goaldist_max = obs_init['achieved_goal']
 
-        self.outfile_ep_rewards_mean.write('%s\n' % (self.ep_rewards_mean))
-        self.outfile_ep_rewards_mean.flush()
+        if not self.is_eval:
+            self.outfile_ep_rewards_mean.write('%s\n' % (self.ep_rewards_mean))
+            self.outfile_ep_rewards_mean.flush()
 
         self._reset()
         self.ep_goaldists.append(obs_init['achieved_goal'])
