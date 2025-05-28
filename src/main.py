@@ -123,12 +123,14 @@ def  get_algo_instance(cfg, logger, env):
     # LE: custom
     from torch import nn
     policy_kwargs = dict(
-        activation_fn=nn.ReLU,
-        net_arch=[256, 256, 128],
 
         # outputs smoother action
-        # activation_fn=nn.Tanh,
+        activation_fn=nn.Tanh,
+        # activation_fn=nn.ReLU,
+
         # net_arch=[64, 64]
+        # outputs more diverse action^
+        net_arch=[256, 256, 128],
     )
 
     if cfg.restore_policy is not None:
