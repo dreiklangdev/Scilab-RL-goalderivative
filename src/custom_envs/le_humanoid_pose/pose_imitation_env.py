@@ -83,6 +83,7 @@ OBS_NORMALIZE_Z_SCORE = False
 
 
 # 1M, convRewarding, groundContactTerm., metaGoals0.5, threshold0.05:  converging, no pleateaus yet /home/t14/Documents/tuhh/dsf/Scilab-RL/data/053b120/le-pose-imitation-v4/10-43-06/rl_model_finished
+# 1M(!!!!), posConvRewardingOnly, no goalzone, meanTermPen: clear converging, no plateau yet restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/7aca00b/le-pose-imitation-v4/18-52-08/rl_model_finished
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -138,12 +139,12 @@ class PoseImitationEnv(HumanoidEnv):
 
         obspace_total_dims = 0
         obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += 1 # height, x-velo, y-velo, z-velo
+        obspace_total_dims += 2 # height, head_velo
         obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # achieved_pose
         
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += 1 # height, x-velo, y-velo, z-velo
-            obspace_total_dims += 4 # goaldist, goalweight_hash, (personal_best), goal_convergence, is_converging
+            obspace_total_dims += 2 # height, head_velo
+            obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
             obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired_pose
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
@@ -285,7 +286,7 @@ class PoseImitationEnv(HumanoidEnv):
                 LOG.info('HEIGHT TOO LOW/HIGH.')
                 # terminated = True
                 # self.ep_lives -= 1
-                # reward = -1
+                reward = -self.ep_rewards_mean
 
                 if self.is_eval:
                     terminated = True
@@ -366,10 +367,9 @@ class PoseImitationEnv(HumanoidEnv):
         # get normalized goal distance
         achieved_obs = np.array([])
 
-        # primary ob./sensor: stabilizing (better if accurate, fast and frequent?)
-        # y-velocity/-height (+ limits) of specific(!) robot
-        # maybe just not stabilizable without full superobs...
-        # TODO also visual fall/height detector? (new detector, != pose)
+        # stabilizer
+        achieved_ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
+        achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_head)
 
         # TODO try visual height primary from (normalized) image (non-world) 2d landmark? (head-to-waist or to-feet/floor)
         # pose detection only: cant detect fall/height? (origin (torso) is also falling)
@@ -378,18 +378,15 @@ class PoseImitationEnv(HumanoidEnv):
         #achieved_obs = np.append(achieved_obs, achieved_ob_height)
 
         # # achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # gym-humanoid
-        # achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
+        achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
         # # achieved_ob_primary_velo_x = self._normalize_to_limits(self.data.qvel[0], 0, -3) # gym-humanoid
         # achieved_ob_primary_velo_x = self._normalize_to_limits(self.data.qvel[0], 0, -1.5)
         # achieved_ob_primary_velo_y = self._normalize_to_limits(self.data.qvel[1], 0, -1.5)
         # achieved_ob_primary_velo_z = self._normalize_to_limits(self.data.qvel[2], 0, -1.5)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_primary_height)
+        achieved_obs = np.append(achieved_obs, achieved_ob_primary_height)
         # achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_x)
         # achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_y)
         # achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_z)
-
-        achieved_ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
-        achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_head)
 
         # achieved_ob_pose = []
         achieved_ob_pose = self.last_ob_pose_achieved
@@ -413,19 +410,19 @@ class PoseImitationEnv(HumanoidEnv):
 
         desired_obs = np.array([])
 
+        desired_ob_primary_velo_head = 0
+        desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
+
         # # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
-        # desired_ob_primary_height = self._normalize_to_limits(0.285, 0.0, 0.3) # op3
+        desired_ob_primary_height = self._normalize_to_limits(0.3, 0.0, 0.3) # op3
         # # desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -3) # gym-humanoid
         # desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -1.5) # op3
         # desired_ob_primary_velo_y = self._normalize_to_limits(0, 0, -1.5)
         # desired_ob_primary_velo_z = self._normalize_to_limits(0, 0, -1.5)
-        # desired_obs = np.append(desired_obs, desired_ob_primary_height)
+        desired_obs = np.append(desired_obs, desired_ob_primary_height)
         # desired_obs = np.append(desired_obs, desired_ob_primary_velo_x)
         # desired_obs = np.append(desired_obs, desired_ob_primary_velo_y)
         # desired_obs = np.append(desired_obs, desired_ob_primary_velo_z)
-
-        desired_ob_primary_velo_head = 0
-        desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
 
         # desired_ob_pose = []
         desired_ob_pose = self.last_ob_pose_desired
@@ -445,6 +442,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goalweight = np.zeros(desired_obs.shape)
 
         self.ep_goalweight[0] = 1 # base primary dim (velocity_head)
+        self.ep_goalweight[1] = 1 # base primary dim (height)
 
         # self.ep_goalweight[0] = 0 # base primary dim (height)
         # self.ep_goalweight[1] = 1 # base primary dim (velo-x)
