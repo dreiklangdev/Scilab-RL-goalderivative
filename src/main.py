@@ -119,8 +119,20 @@ def  get_algo_instance(cfg, logger, env):
     if 'replay_buffer_class' in alg_kwargs and alg_kwargs['replay_buffer_class'] == 'HerReplayBuffer':
         alg_kwargs['replay_buffer_class'] = HerReplayBuffer
         alg_kwargs = avoid_start_learn_before_first_episode_finishes(alg_kwargs, env)
+
+    # LE: custom
+    from torch import nn
+    policy_kwargs = dict(
+        activation_fn=nn.ReLU,
+        net_arch=[256, 256, 128],
+
+        # outputs smoother action
+        # activation_fn=nn.Tanh,
+        # net_arch=[64, 64]
+    )
+
     if cfg.restore_policy is not None:
-        baseline = baseline_class.load(cfg.restore_policy, env=env, **alg_kwargs)
+        baseline = baseline_class.load(cfg.restore_policy, env=env, policy_kwargs=policy_kwargs,**alg_kwargs)
     else:
         baseline = baseline_class(env=env, **alg_kwargs)
     baseline.set_logger(logger)

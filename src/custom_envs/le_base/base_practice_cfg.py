@@ -96,10 +96,6 @@ class GoalRewardThreshold:
     # minimize zero(-sum)-eps? (no pos. or neg. reward-sum => expected result for all prev. traj. steps converges to zero/none => wasted ep.?) (!= zero-step: exploring step)
 
     # "breadcrumbing"
-
-    # reward on record breaks
-    IS_NUDGING = True
-
     # rewarding (threshold): constant (confident, predictable) >> adaptive (dynamic, noisy)?
     IS_ADAPTIVE = False
 
@@ -116,7 +112,7 @@ class TrajectoryHalving:
     IS_ENABLED = True
     class Strat(Enum):
         HALF = 0
-        HIGHEST_GOAL_CONVERGENCE = 1
+        HIGHEST_GOAL_CONVERGENCE = 1 # reach
         LOWEST_GOAL_DISTANCE = 2 # reach
         LAST_STEP_GOAL_ZONE = 3 # hold
     STRAT = Strat.LOWEST_GOAL_DISTANCE
