@@ -5,11 +5,11 @@ import numpy as np
 
 class General(base.General):
     LANDMARK_GROUPS = [ # redundant duplicates?
-        # [0],                            # nose
+        [0],                            # nose
         # [8, 6, 5, 4, 1, 2, 3, 7],       # face
         # [10, 9],                       # mouth    
-        # [11, 13, 15, 17, 19, 15, 21],  # right arm
-        # [12, 14, 16, 18, 20, 16, 22],  # left arm
+        [11, 13, 15, 17, 19, 15, 21],  # right arm
+        [12, 14, 16, 18, 20, 16, 22],  # left arm
         # [11, 23, 25, 27, 29, 31, 27],  # right body side
         # [12, 24, 26, 28, 30, 32, 28],  # left body side
         # [11, 12],                      # shoulder
@@ -18,11 +18,11 @@ class General(base.General):
     ]
     LANDMARK_GROUPS_FLAT = np.hstack(LANDMARK_GROUPS) if LANDMARK_GROUPS else []
 
-    OBSERVATION_DIMS_VISUAL_DETECTION = LANDMARK_GROUPS_FLAT.size * 3 if LANDMARK_GROUPS else 0
+    NUM_OBSERVATION_DIMS_VISUAL_DETECTION = LANDMARK_GROUPS_FLAT.size * 3 if LANDMARK_GROUPS else 0
     RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
-    STEPSKIP_DETECT = 999999999 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
+    STEPSKIP_DETECT = 10 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
     MAX_LIVES = 0
@@ -61,6 +61,7 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # good for envs where goal-state is far from the beginning
     # bad for envs where start-state is in/near goalzone (too early savepoints)
     IS_ENABLED = True
+    # STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
 

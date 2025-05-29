@@ -140,12 +140,12 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims = 0
         obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += 2 # height, head_velo
-        obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # achieved_pose
+        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved_pose
         
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 2 # height, head_velo
             obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
-            obspace_total_dims += cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION # desired_pose
+            obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired_pose
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -190,8 +190,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.landmarker_achieved = None
         self.landmarker_desired = None
-        self.last_ob_pose_achieved = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
-        self.last_ob_pose_desired = np.full(cfg.General.OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+        self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+        self.last_ob_pose_desired = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -220,22 +220,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states.append((qpos, qvel))
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info) 
-        # if reward: # phase 2: inside goal-zone (no diverging exploration anymore, seek perfection) TODO why not always phase 2?
-        #     self.ep_num_steps_goal_zone += 1
-        #     if self.ep_first_reward_step < 0:
-        #         self.ep_first_reward_step = self.ep_num_steps
-        #     self.ep_last_reward_step = self.ep_num_steps
-        #     # self.ep_lives = 0 # spend more training time reaching goalzone first
-        # else:
-        #     if len(self.ep_goaldists) > 1: # phase 1: outside goalzone
-        #         goal_convergence = self.ep_goaldists[-2] - self.ep_goaldists[-1]
-        #         reward = min(goal_convergence, 0.5)
-
-            # action norm multiplier
-            # reward *= np.abs(np.linalg.norm(action, axis=-1))
-            # reward *= np.sum(np.square(action))
-        
-        # reward -= 0.001 * np.sum(np.square(action)) 
 
         # records
         if obs['achieved_goal'] < self.ep_goaldist_min:
@@ -248,8 +232,6 @@ class PoseImitationEnv(HumanoidEnv):
         if obs['achieved_goal'] < self.tr_goaldist_min:
             LOG.debug(f"TR IMPROVED: {obs['achieved_goal']} < {self.tr_goaldist_min}")
             self.tr_goaldist_min = obs['achieved_goal']
-            # nudging
-            # reward = 1
 
         if obs['achieved_goal'] > self.ep_goaldist_max:
             self.ep_goaldist_max = obs['achieved_goal']
@@ -260,8 +242,6 @@ class PoseImitationEnv(HumanoidEnv):
         if obs['achieved_goal'] > self.tr_goaldist_max:
             LOG.debug(f"TR DEPROVED: {obs['achieved_goal']} > {self.tr_goaldist_max}")
             self.tr_goaldist_max = obs['achieved_goal']
-            # denudging
-            # reward = -1
 
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
@@ -276,13 +256,7 @@ class PoseImitationEnv(HumanoidEnv):
         # space constraint
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            # elif self.ep_last_reward_step > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN and (obs['achieved_goal'] > obs['desired_goal']):
-            #     LOG.info('GOAL-ZONE LEFT.')
-            #     terminated = True
-            #     self.ep_lives -= 1
-            #     reward = -1
-
-            if self.data.qpos[2] < 0.25 or self.data.qpos[2] > 0.35:  # practice height (tight limit for efficiency)
+            if self.data.qpos[2] < 0.20 or self.data.qpos[2] > 0.35:  # practice height (tight limit for efficiency?)
                 LOG.info('HEIGHT TOO LOW/HIGH.')
                 # terminated = True
                 # self.ep_lives -= 1
@@ -295,12 +269,6 @@ class PoseImitationEnv(HumanoidEnv):
                 elif len(self.ep_goaldists) > 2:        
                     self._reset_half_episode()
                     self.ep_goaldists = []
-
-            # elif not 0 in self.data.contact.geom1:
-            #     LOG.info('NO GROUND CONTACT.')
-            #     terminated = True
-            #     self.ep_lives -= 1
-            #     reward = -1
 
             # min. convergence terminate? ("flaming wall")
             
@@ -371,34 +339,27 @@ class PoseImitationEnv(HumanoidEnv):
         achieved_ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
         achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_head)
 
-        # TODO try visual height primary from (normalized) image (non-world) 2d landmark? (head-to-waist or to-feet/floor)
-        # pose detection only: cant detect fall/height? (origin (torso) is also falling)
-        # achieved_ob_height = achieved_ob_pose[0][1] # nose-to-waist
-        # achieved_ob_height = min(achieved_ob_pose[1][1], achieved_ob_pose[2][1]) - achieved_ob_pose[3][1] # feet-to-waist
-        #achieved_obs = np.append(achieved_obs, achieved_ob_height)
-
-        # # achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # gym-humanoid
         achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
-        # # achieved_ob_primary_velo_x = self._normalize_to_limits(self.data.qvel[0], 0, -3) # gym-humanoid
-        # achieved_ob_primary_velo_x = self._normalize_to_limits(self.data.qvel[0], 0, -1.5)
-        # achieved_ob_primary_velo_y = self._normalize_to_limits(self.data.qvel[1], 0, -1.5)
-        # achieved_ob_primary_velo_z = self._normalize_to_limits(self.data.qvel[2], 0, -1.5)
         achieved_obs = np.append(achieved_obs, achieved_ob_primary_height)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_x)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_y)
-        # achieved_obs = np.append(achieved_obs, achieved_ob_primary_velo_z)
 
-        # achieved_ob_pose = []
-        achieved_ob_pose = self.last_ob_pose_achieved
+        is_achieved_pose_valid = False
+        # TODO count valid poses relative metric (incl. skips)
+        achieved_ob_pose = [0] * cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION
+        # achieved_ob_pose = self.last_ob_pose_achieved
         if achieved_pose.pose_world_landmarks:
             # only first detected pose
             # height-dependent vs. -independent
             # achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
-            achieved_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
-            achieved_ob_pose = np.array(achieved_ob_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
-            achieved_ob_pose = self._normalize_to_limits(achieved_ob_pose, -1, 1)
-            self.last_ob_pose_achieved = achieved_ob_pose
-            self.ep_count_fails_pose_detection = 0
+            detected_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
+            detected_pose = np.array(detected_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
+            detected_pose = self._normalize_to_limits(detected_pose, -1, 1)
+            pose_height = detected_pose[0][1]
+            if pose_height < 0.40: # height (inversed) is valid
+                achieved_ob_pose = detected_pose
+                is_achieved_pose_valid = True
+                self.ep_count_fails_pose_detection = 0
+            else:
+                self.ep_count_fails_pose_detection += 1
         else:
             self.ep_count_fails_pose_detection += 1
         achieved_obs = np.append(achieved_obs, achieved_ob_pose)
@@ -415,40 +376,30 @@ class PoseImitationEnv(HumanoidEnv):
 
         # # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
         desired_ob_primary_height = self._normalize_to_limits(0.3, 0.0, 0.3) # op3
-        # # desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -3) # gym-humanoid
-        # desired_ob_primary_velo_x = self._normalize_to_limits(0, 0, -1.5) # op3
-        # desired_ob_primary_velo_y = self._normalize_to_limits(0, 0, -1.5)
-        # desired_ob_primary_velo_z = self._normalize_to_limits(0, 0, -1.5)
         desired_obs = np.append(desired_obs, desired_ob_primary_height)
-        # desired_obs = np.append(desired_obs, desired_ob_primary_velo_x)
-        # desired_obs = np.append(desired_obs, desired_ob_primary_velo_y)
-        # desired_obs = np.append(desired_obs, desired_ob_primary_velo_z)
 
-        # desired_ob_pose = []
-        desired_ob_pose = self.last_ob_pose_desired
-        if desired_pose.pose_world_landmarks:
+        desired_ob_pose = achieved_ob_pose
+        # desired_ob_pose = self.last_ob_pose_desired
+        if is_achieved_pose_valid and desired_pose.pose_world_landmarks:
             # only first detected pose
             # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-            desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-            desired_ob_pose = np.array(desired_ob_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
-            desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
-            self.last_ob_pose_desired = desired_ob_pose
+            detected_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
+            detected_pose = np.array(detected_pose)[cfg.General.LANDMARK_GROUPS_FLAT]
+            detected_pose = self._normalize_to_limits(detected_pose, -1, 1)
+            desired_ob_pose = detected_pose
         desired_obs = np.append(desired_obs, desired_ob_pose)
 
         # self.ep_goalweight = np.ones(desired_obs.shape)
         # if not self.is_eval:
         # isolated (vs. overlapping (random) batches?)
         # comb-through (only after stable/nonterminating? truncation + success cond.)
-        self.ep_goalweight = np.zeros(desired_obs.shape)
+
+        # self.ep_goalweight = np.zeros(desired_obs.shape)
+        # self.ep_goalweight = np.ones(desired_obs.shape)
+        self.ep_goalweight = np.full(desired_obs.shape, 0.5)
 
         self.ep_goalweight[0] = 1 # base primary dim (velocity_head)
-        self.ep_goalweight[1] = 1 # base primary dim (height)
-
-        # self.ep_goalweight[0] = 0 # base primary dim (height)
-        # self.ep_goalweight[1] = 1 # base primary dim (velo-x)
-        # self.ep_goalweight[2] = 1 # base primary dim (velo-y)
-        # self.ep_goalweight[3] = 1 # base primary dim (velo-z)
-        # # self.ep_goalweight[self.fep_goaldims_primary] = 1.0
+        self.ep_goalweight[1] = 0 # base primary dim (height)
         
         # self.ep_goalweight[self.fep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
@@ -501,6 +452,7 @@ class PoseImitationEnv(HumanoidEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
         return np.clip(achieved_goal, 0, None)
+        # return achieved_goal
 
 
     def reset_model(self):
@@ -574,6 +526,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_goaldist_min = obs_init['achieved_goal']
         self.fep_obs_init = obs_init
         self.fep_goaldims_primary = np.random.randint(4, size=1) # multiple?
+        # TODO if random, then only secondary interval
         self.fep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
         # self.desired_obs = self._get_desired_obs()
         self.last_ep_goaldist_min = np.inf
