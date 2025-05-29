@@ -5,7 +5,7 @@ import numpy as np
 
 class General(base.General):
     LANDMARK_GROUPS = [ # redundant duplicates?
-        [0],                            # nose
+        # [0],                            # nose
         # [8, 6, 5, 4, 1, 2, 3, 7],       # face
         # [10, 9],                       # mouth    
         [11, 13, 15, 17, 19, 15, 21],  # right arm
@@ -18,7 +18,19 @@ class General(base.General):
     ]
     LANDMARK_GROUPS_FLAT = np.hstack(LANDMARK_GROUPS) if LANDMARK_GROUPS else []
 
-    NUM_OBSERVATION_DIMS_VISUAL_DETECTION = LANDMARK_GROUPS_FLAT.size * 3 if LANDMARK_GROUPS else 0
+
+    MJBODY_TO_MPPOSE = [None, None, None, None, None, None, None, None, None, None, None, 'l_sho_pitch_link', 'r_sho_pitch_link', 'l_sho_roll_link', 'r_sho_roll_link', 'l_el_link', 'r_el_link', None, None, None, None, None, None, 'l_hip_pitch_link', 'r_hip_pitch_link', 'l_knee_link', 'r_knee_link', 'l_ank_pitch_link', 'r_ank_pitch_link']
+    mjlandmarks = np.where(np.array(MJBODY_TO_MPPOSE) != None)[0]
+    IDS_LANDMARKS_FILTERED = np.intersect1d(mjlandmarks, LANDMARK_GROUPS_FLAT)
+
+    groups_filtered = LANDMARK_GROUPS.copy()
+    for i in range(len(groups_filtered)):
+        groups_filtered[i] = np.array(groups_filtered[i])
+        groups_filtered[i] = groups_filtered[i][np.isin(groups_filtered[i], IDS_LANDMARKS_FILTERED)]
+    LANDMARK_GROUPS_FILTERED = groups_filtered
+
+
+    NUM_OBSERVATION_DIMS_VISUAL_DETECTION = IDS_LANDMARKS_FILTERED.size * 3 if LANDMARK_GROUPS else 0
     RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
