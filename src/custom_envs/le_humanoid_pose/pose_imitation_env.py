@@ -294,17 +294,20 @@ class PoseImitationEnv(HumanoidEnv):
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             info['success'] = is_success
 
-        # human_viewer = self.mujoco_renderer._viewers.get('human')
-        # if human_viewer:
-            # human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
+        human_viewer = self.mujoco_renderer._viewers.get('human')
+        if human_viewer:
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
 
         result = obs, reward, terminated, truncated, info
         return result
 
 
-    # obs = achieved_obs(vis.) + metaobs
+    # obs = achieved_obs + metaobs
     # TODO keep obs keys/indices mapping (eg. dict, vs. "counting")
     def _get_obs(self):
+
+        # =========== OBS
+
         obs = np.array([])
 
         # stabilizer
@@ -360,7 +363,7 @@ class PoseImitationEnv(HumanoidEnv):
         # desired_pose = self.desired_pose
 
 
-
+        # ========= DESIRED OBS
 
         desired_obs = np.array([])
 
@@ -383,6 +386,8 @@ class PoseImitationEnv(HumanoidEnv):
         #     self.last_ob_pose_desired = desired_ob_pose
         # desired_obs = np.append(desired_obs, desired_ob_pose)
 
+
+        # ========= ACHIEVED OBS
 
         achieved_obs = np.array([])
 
@@ -408,15 +413,14 @@ class PoseImitationEnv(HumanoidEnv):
         obs = np.append(obs, achieved_obs)
 
 
-
-
+        # ========= GOAL
 
         self.ep_goalweight = np.full(desired_obs.shape, 0.0)
 
         self.ep_goalweight[0] = 1 # base primary dim (velocity_head)
         self.ep_goalweight[1] = 1 # base primary dim (height)
 
-        self.ep_goalweight[self.fep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+        # self.ep_goalweight[self.fep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         self.ep_goaldists.append(goaldist)
@@ -427,6 +431,8 @@ class PoseImitationEnv(HumanoidEnv):
             goalconv = self.ep_goaldists[-2] - self.ep_goaldists[-1]
             is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
 
+
+        # ========= META OBS
 
         if self.cfg.MetaObservation.IS_ENABLED:
             metaobs = []
