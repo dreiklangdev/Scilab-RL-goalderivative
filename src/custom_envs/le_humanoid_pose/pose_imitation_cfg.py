@@ -34,7 +34,7 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
-    STEPSKIP_DETECT = 10 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
+    STEPSKIP_DETECT = 9999999999 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
     MAX_LIVES = 0

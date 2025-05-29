@@ -141,12 +141,13 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims = 0
         obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += 7 # height, head_velo, head acc-x, head acc-y, head acc-z, l_foot_touch, r_foot_touch
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # pose
+        obspace_total_dims += 2 # achieved: height, head_velo
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            # obspace_total_dims += 2 # desired: height, head_velo
-            obspace_total_dims += 4 # desired: goaldist, goalweight_hash, goal_convergence, is_converging
-            obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+            obspace_total_dims += 2 # desired: height, head_velo
+            obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
+            # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype='float64')
@@ -159,6 +160,11 @@ class PoseImitationEnv(HumanoidEnv):
                 achieved_goal=goal_space,
             )
         )
+
+
+        LOG.debug('observation_space %s', observation_space)
+        LOG.info('action_space %s', self.action_space)
+        LOG.debug('goal_space %s', goal_space)
 
         # once
         self.init_qpos[6] = -1.4 # face towards camera
@@ -201,8 +207,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         self._reset()
         LOG.debug('le-walker-2d initialized.')
-        LOG.debug('observation_space %s', observation_space)
-        LOG.debug('goal_space %s', goal_space)
 
 
     def step(self, action):
@@ -255,13 +259,14 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_rewards_sum += reward
 
         # space constraint
+        # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
             if self.data.qpos[2] < 0.20 or self.data.qpos[2] > 0.35:  # practice height (tight limit for efficiency?)
-                LOG.info('HEIGHT TOO LOW/HIGH.')
+                LOG.info('HEIGHT TOO LOW/HIGH. %s', reward)
                 # terminated = True
                 # self.ep_lives -= 1
-                reward = -self.ep_rewards_mean
+                # reward = -self.ep_rewards_mean * 10
 
                 if self.is_eval:
                     terminated = True
@@ -289,151 +294,123 @@ class PoseImitationEnv(HumanoidEnv):
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             info['success'] = is_success
 
-        human_viewer = self.mujoco_renderer._viewers.get('human')
-        if human_viewer:
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
+        # human_viewer = self.mujoco_renderer._viewers.get('human')
+        # if human_viewer:
+            # human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
 
         result = obs, reward, terminated, truncated, info
         return result
 
 
     # obs = achieved_obs(vis.) + metaobs
+    # TODO keep obs keys/indices mapping (eg. dict, vs. "counting")
     def _get_obs(self):
         obs = np.array([])
 
         # stabilizer
-        achieved_ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
-        obs = np.append(obs, achieved_ob_primary_velo_head)
-        
-        achieved_ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
-        obs = np.append(obs, achieved_ob_primary_height)
+        ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
+        obs = np.append(obs, ob_primary_velo_head)
 
-        achieved_ob_primary_acc_head = self._normalize_to_limits(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
-        obs = np.append(obs, achieved_ob_primary_acc_head)
+        ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
+        obs = np.append(obs, ob_primary_height)
 
-        achieved_ob_primary_l_foot_touch = self._normalize_to_limits(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
-        obs = np.append(obs, achieved_ob_primary_l_foot_touch)
+        ob_primary_acc_head = self._normalize_to_limits(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
+        obs = np.append(obs, ob_primary_acc_head)
 
-        achieved_ob_primary_r_foot_touch = self._normalize_to_limits(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
-        obs = np.append(obs, achieved_ob_primary_r_foot_touch)
+        ob_primary_l_foot_touch = self._normalize_to_limits(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
+        obs = np.append(obs, ob_primary_l_foot_touch)
 
+        ob_primary_r_foot_touch = self._normalize_to_limits(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
+        obs = np.append(obs, ob_primary_r_foot_touch)
 
-        desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
-        achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
+        obs = np.append(obs, super()._get_obs())
 
 
-        # detect pose(s) only every nth step, else use last valid
-        if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            # renders only rgb (cant render multiple modes simultanously)
-            render_tmp = self.render_mode
-            self.render_mode = 'rgb_array'
 
-            # https://github.com/jurgisp/memory-maze/issues/26
-            achieved_img = self.render().copy() # MUJOCO_GL=glfw
-            self.render_mode = render_tmp
-            achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
-            # TODO get desired img from video?
-            desired_img = self.desired_img
+        # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
+        # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
+        # # detect pose(s) only every nth step, else use last valid
+        # if not self.desired_pose or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
+        #     # renders only rgb (cant render multiple modes simultanously)
+        #     render_tmp = self.render_mode
+        #     self.render_mode = 'rgb_array'
 
-            # bottleneck start
-            # t = time.perf_counter()
-            # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
-            # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
-            # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
+        #     # https://github.com/jurgisp/memory-maze/issues/26
+        #     achieved_img = self.render().copy() # MUJOCO_GL=glfw
+        #     self.render_mode = render_tmp
+        #     achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
+        #     # TODO get desired img from video?
+        #     desired_img = self.desired_img
 
-            if not self.desired_pose:
-                # only once at the beginning (still image)
-                self.desired_pose = self.landmarker_desired.detect(desired_img)
-            desired_pose = self.desired_pose
-            # LOG.debug(time.perf_counter() - t)
-            # bottleneck end
+        #     # bottleneck start
+        #     # t = time.perf_counter()
+        #     # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
+        #     # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
+        #     # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
 
-        elif self.render_mode == 'human':
+        #     if not self.desired_pose:
+        #         # only once at the beginning (still image)
+        #         self.desired_pose = self.landmarker_desired.detect(desired_img)
+        #     # LOG.debug(time.perf_counter() - t)
+        #     # bottleneck end
+
+        if self.render_mode == 'human':
             self.render()
 
+        # desired_pose = self.desired_pose
 
 
 
 
         desired_obs = np.array([])
 
-        # desired_ob_primary_velo_head = 0
-        # desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
+        desired_ob_primary_velo_head = 0
+        desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
 
-        
         # # # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
-        # desired_ob_primary_height = self._normalize_to_limits(0.3, 0.0, 0.3) # op3
-        # desired_obs = np.append(desired_obs, desired_ob_primary_height)
+        desired_ob_primary_height = self._normalize_to_limits(0.3, 0.0, 0.3) # op3
+        desired_obs = np.append(desired_obs, desired_ob_primary_height)
 
-        desired_ob_pose = self.last_ob_pose_desired
         # desired_ob_pose = self.last_ob_pose_desired
-        if desired_pose.pose_world_landmarks:
-            # only first detected pose
-            # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-            desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-            desired_ob_pose = np.array(desired_ob_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
-            desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
-            # TODO check if detected pose is valid/possible (height, change, confidence etc.)
-            self.last_ob_pose_desired = desired_ob_pose
-        desired_obs = np.append(desired_obs, desired_ob_pose)
+        # # desired_ob_pose = self.last_ob_pose_desired
+        # if desired_pose.pose_world_landmarks:
+        #     # only first detected pose
+        #     # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
+        #     desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
+        #     desired_ob_pose = np.array(desired_ob_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
+        #     desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
+        #     # TODO check if detected pose is valid/possible (height, change, confidence etc.)
+        #     self.last_ob_pose_desired = desired_ob_pose
+        # desired_obs = np.append(desired_obs, desired_ob_pose)
 
 
-        if desired_pose.pose_world_landmarks:
-            achieved_pose = copy.deepcopy(desired_pose)
-            # body
-            # TODO extend/unite with geom?
-            for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
-                if body_id:
-                    achieved_pose.pose_world_landmarks[0][i].x = self.data.body(body_id).xpos[0] * 3.6
-                    achieved_pose.pose_world_landmarks[0][i].z = self.data.body(body_id).xpos[1] * 3.6
-                    achieved_pose.pose_world_landmarks[0][i].y = -self.data.body(body_id).xpos[2] * 3.6 + 0.85
-                else:
-                    achieved_pose.pose_world_landmarks[0][i].x = -1
-                    achieved_pose.pose_world_landmarks[0][i].y = -1
-                    achieved_pose.pose_world_landmarks[0][i].z = -1
-
-
-
-
-        # get normalized goal distance
         achieved_obs = np.array([])
 
+        achieved_obs = np.append(achieved_obs, obs[0]) # ob_primary_velo_head
+        achieved_obs = np.append(achieved_obs, obs[1]) # ob_primary_height
 
-        # TODO count valid poses relative metric (incl. skips)
-        achieved_ob_pose = [0] * cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION
-        # achieved_ob_pose = self.last_ob_pose_achieved
-        if achieved_pose.pose_world_landmarks:
-            # only first detected pose
-            # height-dependent vs. -independent
-            # achieved_ob_pose = [(landmark.x, landmark.y - superobs[0], landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
-            detected_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.pose_world_landmarks[0]]
-            detected_pose = np.array(detected_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
-            detected_pose = self._normalize_to_limits(detected_pose, -1, 1)
-            pose_height = detected_pose[0][1]
-            if pose_height < 0.40: # height (inversed) is valid
-                achieved_ob_pose = detected_pose
-                self.ep_count_fails_pose_detection = 0
-            else:
-                self.ep_count_fails_pose_detection += 1
-        else:
-            self.ep_count_fails_pose_detection += 1
-        achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+        # if desired_pose.pose_world_landmarks:
+        #     achieved_pose = copy.deepcopy(desired_pose)
+        #     # body
+        #     # TODO extend/unite with geom?
+        #     for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
+        #         if body_id:
+        #             achieved_pose.pose_world_landmarks[0][i].x = self.data.body(body_id).xpos[0] * 3.6
+        #             achieved_pose.pose_world_landmarks[0][i].z = self.data.body(body_id).xpos[1] * 3.6
+        #             achieved_pose.pose_world_landmarks[0][i].y = -self.data.body(body_id).xpos[2] * 3.6 + 0.85
+        #         else:
+        #             achieved_pose.pose_world_landmarks[0][i].x = -1
+        #             achieved_pose.pose_world_landmarks[0][i].y = -1
+        #             achieved_pose.pose_world_landmarks[0][i].z = -1
 
-        # primary obs first
+        # achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+
         obs = np.append(obs, achieved_obs)
-        obs = np.append(obs, super()._get_obs()) # 
-        
 
 
 
 
-        # self.ep_goalweight = np.ones(desired_obs.shape)
-        # if not self.is_eval:
-        # isolated (vs. overlapping (random) batches?)
-        # comb-through (only after stable/nonterminating? truncation + success cond.)
 
-        # self.ep_goalweight = np.zeros(desired_obs.shape)
-        # self.ep_goalweight = np.ones(desired_obs.shape)
         self.ep_goalweight = np.full(desired_obs.shape, 0.0)
 
         self.ep_goalweight[0] = 1 # base primary dim (velocity_head)
@@ -449,6 +426,7 @@ class PoseImitationEnv(HumanoidEnv):
         if len(self.ep_goaldists) > 1:
             goalconv = self.ep_goaldists[-2] - self.ep_goaldists[-1]
             is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
+
 
         if self.cfg.MetaObservation.IS_ENABLED:
             metaobs = []
@@ -476,11 +454,11 @@ class PoseImitationEnv(HumanoidEnv):
                 desired_goal=desired_goal,
             )
 
-        if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
-            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-            desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
-            if self.parallel_plot_queue.empty():
-                self.parallel_plot_queue.put_nowait((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+        # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
+        #     achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
+        #     desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
+        #     if self.parallel_plot_queue.empty():
+        #         self.parallel_plot_queue.put_nowait((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
 
