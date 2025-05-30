@@ -74,7 +74,6 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # bad for envs where start-state is in/near goalzone (too early savepoints)
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-    # STRAT = base.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE
 
 
 # vs. multi-dim. curse (exponentially many combinations)

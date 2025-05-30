@@ -30,6 +30,7 @@ OmegaConf.register_new_resolver("as_tuple", tuple)
 
 def get_env_instance(cfg, logger):
     if cfg.render == 'eval':
+        cfg.eval_after_n_steps = 1
         train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
         eval_env = gym.make(cfg.env, is_eval=True, is_render=True, **cfg.env_kwargs)
     elif cfg.render == 'train':
