@@ -85,10 +85,12 @@ OBS_NORMALIZE_Z_SCORE = False
 
 # 1M, convRewarding, groundContactTerm., metaGoals0.5, threshold0.05:  converging, no pleateaus yet /home/t14/Documents/tuhh/dsf/Scilab-RL/data/053b120/le-pose-imitation-v4/10-43-06/rl_model_finished
 # 1M(!!!!), posConvRewardingOnly, no goalzone, meanTermPen: clear converging, no plateau yet restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/7aca00b/le-pose-imitation-v4/18-52-08/rl_model_finished
+
+# TODO cleansac#296: add locality propagation exps. to HER?
 class PoseImitationEnv(HumanoidEnv):
 
 
-    def __init__(self, is_eval=False, is_plot=True, log_level=logging.INFO):
+    def __init__(self, is_eval=False, is_render=True, log_level=logging.INFO):
         LOG.setLevel(log_level)
 
         HumanoidEnv.__init__(self,
@@ -102,7 +104,7 @@ class PoseImitationEnv(HumanoidEnv):
         assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
 
         self.cfg = cfg
-        self.is_plot = is_plot
+        self.is_render = is_render
         self.is_eval = is_eval
         self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'a')
 
@@ -200,10 +202,10 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
         self.last_ob_pose_desired = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
-        if self.is_plot:
-            self.parallel_plot_queue = multiprocessing.Queue()
-            multiprocessing.log_to_stderr(logging.DEBUG)
-            multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
+        # if self.is_plot:
+        #     self.parallel_plot_queue = multiprocessing.Queue()
+        #     multiprocessing.log_to_stderr(logging.DEBUG)
+        #     multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
 
         self._reset()
         LOG.debug('le-walker-2d initialized.')
@@ -224,7 +226,7 @@ class PoseImitationEnv(HumanoidEnv):
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
 
-        reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info) 
+        reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
 
         # records
         if obs['achieved_goal'] < self.ep_goaldist_min:
@@ -263,10 +265,10 @@ class PoseImitationEnv(HumanoidEnv):
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
             if self.data.qpos[2] < 0.20 or self.data.qpos[2] > 0.35:  # practice height (tight limit for efficiency?)
+                reward = -self.ep_rewards_mean
                 LOG.info('HEIGHT TOO LOW/HIGH. %s', reward)
                 # terminated = True
                 # self.ep_lives -= 1
-                # reward = -self.ep_rewards_mean * 10
 
                 if self.is_eval:
                     terminated = True
@@ -294,9 +296,11 @@ class PoseImitationEnv(HumanoidEnv):
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             info['success'] = is_success
 
-        human_viewer = self.mujoco_renderer._viewers.get('human')
-        if human_viewer:
+        if self.is_render:
+            self.render_mode = 'human'
+            human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
+            human_viewer.render()
 
         result = obs, reward, terminated, truncated, info
         return result
@@ -356,9 +360,6 @@ class PoseImitationEnv(HumanoidEnv):
         #         self.desired_pose = self.landmarker_desired.detect(desired_img)
         #     # LOG.debug(time.perf_counter() - t)
         #     # bottleneck end
-
-        if self.render_mode == 'human':
-            self.render()
 
         # desired_pose = self.desired_pose
 
@@ -435,16 +436,16 @@ class PoseImitationEnv(HumanoidEnv):
         # ========= META OBS
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            metaobs = []
+            metaobs = np.array([])
 
             goalweight_hash = vector_to_uniform_scalar(self.ep_goalweight, len(self.ep_goalweight))
-            metaobs.append(goalweight_hash)
-            metaobs.append(goaldist)
-            metaobs.extend(desired_obs)
+            metaobs = np.append(metaobs, goalweight_hash)
+            metaobs = np.append(metaobs, goaldist)
+            metaobs = np.append(metaobs, desired_obs.ravel())
             # record_dist = max(0, goaldist - self.tr_goaldist_min)
             # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
-            metaobs.append(goalconv)
-            metaobs.append(is_converging)
+            metaobs = np.append(metaobs, goalconv)
+            metaobs = np.append(metaobs, is_converging)
             obs = np.append(obs, metaobs)
 
 
@@ -452,12 +453,12 @@ class PoseImitationEnv(HumanoidEnv):
         # achieved_goal = 0.5 * goaldist + 0.5 * goalconv
         achieved_goal = goalconv
         # desired_goal = self.ep_reward_threshold
-        desired_goal = 1  # or arbitrary big number for max.??
+        desired_goal = 1.0  # or arbitrary big number for max.??
 
         dictobs = dict(
                 observation=obs,
-                achieved_goal=achieved_goal,
-                desired_goal=desired_goal,
+                achieved_goal=np.array([achieved_goal]),
+                desired_goal=np.array([desired_goal]),
             )
 
         # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
@@ -489,9 +490,9 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_goaldims_active %s', np.nonzero(self.ep_goalweight)[0])
             LOG.debug('ep_goaldist_desired %s', self.ep_obs_cur['desired_goal'])
             LOG.debug('ep_goaldist_first %s', self.ep_goaldists[0])
-            LOG.debug('ep_goaldist_min %s', min(self.ep_goaldists))
+            LOG.debug('ep_goaldist_min %s', np.min(self.ep_goaldists))
             LOG.debug('ep_goaldist_mean %s', np.mean(self.ep_goaldists))
-            LOG.debug('ep_goaldist_max %s', max(self.ep_goaldists))
+            LOG.debug('ep_goaldist_max %s', np.max(self.ep_goaldists))
             LOG.debug('ep_goaldist_last %s', self.ep_obs_cur['achieved_goal'])
             LOG.debug('ep_reward_threshold %s %s', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             LOG.debug('ep_traj_is_halved %s', self.ep_traj_is_halved)
@@ -528,7 +529,7 @@ class PoseImitationEnv(HumanoidEnv):
             self.outfile_ep_rewards_mean.flush()
 
         self._reset()
-        self.ep_goaldists.append(obs_init['achieved_goal'])
+        self.ep_goaldists.append(obs_init['achieved_goal'][0])
         self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
         LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
         LOG.debug('fep_num_steps_goal_zone %s', self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone)
@@ -632,8 +633,7 @@ class PoseImitationEnv(HumanoidEnv):
             case self.cfg.TrajectoryHalving.Strat.HALF:
                 idx_step = len(self.ep_states) // 2
             case self.cfg.TrajectoryHalving.Strat.HIGHEST_GOAL_CONVERGENCE:
-                print(np.diff(self.ep_goaldists))
-                idx_step = np.argmin(np.diff(self.ep_goaldists)) - 1
+                idx_step = np.argmin(np.gradient(self.ep_goaldists))
             case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
                 idx_step = np.argmin(self.ep_goaldists)
             case self.cfg.TrajectoryHalving.Strat.LAST_STEP_GOAL_ZONE:

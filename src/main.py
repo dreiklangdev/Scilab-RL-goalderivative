@@ -29,17 +29,19 @@ OmegaConf.register_new_resolver("as_tuple", tuple)
 
 
 def get_env_instance(cfg, logger):
-    train_env = gym.make(cfg.env, **cfg.env_kwargs)
-    eval_env = gym.make(cfg.env, is_eval=True, **cfg.env_kwargs)
+    if cfg.render == 'eval':
+        train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=True, **cfg.env_kwargs)
+    elif cfg.render == 'train':
+        train_env = gym.make(cfg.env, is_render=True, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, **cfg.env_kwargs)
+    else:
+        train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, **cfg.env_kwargs)
 
     # wrappers for rendering
     train_render_schedule = get_train_render_schedule(cfg.render_freq)
     eval_render_schedule = get_eval_render_schedule(cfg.render_freq, cfg.n_test_rollouts)
-    if cfg.render == 'eval_only':
-        eval_env = DisplayWrapper(eval_env,
-                                  episode_trigger=eval_render_schedule,
-                                  metric_keys=cfg.render_metrics_test,
-                                  logger=logger)
     if cfg.render == 'display':
         train_env = DisplayWrapper(train_env,
                                    steps_per_epoch=cfg.eval_after_n_steps,
