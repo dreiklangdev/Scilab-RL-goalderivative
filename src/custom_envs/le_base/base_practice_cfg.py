@@ -23,6 +23,10 @@ class MetaObservation:
     IS_ENABLED = True
 
 
+class DbObservation:
+    IS_ACTIONDB_ENABLED = True
+
+
 # as general basic training? (base policy)
 class PracticeSpace:
     # every training must be inside practice space (reach, hold, recover, etc.)

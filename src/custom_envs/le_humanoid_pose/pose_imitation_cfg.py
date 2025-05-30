@@ -47,6 +47,10 @@ class MetaObservation(base.MetaObservation):
     IS_ENABLED = True
 
 
+class DbObservation(base.DbObservation):
+    IS_ACTIONDB_ENABLED = False
+
+
 # termination shaping (vs. too big search space)
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True

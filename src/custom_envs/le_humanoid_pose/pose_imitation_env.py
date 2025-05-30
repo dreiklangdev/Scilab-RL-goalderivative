@@ -153,8 +153,7 @@ class PoseImitationEnv(HumanoidEnv):
             obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         
-        DB_ACTION_OBSERVATION_IS_ENABLED = True
-        if DB_ACTION_OBSERVATION_IS_ENABLED:
+        if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
             obspace_total_dims += 20 # best_action
             obspace_total_dims += 2 # best_similarity, best_reward
 
@@ -295,16 +294,21 @@ class PoseImitationEnv(HumanoidEnv):
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
 
-        actiondb_best_similarity = obs['observation'].dtype. metadata['actiondb_best_similarity']
-        self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
+        if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
+            actiondb_best_id = obs['observation'].dtype. metadata['actiondb_best_id']
+            actiondb_best_reward = obs['observation'].dtype. metadata['actiondb_best_reward']
+            actiondb_best_similarity = obs['observation'].dtype. metadata['actiondb_best_similarity']
+            self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
 
-        # save to actiondb
-        self.actiondb.add(
-            documents=[np.array2string(np.hstack((reward, action)), separator=',', precision=16)],
-            # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
-            embeddings=[self._normalize_L2(obs['observation'])],
-            ids=[uuid.uuid4().hex]
-        )
+            if reward < actiondb_best_reward:
+                # improved, now king-of-the-canyon
+                # save to actiondb
+                self.actiondb.add(
+                    documents=[np.array2string(np.hstack((reward, action)), separator=',', precision=16)],
+                    # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
+                    embeddings=[self._normalize_L2(obs['observation'])],
+                    ids=[uuid.uuid4().hex]
+                )
 
 
         goaldist = obs['achieved_goal'][0]
@@ -538,33 +542,34 @@ class PoseImitationEnv(HumanoidEnv):
 
         # ========= DB ACTION OBS
 
-        best_id = None
-        best_similarity = 0
-        best_reward = 0
-        best_action = np.zeros(self.action_space.shape)
+        if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
+            best_id = None
+            best_similarity = 0
+            best_reward = 0
+            best_action = np.zeros(self.action_space.shape)
 
-        db_query = self.actiondb.query(
-            query_embeddings=[self._normalize_L2(np.hstack((obs, best_similarity, best_reward, best_action)))],
-            n_results=1,
-        )
+            db_query = self.actiondb.query(
+                query_embeddings=[self._normalize_L2(np.hstack((obs, best_similarity, best_reward, best_action)))],
+                n_results=1,
+            )
 
-        if len(db_query['ids'][0]) > 0:
-            best_id = db_query['ids'][0][0],
-            best_similarity = db_query['distances'][0][0]
-            best_reward_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
-            best_reward = best_reward_action[0]
-            best_action = best_reward_action[1:]
+            if len(db_query['ids'][0]) > 0:
+                best_id = db_query['ids'][0][0],
+                best_similarity = db_query['distances'][0][0]
+                best_reward_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
+                best_reward = best_reward_action[0]
+                best_action = best_reward_action[1:]
 
-        obs = np.append(obs, best_similarity)
-        obs = np.append(obs, best_reward)
-        obs = np.append(obs, self._normalize_to_limits(best_action, -np.pi, np.pi))
+            obs = np.append(obs, best_similarity)
+            obs = np.append(obs, best_reward)
+            obs = np.append(obs, self._normalize_to_limits(best_action, -np.pi, np.pi))
 
-        # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
-        obs = obs.astype(np.dtype(float, metadata={
-            'actiondb_best_id': best_id,
-            'actiondb_best_reward': best_reward,
-            'actiondb_best_similarity': best_similarity,
-            }))
+            # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
+            obs = obs.astype(np.dtype(float, metadata={
+                'actiondb_best_id': best_id,
+                'actiondb_best_reward': best_reward,
+                'actiondb_best_similarity': best_similarity,
+                }))
 
         # metagoal(s) only
         # achieved_goal = 0.5 * goaldist + 0.5 * goalconv
