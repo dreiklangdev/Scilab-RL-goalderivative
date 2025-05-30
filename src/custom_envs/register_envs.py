@@ -171,7 +171,7 @@ def register_custom_envs():
     register(
         id="le-pose-imitation-v4",
         entry_point='custom_envs.le_humanoid_pose.pose_imitation_env:PoseImitationEnv',
-        max_episode_steps=1500,
+        max_episode_steps=10000,
     )
 
 
