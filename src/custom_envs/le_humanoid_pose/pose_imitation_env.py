@@ -3,7 +3,8 @@ import numpy as np
 import time
 import logging
 import git
-import copy
+import uuid
+import chromadb
 from types import SimpleNamespace
 from . import pose_imitation_cfg as cfg
 from gymnasium import spaces
@@ -87,6 +88,7 @@ OBS_NORMALIZE_Z_SCORE = False
 # 1M(!!!!), posConvRewardingOnly, no goalzone, meanTermPen: clear converging, no plateau yet restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/7aca00b/le-pose-imitation-v4/18-52-08/rl_model_finished
 
 # TODO cleansac#296: add locality propagation exps. to HER?
+# TODO obs appender func with limits warning (for normalization(!))
 class PoseImitationEnv(HumanoidEnv):
 
 
@@ -150,10 +152,14 @@ class PoseImitationEnv(HumanoidEnv):
             obspace_total_dims += 2 # desired: height, head_velo
             obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+        
+        DB_ACTION_OBSERVATION_IS_ENABLED = True
+        if DB_ACTION_OBSERVATION_IS_ENABLED:
+            obspace_total_dims += 20 # best_action
+            obspace_total_dims += 2 # best_similarity, best_reward
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(2,), dtype='float64') # goaldist, goalconv
-
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
@@ -203,6 +209,13 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_desired = None
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
         self.last_ob_pose_desired = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+
+        # vecDB
+        chroma_client = chromadb.Client()
+        if is_eval:
+            self.actiondb = chroma_client.create_collection(name='obs_eval')
+        else:
+            self.actiondb = chroma_client.create_collection(name='obs_train')
 
         # if self.is_plot:
         #     self.parallel_plot_queue = multiprocessing.Queue()
@@ -279,8 +292,21 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_dictobs.append(obs)
         self.ep_current_obs = obs
 
+
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
-        
+
+        actiondb_best_similarity = obs['observation'].dtype. metadata['actiondb_best_similarity']
+        self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
+
+        # save to actiondb
+        self.actiondb.add(
+            documents=[np.array2string(np.hstack((reward, action)), separator=',', precision=16)],
+            # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
+            embeddings=[self._normalize_L2(obs['observation'])],
+            ids=[uuid.uuid4().hex]
+        )
+
+
         goaldist = obs['achieved_goal'][0]
 
         # records
@@ -510,15 +536,45 @@ class PoseImitationEnv(HumanoidEnv):
             obs = np.append(obs, metaobs)
 
 
+        # ========= DB ACTION OBS
+
+        best_id = None
+        best_similarity = 0
+        best_reward = 0
+        best_action = np.zeros(self.action_space.shape)
+
+        db_query = self.actiondb.query(
+            query_embeddings=[self._normalize_L2(np.hstack((obs, best_similarity, best_reward, best_action)))],
+            n_results=1,
+        )
+
+        if len(db_query['ids'][0]) > 0:
+            best_id = db_query['ids'][0][0],
+            best_similarity = db_query['distances'][0][0]
+            best_reward_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
+            best_reward = best_reward_action[0]
+            best_action = best_reward_action[1:]
+
+        obs = np.append(obs, best_similarity)
+        obs = np.append(obs, best_reward)
+        obs = np.append(obs, self._normalize_to_limits(best_action, -np.pi, np.pi))
+
+        # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
+        obs = obs.astype(np.dtype(float, metadata={
+            'actiondb_best_id': best_id,
+            'actiondb_best_reward': best_reward,
+            'actiondb_best_similarity': best_similarity,
+            }))
+
         # metagoal(s) only
         # achieved_goal = 0.5 * goaldist + 0.5 * goalconv
         # desired_goal = self.ep_reward_threshold
 
         dictobs = dict(
-                observation=obs,
-                achieved_goal=np.array([goaldist, goalconv]),
-                desired_goal=np.array([0.0, 1.0]), # or arbitrary big number for max.??
-            )
+            observation=obs,
+            achieved_goal=np.array([goaldist, goalconv]),
+            desired_goal=np.array([0.0, 1.0]), # or arbitrary big number for max.??
+        )
 
         # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
         #     achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
@@ -562,6 +618,7 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
             LOG.debug('ep_goalzone_per_step %s', np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2))
             LOG.debug('ep_goalconv_mean %s', np.mean(np.diff(self.ep_goaldists)))
+            LOG.debug('ep_actiondb_similarity_mean %s', self.ep_actiondb_similarity_mean)
             LOG.debug('\n')
 
         # if self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
@@ -639,13 +696,14 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('tr_feps_total %s', self.tr_feps_total)
         LOG.debug('tr_feps_consecutive_neg %s', self.tr_feps_consecutive_neg)
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
-        LOG.debug('tr_obs_min %s', np.min(obs_init['observation']))
+        LOG.debug('tr_obs_min %s %s', np.min(obs_init['observation']), np.argmin(obs_init['observation']))
         LOG.debug('tr_obs_mean %s', np.mean(obs_init['observation']))
-        LOG.debug('tr_obs_max %s', np.max(obs_init['observation']))
+        LOG.debug('tr_obs_max %s %s', np.max(obs_init['observation']), np.argmax(obs_init['observation']))
         LOG.debug('tr_goaldist_min %s', self.tr_goaldist_min)
         LOG.debug('tr_goaldist_max %s', self.tr_goaldist_max)
         LOG.debug('tr_goaldist_mins_mean %s', self.tr_goaldist_mins_mean)
         LOG.debug('tr_goaldist_maxs_mean %s', self.tr_goaldist_maxs_mean)
+        LOG.debug('tr_actiondb_size %s', self.actiondb.count())
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
@@ -698,6 +756,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_states = []
         self.ep_num_steps_goal_zone = 0
         self.ep_count_fails_pose_detection = 0
+        self.ep_actiondb_similarity_mean: float = 0
 
         if not self.landmarker_achieved:
             self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
@@ -737,6 +796,14 @@ class PoseImitationEnv(HumanoidEnv):
         # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
         return (val - min_val) / (max_val - min_val)
+
+
+    def _normalize_L2(self, vector):
+        """Normalizes a vector to unit length using L2 norm."""
+        norm = np.linalg.norm(vector)
+        if norm == 0:
+            return vector
+        return vector / norm
 
 
 
