@@ -224,32 +224,36 @@ class PoseImitationEnv(HumanoidEnv):
         #     state_fastest = self.ep_states[idx_dictobs_goalfastest]
         #     self.set_state(state_fastest[0], state_fastest[1])
 
-        # if self.ep_dictobs and self.lp_num_steps < 10 and self.ep_num_steps % 10 == 0:
-        #     # local propagation
-        #     # local sample from state proximity vs. obs proximity? (obs)
-        #     # local := (current - sampled) < dist (eg. goal_dist)
-        #     dictobs_current = self.ep_dictobs[-1]
+        if self.ep_dictobs and self.lp_num_steps < 10 and self.ep_num_steps % 10 == 0:
+            # local propagation
+            # local sample from state proximity vs. obs proximity? (obs)
+            # local := (current - sampled) < dist (eg. goal_dist)
+            dictobs_current = self.ep_dictobs[-1]
 
-        #     # TODO only known/prev. local states
+            # TODO only known/prev. local states
 
-        #     # vs. sample (interpolate vs. simulate?) new (unknown) local obs
-        #     idx_dictobs_goalnearest = np.argmin(self.ep_goaldists)
-        #     dictobs_distant = self.ep_dictobs[idx_dictobs_goalnearest]
+            # vs. sample (interpolate vs. simulate?) new (unknown) local obs
+            idx_dictobs_goalnearest = np.argmin(self.ep_goaldists)
+            dictobs_distant = self.ep_dictobs[idx_dictobs_goalnearest]
 
-        #     grid_local_obs = np.linspace(dictobs_current['observation'], dictobs_distant['observation'], 4)
-        #     obs_local = np.random.normal(dictobs_current['observation'], np.abs(grid_local_obs[2])) # TODO clip?
+            grid_local_obs = np.linspace(dictobs_current['observation'], dictobs_distant['observation'], 4)
+            obs_local = np.random.normal(dictobs_current['observation'], np.abs(grid_local_obs[2])) # TODO clip?
+
+
+            obsdist = np.linalg.norm(obs_local - dictobs_current['observation'], axis=-1)
+
+
+            local_dictobs = dict(
+                    observation=obs_local,
+                    achieved_goal=dictobs_current['achieved_goal'],
+                    desired_goal=dictobs_current['desired_goal'],
+                )
             
-        #     local_dictobs = dict(
-        #             observation=obs_local,
-        #             achieved_goal=dictobs_current['achieved_goal'],
-        #             desired_goal=dictobs_current['desired_goal'],
-        #         )
-            
-        #     self.lp_num_steps += 1
-        #     result = local_dictobs, self.ep_current_reward, False, False, info
-        #     return result
-        # else:
-        #     self.lp_num_steps = 0
+            self.lp_num_steps += 1
+            result = local_dictobs, self.ep_current_reward, False, False, info
+            return result
+        else:
+            self.lp_num_steps = 0
 
 
 
@@ -272,27 +276,29 @@ class PoseImitationEnv(HumanoidEnv):
 
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
         
-        # # records
-        # if obs['achieved_goal'] < self.ep_goaldist_min:
-        #     self.ep_goaldist_min = obs['achieved_goal']
-        #     self.ep_lives = cfg.General.MAX_LIVES
+        goaldist = self.ep_goaldists[-1]
 
-        # if obs['achieved_goal'] < self.fep_goaldist_min:
-        #     self.fep_goaldist_min = obs['achieved_goal']
-            
-        # if obs['achieved_goal'] < self.tr_goaldist_min:
-        #     LOG.debug(f"TR IMPROVED: {obs['achieved_goal']} < {self.tr_goaldist_min}")
-        #     self.tr_goaldist_min = obs['achieved_goal']
+        # records
+        if goaldist < self.ep_goaldist_min:
+            self.ep_goaldist_min = goaldist
+            self.ep_lives = cfg.General.MAX_LIVES
 
-        # if obs['achieved_goal'] > self.ep_goaldist_max:
-        #     self.ep_goaldist_max = obs['achieved_goal']
+        if goaldist < self.fep_goaldist_min:
+            self.fep_goaldist_min = goaldist
             
-        # if obs['achieved_goal'] > self.fep_goaldist_max:
-        #     self.fep_goaldist_max = obs['achieved_goal']
+        if goaldist < self.tr_goaldist_min:
+            LOG.debug(f"TR IMPROVED: {goaldist} < {self.tr_goaldist_min}")
+            self.tr_goaldist_min = goaldist
+
+        if goaldist > self.ep_goaldist_max:
+            self.ep_goaldist_max = goaldist
             
-        # if obs['achieved_goal'] > self.tr_goaldist_max:
-        #     LOG.debug(f"TR DEPROVED: {obs['achieved_goal']} > {self.tr_goaldist_max}")
-        #     self.tr_goaldist_max = obs['achieved_goal']
+        if goaldist > self.fep_goaldist_max:
+            self.fep_goaldist_max = goaldist
+            
+        if goaldist > self.tr_goaldist_max:
+            LOG.debug(f"TR DEPROVED: {goaldist} > {self.tr_goaldist_max}")
+            self.tr_goaldist_max = goaldist
 
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
@@ -302,17 +308,18 @@ class PoseImitationEnv(HumanoidEnv):
         truncated = False
 
         if reward > 0:
-            reward *= (self.data.qpos[2] - 0.20) # times distance to border ("far pleases less")
+            reward *= np.abs(self.tr_goaldist_max - goaldist) # positive rewards * distance to goalborder ("far pleases less")
         else:
-            reward *= self.ep_goaldists[-1] # times distance to goal ("far hurts more")
+            reward *= (goaldist - self.tr_goaldist_min) # penalties * distance to goal ("far hurts more") (rewards surpassing)
 
         # space constraint
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            if self.data.qpos[2] < 0.20 or self.data.qpos[2] > 0.35:  # practice height (tight limit for efficiency?)
-                # reward = -self.ep_rewards_mean
+            BORDER_HEIGHT_MIN = 0.20
+            if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
                 LOG.info('HEIGHT TOO LOW/HIGH. %s', self.ep_rewards_sum)
+                # reward = -self.ep_rewards_mean
                 # terminated = True
                 # self.ep_lives -= 1
 
