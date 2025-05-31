@@ -234,7 +234,7 @@ class PoseImitationEnv(HumanoidEnv):
         info['success'] = False
 
         # reduce action space?
-        # action = np.clip(action, -0.5, 0.5)
+        action = np.clip(action, -np.pi/2, np.pi/2)
         self.do_simulation(action, self.frame_skip)
         self.ep_num_steps += 1
         self.tr_num_steps += 1
@@ -296,8 +296,7 @@ class PoseImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            BORDER_HEIGHT_MIN = 0.20
-            if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+            if self.data.qpos[2] < 0.20:  # practice height (tight limit for efficiency?)
                 LOG.info('HEIGHT TOO LOW/HIGH. %s', self.ep_rewards_sum)
                 # reward = -self.ep_rewards_mean
                 # terminated = True
@@ -453,6 +452,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # ========= GOAL
 
+        # combing?
         self.ep_goalweight = np.full(desired_obs.shape, 0.0)
         self.ep_goalweight[0] = 0 # base primary dim (velocity_head)
         self.ep_goalweight[1] = 1 # base primary dim (height)
@@ -601,10 +601,10 @@ class PoseImitationEnv(HumanoidEnv):
         # scaled with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist?
             # positive rewards * distance to goalborder ("far pleases less")
-            reward *= np.abs(self.tr_goaldist_max - goaldist)
+            reward *= self._normalize_unit_limit(np.abs(self.tr_goaldist_max - goaldist), self.tr_goaldist_min, self.tr_goaldist_max)
         else:
-            # penalties * distance to goal ("far hurts more") (no abs: rewards surpassing)
-            reward *= (goaldist - self.tr_goaldist_min)
+            # penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)
+            reward *= self._normalize_unit_limit((goaldist - self.tr_goaldist_min), self.tr_goaldist_min, self.tr_goaldist_max)
 
         # return np.clip(reward, 0, None)
         return reward
@@ -651,8 +651,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.fep_goaldist_init = obs_init['achieved_goal'][0]
         self.fep_goaldist_min = obs_init['achieved_goal'][0]
         self.fep_obs_init = obs_init
-        self.fep_goaldims_primary = np.random.randint(4, size=1) # multiple?
-        # TODO if random, then only secondary interval
+        self.fep_goaldims_primary = np.random.randint(2, size=1) # multiple?
+        # TODO if random, then only secondary interval?
         self.fep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
         # self.desired_obs = self._get_desired_obs()
         self.last_ep_goaldist_min = np.inf
@@ -712,9 +712,9 @@ class PoseImitationEnv(HumanoidEnv):
         if idx_halving > 0: # improved
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
 
-        LOG.info('halving at: %s %s', idx_halving, len(self.ep_states))
-        if len(self.ep_states) < 100:
-            # too short, full reset instead
+        LOG.info('SAVEPOINT AT STEP %s of %s', idx_halving, len(self.ep_states))
+        if len(self.ep_states) < 100: # TODO or lives depleted? 
+            # corrupt savepoint (too short, full reset instead)
             return None
 
         qpos, qvel = self.ep_states[idx_halving]
