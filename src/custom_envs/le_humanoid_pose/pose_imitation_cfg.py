@@ -82,8 +82,9 @@ class TrajectoryHalving(base.TrajectoryHalving):
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
 
+# for better reward signal (single-/low-dim., piece-wise emphasize)
 # vs. multi-dim. curse (exponentially many combinations)
-# single/low-dim. comb-through (with basedims.)
+# ndim. goal single/low-dim. comb-through (with basedims.?)
 
 # vs. reward neutralization? fear?
 # no neg. rewards ("penalties")

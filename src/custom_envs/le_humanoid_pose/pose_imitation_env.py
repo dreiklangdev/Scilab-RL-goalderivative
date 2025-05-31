@@ -146,12 +146,12 @@ class PoseImitationEnv(HumanoidEnv):
 
         obspace_total_dims = 0
         obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += 7 # height, head_velo, head acc-x, head acc-y, head acc-z, l_foot_touch, r_foot_touch
-        obspace_total_dims += 2 # achieved: height, head_velo
+        obspace_total_dims += 9 # height, head_velo (3), head acc (3), l_foot_touch, r_foot_touch
+        obspace_total_dims += 4 # achieved: height, head_velo (3)
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += 2 # desired: height, head_velo
+            obspace_total_dims += 4 # desired: head_velo (3), height
             obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         
@@ -288,6 +288,9 @@ class PoseImitationEnv(HumanoidEnv):
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
 
+        if goaldist < self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            self.ep_num_steps_goal_zone += 1
+
 
         terminated = False
         truncated = False
@@ -332,6 +335,7 @@ class PoseImitationEnv(HumanoidEnv):
             self.render_mode = 'human'
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(goaldist))
             human_viewer.render()
 
         self.ep_current_reward = reward
@@ -351,14 +355,16 @@ class PoseImitationEnv(HumanoidEnv):
         obs = np.array([])
 
         # stabilizer
-        ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
-        obs = np.append(obs, ob_primary_velo_head)
-
         ob_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
         obs = np.append(obs, ob_primary_height)
 
+        ob_primary_velo_head_x = self.data.qvel[0]
+        ob_primary_velo_head_y = self.data.qvel[1]
+        ob_primary_velo_head_z = self.data.qvel[2]
+        obs = np.append(obs, (ob_primary_velo_head_x, ob_primary_velo_head_y, ob_primary_velo_head_z))
+
         ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
-        obs = np.append(obs, ob_primary_acc_head)
+        obs = np.append(obs, ob_primary_acc_head) # 3
 
         ob_primary_l_foot_touch = self._normalize_unit_limit(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
         obs = np.append(obs, ob_primary_l_foot_touch)
@@ -404,12 +410,12 @@ class PoseImitationEnv(HumanoidEnv):
 
         desired_obs = np.array([])
 
-        desired_ob_primary_velo_head = 0
-        desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
-
-        # # # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
+        # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
         desired_ob_primary_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # op3
         desired_obs = np.append(desired_obs, desired_ob_primary_height)
+
+        desired_ob_primary_velo_head = (0, 0 ,0)
+        desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
 
         # desired_ob_pose = self.last_ob_pose_desired
         # # desired_ob_pose = self.last_ob_pose_desired
@@ -428,7 +434,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         achieved_obs = np.array([])
 
-        achieved_obs = np.append(achieved_obs, obs[0]) # ob_primary_velo_head
+        achieved_obs = np.append(achieved_obs, (obs[0], obs[1], obs[2])) # ob_primary_velo_head
         achieved_obs = np.append(achieved_obs, obs[1]) # ob_primary_height
 
         # if desired_pose.pose_world_landmarks:
@@ -454,9 +460,11 @@ class PoseImitationEnv(HumanoidEnv):
 
         # combing?
         self.ep_goalweight = np.full(desired_obs.shape, 0.0)
-        self.ep_goalweight[0] = 0 # base primary dim (velocity_head)
-        self.ep_goalweight[1] = 1 # base primary dim (height)
-        # self.ep_goalweight[self.fep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+        self.ep_goalweight[0] = 1 # base primary dim (height)
+        # self.ep_goalweight[0] = 0 # base primary dim (velocity_head)
+        # goaldims_primary = np.random.randint(4, size=1) # multiple?
+        # self.ep_goalweight[goaldims_primary] = 1
+        # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         goalconv = 0
@@ -600,11 +608,13 @@ class PoseImitationEnv(HumanoidEnv):
 
         # scaled with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist?
-            # positive rewards * distance to goalborder ("far pleases less")
-            reward *= self._normalize_unit_limit(np.abs(self.tr_goaldist_max - goaldist), self.tr_goaldist_min, self.tr_goaldist_max)
+            # positive rewards * distance to border ("far pleases more")
+            scale = np.abs(self.tr_goaldist_max - goaldist) ** 2
+            reward *= self._normalize_unit_limit(scale, self.tr_goaldist_min, self.tr_goaldist_max)
         else:
             # penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)
-            reward *= self._normalize_unit_limit((goaldist - self.tr_goaldist_min), self.tr_goaldist_min, self.tr_goaldist_max)
+            scale = (goaldist - self.tr_goaldist_min) ** 2
+            reward *= self._normalize_unit_limit(scale, self.tr_goaldist_min, self.tr_goaldist_max)
 
         # return np.clip(reward, 0, None)
         return reward
@@ -699,7 +709,6 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.fep_rewards_sum = 0
 
-        # noisy goaldist detection (savepoint may not same/best anymore)
         self.ep_goaldist_min = obs_init['achieved_goal'][0]
         self.ep_goaldist_max = obs_init['achieved_goal'][0]
 
@@ -712,7 +721,7 @@ class PoseImitationEnv(HumanoidEnv):
         if idx_halving > 0: # improved
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
 
-        LOG.info('SAVEPOINT AT STEP %s of %s', idx_halving, len(self.ep_states))
+        LOG.info('savepoint at step %s of %s', idx_halving, len(self.ep_states))
         if len(self.ep_states) < 100: # TODO or lives depleted? 
             # corrupt savepoint (too short, full reset instead)
             return None
