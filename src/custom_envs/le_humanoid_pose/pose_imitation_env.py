@@ -156,7 +156,7 @@ class PoseImitationEnv(HumanoidEnv):
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         
         if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
-            # obspace_total_dims += 2 # best_similarity, best_reward
+            obspace_total_dims += 2 # best_similarity, best_reward
             obspace_total_dims += 20 # best_action
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
@@ -275,9 +275,6 @@ class PoseImitationEnv(HumanoidEnv):
         #     self.lp_num_steps = 0
 
 
-        prev_qpos = self.data.qpos[2:]
-        prev_qvel = self.data.qvel
-
         # reduce action space?
         # action = np.clip(action, -0.5, 0.5)
         self.do_simulation(action, self.frame_skip)
@@ -307,38 +304,6 @@ class PoseImitationEnv(HumanoidEnv):
             actiondb_best_reward = obs['observation'].dtype.metadata['actiondb_best_reward']
             actiondb_best_similarity = obs['observation'].dtype.metadata['actiondb_best_similarity']
             self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
-
-            if reward > 0:
-                # save/overwrite good action for prev state to actiondb
-                self.actiondb.add(
-                    embeddings=[np.hstack((prev_qpos, prev_qvel))],
-                    documents=[np.array2string(action, separator=',', precision=16)],
-                    # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
-                    ids=[uuid.uuid4().hex],
-                    metadatas=[{
-                        "reward": reward,
-                        "goaldist": goaldist,
-                        "goalconv": goalconv,
-                        }]
-                )
-
-                # if reward > actiondb_best_reward and actiondb_best_similarity < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD:
-                #     # better action in proximity: replace neighbor
-                #     if actiondb_best_id:
-                #         LOG.info('DB IMPROVED. %s > %s', reward, actiondb_best_reward)
-
-                #         db_query = self.actiondb.query(
-                #             include=['distances'],
-                #             query_embeddings=[actiondb_best_embedding],
-                #             n_results=100,
-                #         )
-
-                #         ids = np.array(db_query['ids'][0])
-                #         dists = np.array(db_query['distances'][0])
-                #         self.actiondb.delete(
-                #             ids=ids[np.argwhere(dists < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD)].ravel().tolist()
-                #         )
-
 
         # records
         if goaldist < self.ep_goaldist_min:
@@ -593,12 +558,44 @@ class PoseImitationEnv(HumanoidEnv):
 
                 # else too different # TODO find good threshold
                 if best_similarity < 0.01 and best_reward > reward_current:
-                    LOG.debug('better action found than the chosen action. append to obs for learning... %s', best_similarity)
+                    LOG.debug('better action found than the chosen action. attach to obs for learning... %s', best_similarity)
+
+                # elif reward_current > 0:
+                    # save/overwrite good action for prev state to actiondb
+                    # self.actiondb.add(
+                    #     embeddings=[np.hstack((prev_qpos, prev_qvel))],
+                    #     documents=[np.array2string(action, separator=',', precision=16)],
+                    #     # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
+                    #     ids=[uuid.uuid4().hex],
+                    #     metadatas=[{
+                    #         "reward": reward,
+                    #         "goaldist": goaldist,
+                    #         "goalconv": goalconv,
+                    #         }]
+                    # )
+
+                    # if reward > actiondb_best_reward and actiondb_best_similarity < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD:
+                    #     # better action in proximity: replace neighbor
+                    #     if actiondb_best_id:
+                    #         LOG.info('DB IMPROVED. %s > %s', reward, actiondb_best_reward)
+
+                    #         db_query = self.actiondb.query(
+                    #             include=['distances'],
+                    #             query_embeddings=[actiondb_best_embedding],
+                    #             n_results=100,
+                    #         )
+
+                    #         ids = np.array(db_query['ids'][0])
+                    #         dists = np.array(db_query['distances'][0])
+                    #         self.actiondb.delete(
+                    #             ids=ids[np.argwhere(dists < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD)].ravel().tolist()
+                    #         )
+
 
             # too much context necessary?
-            # obs = np.append(obs, best_similarity)
-            # obs = np.append(obs, best_reward)
-            obs = np.append(obs, self._normalize_to_limits(best_action, -np.pi, np.pi))
+            obs = np.append(obs, best_similarity)
+            obs = np.append(obs, best_reward)
+            obs = np.append(obs, best_reward * self._normalize_to_limits(best_action, -np.pi, np.pi))
 
             # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
             obs = obs.astype(np.dtype(float, metadata={
@@ -678,33 +675,16 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('\n')
 
         obs_init = self._reset_full_episode()
-        LOG.info('\nNEW GAME.')
-
-        # noisy goaldist detection (savepoint may not same/best anymore)
-        self.ep_goaldist_min = obs_init['achieved_goal'][0]
-        self.ep_goaldist_max = obs_init['achieved_goal'][0]
-
-        if not self.is_eval and self.tr_num_steps > 10:
-            self.outfile_ep_rewards_mean.write('%s\n' % (self.ep_rewards_mean))
-            self.outfile_ep_rewards_mean.flush()
-
-        self._reset()
-        self.ep_dictobs.append(obs_init)
-        self.ep_states.append((self.data.qpos.flat.copy(), self.data.qvel.flat.copy()))
-        LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
-        LOG.debug('fep_num_steps_goal_zone %s', self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone)
-        LOG.debug('fep_savepoint_goaldist %s', obs_init['achieved_goal'][0])
-        LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
-        LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
-        LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
-
         return obs_init
     
 
     def _reset_full_episode(self):
+        LOG.info('\nFULL RESET.')
         (init_qpos, init_qvel) = self._add_noise(self.init_qpos, self.init_qvel)
         self.set_state(init_qpos, init_qvel)
+        self.ep_states.append((init_qpos, init_qvel))
         obs_init = self._get_obs()
+        self.ep_dictobs.append(obs_init)
 
         self.fep_savepoint_steps = 0
         self.fep_savepoint_steps_goal_zone = 0
@@ -736,6 +716,16 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             self.tr_feps_consecutive_neg = 0
 
+        self.fep_rewards_sum = 0
+
+        # noisy goaldist detection (savepoint may not same/best anymore)
+        self.ep_goaldist_min = obs_init['achieved_goal'][0]
+        self.ep_goaldist_max = obs_init['achieved_goal'][0]
+
+        if not self.is_eval and self.tr_num_steps > 10:
+            self.outfile_ep_rewards_mean.write('%s\n' % (self.ep_rewards_mean))
+            self.outfile_ep_rewards_mean.flush()
+
         LOG.debug('tr_feps_total %s', self.tr_feps_total)
         LOG.debug('tr_feps_consecutive_neg %s', self.tr_feps_consecutive_neg)
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
@@ -751,8 +741,14 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
         LOG.debug('fep_rewards_sum %s', self.fep_rewards_sum)
+        LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
+        LOG.debug('fep_num_steps_goal_zone %s', self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone)
+        LOG.debug('fep_savepoint_goaldist %s', obs_init['achieved_goal'][0])
+        LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
+        LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
+        LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
+        self._reset()
 
-        self.fep_rewards_sum = 0
         return obs_init
 
 
