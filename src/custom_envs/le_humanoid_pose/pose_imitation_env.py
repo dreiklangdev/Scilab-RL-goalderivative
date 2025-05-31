@@ -300,7 +300,8 @@ class PoseImitationEnv(HumanoidEnv):
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
 
         if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
-            # TODO polluted: needs cleaning/denoising/filtering ("king-of-the-canyon")
+            # currently: adding db-obs worsens performance/rewards
+            # TODO polluted: keep only the best of the best! (needs cleaning/denoising/filtering) ("king-of-the-canyon")
             actiondb_best_embedding = obs['observation'].dtype.metadata['actiondb_best_embedding']
             actiondb_best_id = obs['observation'].dtype.metadata['actiondb_best_id']
             actiondb_best_reward = obs['observation'].dtype.metadata['actiondb_best_reward']
@@ -580,17 +581,19 @@ class PoseImitationEnv(HumanoidEnv):
                 query_embeddings=[best_embedding],
                 n_results=1,
                 # TODO also filter by goaldist?
-                where={'reward': {'$gt': reward_current}}, 
+                # performance worsens gradually with db size
+                # where={'reward': {'$gt': reward_current}},
             )
 
             if len(db_query['ids'][0]) > 0:
                 best_id = db_query['ids'][0][0]
                 best_similarity = db_query['distances'][0][0]
-                best_reward_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
-                best_reward = best_reward_action[0]
-                if best_similarity < 0.01: # else too different # TODO find good threshold
-                    LOG.debug('best action found. append to obs...')
-                    best_action = best_reward_action[1:]
+                best_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
+                best_reward = db_query['metadatas'][0][0]['reward']
+
+                # else too different # TODO find good threshold
+                if best_similarity < 0.01 and best_reward > reward_current:
+                    LOG.debug('better action found than the chosen action. append to obs for learning... %s', best_similarity)
 
             # too much context necessary?
             # obs = np.append(obs, best_similarity)
@@ -699,8 +702,8 @@ class PoseImitationEnv(HumanoidEnv):
     
 
     def _reset_full_episode(self):
-        (qpos, qvel) = self._add_noise(self.init_qpos, self.init_qvel)
-        self.set_state(qpos, qvel)
+        (init_qpos, init_qvel) = self._add_noise(self.init_qpos, self.init_qvel)
+        self.set_state(init_qpos, init_qvel)
         obs_init = self._get_obs()
 
         self.fep_savepoint_steps = 0
