@@ -275,8 +275,8 @@ class PoseImitationEnv(HumanoidEnv):
         #     self.lp_num_steps = 0
 
 
-
-
+        prev_qpos = self.data.qpos[2:]
+        prev_qvel = self.data.qvel
 
         # reduce action space?
         # action = np.clip(action, -0.5, 0.5)
@@ -308,10 +308,10 @@ class PoseImitationEnv(HumanoidEnv):
             self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
 
             if reward > 0:
-                # save good action to actiondb
+                # save/overwrite good action for prev state to actiondb
                 self.actiondb.add(
-                    embeddings=[actiondb_best_embedding],
-                    documents=[np.array2string(np.hstack((reward, action)), separator=',', precision=16)],
+                    embeddings=[np.hstack((prev_qpos, prev_qvel))],
+                    documents=[np.array2string(action, separator=',', precision=16)],
                     # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
                     ids=[uuid.uuid4().hex],
                     metadatas=[{
@@ -564,15 +564,23 @@ class PoseImitationEnv(HumanoidEnv):
         # ========= DB ACTION OBS
 
         if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
+            # find best action for current state
             best_id = None
             best_similarity = 0
             best_reward = 0
             best_action = np.zeros(self.action_space.shape)
-            best_embedding = self._normalize_L2(obs)
+
+            qpos = self.data.qpos[2:]
+            qvel = self.data.qvel
+            best_embedding = self._normalize_L2(np.hstack((qpos, qvel)))
+
+            reward_current = self.compute_reward(np.array([goaldist, goalconv]), None, None)
 
             db_query = self.actiondb.query(
                 query_embeddings=[best_embedding],
                 n_results=1,
+                # TODO also filter by goaldist?
+                where={'reward': {'$gt': reward_current}}, 
             )
 
             if len(db_query['ids'][0]) > 0:
@@ -580,7 +588,8 @@ class PoseImitationEnv(HumanoidEnv):
                 best_similarity = db_query['distances'][0][0]
                 best_reward_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
                 best_reward = best_reward_action[0]
-                if best_similarity < 0.1: # else too different # TODO find good threshold
+                if best_similarity < 0.01: # else too different # TODO find good threshold
+                    LOG.debug('best action found. append to obs...')
                     best_action = best_reward_action[1:]
 
             # too much context necessary?
@@ -665,24 +674,8 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_actiondb_similarity_mean %s', self.ep_actiondb_similarity_mean)
             LOG.debug('\n')
 
-        # if self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
-        #     if self.cfg.TrajectoryHalving.IS_ENABLED and not self.is_eval:
-        #         # if self.ep_goaldist_min < self.last_ep_goaldist_min:
-        #         if self.ep_lives > 0:
-        #             LOG.info('LAST SAVEPOINT.') # noisy?
-        #             obs_init = self._reset_half_episode()
-
-        #             # correcting ep init state
-        #             if(obs_init['achieved_goal'] > self.ep_goaldist_min):
-        #                 drift = self.ep_goaldist_min - obs_init['achieved_goal']
-        #                 LOG.debug('SAVEPOINT STATE HAS DRIFTED OFF-GRID (NOISE?). correcting... %s %s', self.fep_savepoint_steps, drift)
-        #                 obs_init['achieved_goal'] = self.ep_goaldist_min
-        #                 if np.abs(drift) > self.ep_reward_threshold:
-        #                     LOG.warning('DRIFT IS GREATER THAN THRESHOLD! CONSIDER REDUCE NOISE OR INCREASE THRESHOLD.')
-
-        if not obs_init:
-            obs_init = self._reset_full_episode()
-            LOG.info('\nNEW GAME.')
+        obs_init = self._reset_full_episode()
+        LOG.info('\nNEW GAME.')
 
         # noisy goaldist detection (savepoint may not same/best anymore)
         self.ep_goaldist_min = obs_init['achieved_goal'][0]
@@ -706,7 +699,10 @@ class PoseImitationEnv(HumanoidEnv):
     
 
     def _reset_full_episode(self):
-        obs_init = super().reset_model()
+        (qpos, qvel) = self._add_noise(self.init_qpos, self.init_qvel)
+        self.set_state(qpos, qvel)
+        obs_init = self._get_obs()
+
         self.fep_savepoint_steps = 0
         self.fep_savepoint_steps_goal_zone = 0
         self.fep_goaldist_init = obs_init['achieved_goal'][0]
@@ -772,12 +768,12 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO remove or add noise?
         # qpos, qvel = self._add_noise(qpos, qvel)
         self.set_state(qpos, qvel)
-        self.ep_states.append((qpos, qvel))
+        # self.ep_states.append((qpos, qvel))
         self.ep_traj_is_halved = True
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
         
-        self.ep_states = []
+        self.ep_states = [(qpos, qvel)]
         self.ep_dictobs = []
         self.ep_goaldists = []
         self.ep_goalconvs = []
