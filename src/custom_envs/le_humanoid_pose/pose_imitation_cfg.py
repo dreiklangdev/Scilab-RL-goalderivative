@@ -48,7 +48,8 @@ class MetaObservation(base.MetaObservation):
 
 
 class DbObservation(base.DbObservation):
-    IS_ACTIONDB_ENABLED = False
+    IS_ACTIONDB_ENABLED = True
+    ACTIONDB_SIMILARITY_THRESHOLD = 0.1 # below
 
 
 # termination shaping (vs. too big search space)
