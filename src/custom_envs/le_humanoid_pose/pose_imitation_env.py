@@ -639,7 +639,7 @@ class PoseImitationEnv(HumanoidEnv):
     
 
     def _reset_full_episode(self):
-        LOG.info('\nFULL RESET.')
+        LOG.info('\nNEW GAME.')
         (init_qpos, init_qvel) = self._add_noise(self.init_qpos, self.init_qvel)
         self.set_state(init_qpos, init_qvel)
         self.ep_states.append((init_qpos, init_qvel))
