@@ -4,7 +4,7 @@ import numpy as np
 
 
 class General(base.General):
-    EPISODE_TRUNCATION_STEPS_MAX = 10000
+    EPISODE_TRUNCATION_STEPS_MAX = 1500
 
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
@@ -48,7 +48,7 @@ class MetaObservation(base.MetaObservation):
 
 
 class DbObservation(base.DbObservation):
-    IS_ACTIONDB_ENABLED = True
+    IS_ACTIONDB_ENABLED = False
     ACTIONDB_SIMILARITY_THRESHOLD = 0.1 # below
 
 
@@ -77,8 +77,7 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
-    # good for envs where goal-state is far from the beginning
-    # bad for envs where start-state is in/near goalzone (too early savepoints)
+    # more relevant for envs where goal-state is far from the start
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 

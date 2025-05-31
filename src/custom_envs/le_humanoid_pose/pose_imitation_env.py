@@ -178,7 +178,6 @@ class PoseImitationEnv(HumanoidEnv):
         # once
         self.init_qpos[6] = -1.4 # face towards camera
         self.tr_feps_total = 0
-        self.tr_feps_consecutive_neg = 0
         self.tr_goaldist_min: float = 1
         self.tr_goaldist_max: float = 0
         self.tr_goaldist_mins_mean: float = 0
@@ -233,47 +232,6 @@ class PoseImitationEnv(HumanoidEnv):
     def step(self, action):
         info = {}
         info['success'] = False
-
-        # if self.ep_goalconvs: # stay on track (vs. explore other tracks)
-        #     idx_dictobs_goalfastest = np.argmin(self.ep_goalconvs)
-        #     state_fastest = self.ep_states[idx_dictobs_goalfastest]
-        #     self.set_state(state_fastest[0], state_fastest[1])
-
-        # if len(self.ep_dictobs) > 10 and self.lp_num_steps < 3:
-        #     # local propagation
-        #     # local sample from state proximity vs. obs proximity? (obs)
-        #     # local := (current - sampled) < dist (eg. goal_dist)
-        #     dictobs_current = self.ep_dictobs[-1]
-
-        #     # TODO only known/prev. local states
-
-        #     # vs. sample (interpolate vs. simulate?) new (unknown) local obs
-        #     idx_dictobs_goalnearest = np.argmin(self.ep_goaldists)
-        #     dictobs_distant = self.ep_dictobs[idx_dictobs_goalnearest]
-
-        #     grid_local_obs = np.linspace(dictobs_current['observation'], dictobs_distant['observation'], 4)
-        #     obs_local = np.random.normal(dictobs_current['observation'], np.abs(grid_local_obs[2])) # TODO clip?
-
-        #     # possibly just grid ratio
-        #     obsdist_local = np.linalg.norm(dictobs_current['observation']- obs_local, axis=-1)
-        #     obsdist_distant = np.linalg.norm(dictobs_current['observation']- dictobs_distant['observation'], axis=-1)
-
-        #     if 
-        #     reward = (obsdist_local / obsdist_distant) * self.ep_current_reward
-        #     print('reward', reward)
-
-        #     local_dictobs = dict(
-        #             observation=obs_local,
-        #             achieved_goal=dictobs_current['achieved_goal'],
-        #             desired_goal=dictobs_current['desired_goal'],
-        #         )
-            
-        #     self.lp_num_steps += 1
-        #     result = local_dictobs, reward, False, False, info
-        #     return result
-        # else:
-        #     self.lp_num_steps = 0
-
 
         # reduce action space?
         # action = np.clip(action, -0.5, 0.5)
@@ -397,16 +355,16 @@ class PoseImitationEnv(HumanoidEnv):
         ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
         obs = np.append(obs, ob_primary_velo_head)
 
-        ob_primary_height = self._normalize_to_limits(self.data.qpos[2], 0.0, 0.3) # op3
+        ob_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
         obs = np.append(obs, ob_primary_height)
 
-        ob_primary_acc_head = self._normalize_to_limits(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
+        ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
         obs = np.append(obs, ob_primary_acc_head)
 
-        ob_primary_l_foot_touch = self._normalize_to_limits(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
+        ob_primary_l_foot_touch = self._normalize_unit_limit(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
         obs = np.append(obs, ob_primary_l_foot_touch)
 
-        ob_primary_r_foot_touch = self._normalize_to_limits(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
+        ob_primary_r_foot_touch = self._normalize_unit_limit(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
         obs = np.append(obs, ob_primary_r_foot_touch)
 
         obs = np.append(obs, super()._get_obs())
@@ -451,7 +409,7 @@ class PoseImitationEnv(HumanoidEnv):
         desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
 
         # # # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
-        desired_ob_primary_height = self._normalize_to_limits(0.3, 0.0, 0.3) # op3
+        desired_ob_primary_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # op3
         desired_obs = np.append(desired_obs, desired_ob_primary_height)
 
         # desired_ob_pose = self.last_ob_pose_desired
@@ -496,18 +454,15 @@ class PoseImitationEnv(HumanoidEnv):
         # ========= GOAL
 
         self.ep_goalweight = np.full(desired_obs.shape, 0.0)
-
         self.ep_goalweight[0] = 0 # base primary dim (velocity_head)
         self.ep_goalweight[1] = 1 # base primary dim (height)
-
         # self.ep_goalweight[self.fep_goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
-
         goalconv = 0
         is_converging = 0
         if len(self.ep_goaldists) > 1:
-            goalconv = self.ep_goaldists[-2] - self.ep_goaldists[-1]
+            goalconv = self.ep_goaldists[-1] - goaldist
             is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
 
 
@@ -595,7 +550,8 @@ class PoseImitationEnv(HumanoidEnv):
             # too much context necessary?
             obs = np.append(obs, best_similarity)
             obs = np.append(obs, best_reward)
-            obs = np.append(obs, best_reward * self._normalize_to_limits(best_action, -np.pi, np.pi))
+            # directed: action? reward-/similarity-scaled action? (similarity-scaled) diff between chosen action and best action? 
+            obs = np.append(obs, best_reward * self._normalize_unit_limit(best_action, -np.pi, np.pi))
 
             # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
             obs = obs.astype(np.dtype(float, metadata={
@@ -629,17 +585,21 @@ class PoseImitationEnv(HumanoidEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
         if achieved_goal.ndim > 1:
+            raise NotImplementedError('HER proved not viable in this dense training env.')
             # recursive for replay buffer
-            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            # return goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
+            return achieved_goal[:,1] # unscaled goalconvs
 
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
 
         # (!) just goalconv
+        # TODO adaptive-normalize to recorded min/max goalconv?
         reward = goalconv
 
         # scaled with dist to goal and boarder (dynamic)
-        if reward > 0:
+        if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist?
             # positive rewards * distance to goalborder ("far pleases less")
             reward *= np.abs(self.tr_goaldist_max - goaldist)
         else:
@@ -709,25 +669,13 @@ class PoseImitationEnv(HumanoidEnv):
 
         self.tr_goaldist_mins_mean = ((self.tr_feps_total * self.tr_goaldist_mins_mean) + self.fep_goaldist_min) / (self.tr_feps_total + 1)
         self.tr_goaldist_maxs_mean = ((self.tr_feps_total * self.tr_goaldist_maxs_mean) + self.fep_goaldist_max) / (self.tr_feps_total + 1)
-
         self.tr_feps_total += 1
-        if self.fep_rewards_sum < 0:
-            self.tr_feps_consecutive_neg += 1
-        else:
-            self.tr_feps_consecutive_neg = 0
-
-        self.fep_rewards_sum = 0
-
-        # noisy goaldist detection (savepoint may not same/best anymore)
-        self.ep_goaldist_min = obs_init['achieved_goal'][0]
-        self.ep_goaldist_max = obs_init['achieved_goal'][0]
 
         if not self.is_eval and self.tr_num_steps > 10:
             self.outfile_ep_rewards_mean.write('%s\n' % (self.ep_rewards_mean))
             self.outfile_ep_rewards_mean.flush()
 
         LOG.debug('tr_feps_total %s', self.tr_feps_total)
-        LOG.debug('tr_feps_consecutive_neg %s', self.tr_feps_consecutive_neg)
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
         LOG.debug('tr_obs_min %s %s', np.min(obs_init['observation']), np.argmin(obs_init['observation']))
         LOG.debug('tr_obs_mean %s', np.mean(obs_init['observation']))
@@ -749,6 +697,12 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
         self._reset()
 
+        self.fep_rewards_sum = 0
+
+        # noisy goaldist detection (savepoint may not same/best anymore)
+        self.ep_goaldist_min = obs_init['achieved_goal'][0]
+        self.ep_goaldist_max = obs_init['achieved_goal'][0]
+
         return obs_init
 
 
@@ -767,7 +721,6 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO remove or add noise?
         # qpos, qvel = self._add_noise(qpos, qvel)
         self.set_state(qpos, qvel)
-        # self.ep_states.append((qpos, qvel))
         self.ep_traj_is_halved = True
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
@@ -830,10 +783,12 @@ class PoseImitationEnv(HumanoidEnv):
         return qpos, qvel
 
 
-    def _normalize_to_limits(self, val, min_val, max_val):
+    def _normalize_unit_limit(self, val, min_val, max_val):
         # manual normalization (obs fairness)
         # "interval-shifting"
         # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
+        if max_val == min_val:
+            return 0.5
         return (val - min_val) / (max_val - min_val)
 
 
