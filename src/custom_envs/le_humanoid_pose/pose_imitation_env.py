@@ -83,7 +83,9 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 
 # https://cookbook.chromadb.dev/running/performance-tips/#__tabbed_1_1
 
-OBS_NORMALIZE_Z_SCORE = False
+
+ACTION_OBS_IS_ENABLED = False
+
 
 
 # 1M, convRewarding, groundContactTerm., metaGoals0.5, threshold0.05:  converging, no pleateaus yet /home/t14/Documents/tuhh/dsf/Scilab-RL/data/053b120/le-pose-imitation-v4/10-43-06/rl_model_finished
@@ -145,19 +147,21 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
         obspace_total_dims = 0
+        if ACTION_OBS_IS_ENABLED:
+            obspace_total_dims += self.action_space.shape[0] # action
         obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += 7 # height, head_velo, head acc (3), l_foot_touch, r_foot_touch
-        obspace_total_dims += 2 # achieved: height, head_velo
-        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
+        obspace_total_dims += 1 # achieved: velo-z, height
+        # # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += 2 # desired: height, head_velo
-            obspace_total_dims += 4 # goaldist, goalweight_hash, goal_convergence, is_converging
+            obspace_total_dims += 2 # goaldist, goal_convergence
+            obspace_total_dims += 1 # desired: velo-z, height
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         
-        if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
-            obspace_total_dims += 2 # best_similarity, best_reward
-            obspace_total_dims += 20 # best_action
+        # if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
+        #     obspace_total_dims += 2 # best_similarity, best_reward
+        #     obspace_total_dims += 20 # best_action
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(2,), dtype='float64') # goaldist, goalconv
@@ -313,7 +317,6 @@ class PoseImitationEnv(HumanoidEnv):
                 elif len(self.ep_goaldists) > 2:        
                     if not self._reset_half_episode():
                         terminated = True
-
             # min. convergence terminate? ("flaming wall")
             
             # elif self.ep_count_fails_pose_detection > 10:
@@ -354,23 +357,27 @@ class PoseImitationEnv(HumanoidEnv):
 
         # =========== WORLD OBS
 
+        obs_world = np.array([])
+
         # stabilizer
-        ob_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        obs = np.append(obs, ob_primary_height)
+        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        obs_world = np.append(obs_world, ob_achieved_primary_height)
 
         ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
-        obs = np.append(obs, ob_primary_velo_head)
+        obs_world = np.append(obs_world, ob_primary_velo_head)
 
         ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
-        obs = np.append(obs, ob_primary_acc_head) # 3
+        obs_world = np.append(obs_world, ob_primary_acc_head) # 3
 
         ob_primary_l_foot_touch = self._normalize_unit_limit(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
-        obs = np.append(obs, ob_primary_l_foot_touch)
+        obs_world = np.append(obs_world, ob_primary_l_foot_touch)
 
         ob_primary_r_foot_touch = self._normalize_unit_limit(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
-        obs = np.append(obs, ob_primary_r_foot_touch)
+        obs_world = np.append(obs_world, ob_primary_r_foot_touch)
 
-        obs = np.append(obs, super()._get_obs())
+        obs_world = np.append(obs_world, super()._get_obs())
+
+        obs = np.append(obs, obs_world)
         
 
         # needs denoising for (near-)linearity in NN
@@ -406,22 +413,24 @@ class PoseImitationEnv(HumanoidEnv):
 
         # =========== ACTION OBS
 
-        if len(self.action_space) >= 2:
-            obs = np.append(obs, self.action_space[-2]) # prev action
-        else:
-            obs = np.append(obs, self.action_space[-1]) # first action
+        if ACTION_OBS_IS_ENABLED:
+            if len(self.ep_actions) >= 2:
+                obs = np.append(obs, self.ep_actions[-2]) # prev action
+            else:
+                obs = np.append(obs, np.zeros(self.action_space.shape)) # no/first action
 
 
         # ========= DESIRED OBS
 
-        desired_obs = np.array([])
+        obs_desired = np.array([])
+
+        # obs_desired = np.append(obs_desired, 1) # # velo-z
 
         # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
-        desired_ob_primary_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # op3
-        desired_obs = np.append(desired_obs, desired_ob_primary_height)
+        obs_desired = np.append(obs_desired, self._normalize_unit_limit(0.3, 0.0, 0.3)) # # height (op3)
 
-        desired_ob_primary_velo_head = 0
-        desired_obs = np.append(desired_obs, desired_ob_primary_velo_head)
+        # ob_desired_primary_velo_head = 0
+        # obs_desired = np.append(obs_desired, ob_desired_primary_velo_head)
 
         # desired_ob_pose = self.last_ob_pose_desired
         # # desired_ob_pose = self.last_ob_pose_desired
@@ -438,10 +447,15 @@ class PoseImitationEnv(HumanoidEnv):
 
         # ========= ACHIEVED OBS
 
-        achieved_obs = np.array([])
+        obs_achieved = np.array([])
 
-        achieved_obs = np.append(achieved_obs, obs[0]) # ob_primary_height
-        achieved_obs = np.append(achieved_obs, obs[1]) # ob_primary_velo_head
+        # velo-z
+        # ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
+        # obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
+
+        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        obs_achieved = np.append(obs_achieved, ob_achieved_primary_height) # ob_primary_height
+        # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
 
         # if desired_pose.pose_world_landmarks:
         #     achieved_pose = copy.deepcopy(desired_pose)
@@ -459,19 +473,19 @@ class PoseImitationEnv(HumanoidEnv):
 
         # achieved_obs = np.append(achieved_obs, achieved_ob_pose)
 
-        obs = np.append(obs, achieved_obs)
+        obs = np.append(obs, obs_achieved)
 
 
         # ========= GOAL
 
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
-        self.ep_goalweight = np.full(desired_obs.shape, 0.0)
-        self.ep_goalweight[0] = 1 # base primary dim (height)
-        self.ep_goalweight[1] = 0 # base primary dim (velocity_head)
+        self.ep_goalweight = np.full(obs_desired.shape, 0.0)
+        self.ep_goalweight[0] = 1 # base primary dim
+        # self.ep_goalweight[1] = 1 # base primary dim
         # goaldims_primary = np.random.randint(2, size=1) # multiple?
         # self.ep_goalweight[goaldims_primary] = 1
         # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
-        goaldiff_weighted = self.ep_goalweight * (achieved_obs - desired_obs)
+        goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         # goaldist = self._normalize_unit_limit(goaldist, 0, self.tr_goaldist_max)
         goalconv = 0
@@ -484,17 +498,16 @@ class PoseImitationEnv(HumanoidEnv):
         # ========= META OBS
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            metaobs = np.array([])
-
-            goalweight_hash = vector_to_uniform_scalar(self.ep_goalweight, len(self.ep_goalweight))
-            metaobs = np.append(metaobs, goalweight_hash)
-            metaobs = np.append(metaobs, goaldist)
-            metaobs = np.append(metaobs, desired_obs.ravel())
+            obs_meta = np.array([])
+            # goalweight_hash = vector_to_uniform_scalar(self.ep_goalweight, len(self.ep_goalweight))
+            # obs_meta = np.append(obs_meta, goalweight_hash)
+            obs_meta = np.append(obs_meta, goaldist)
+            obs_meta = np.append(obs_meta, obs_desired.ravel())
             # record_dist = max(0, goaldist - self.tr_goaldist_min)
             # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
-            metaobs = np.append(metaobs, goalconv)
-            metaobs = np.append(metaobs, is_converging)
-            obs = np.append(obs, metaobs)
+            obs_meta = np.append(obs_meta, goalconv)
+            # obs_meta = np.append(obs_meta, is_converging)
+            obs = np.append(obs, obs_meta)
 
 
         # ========= DB ACTION OBS
@@ -613,6 +626,7 @@ class PoseImitationEnv(HumanoidEnv):
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
         reward = goalconv
+        # reward = 1 if goalconv > 0 else -1
 
         # scaled with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
