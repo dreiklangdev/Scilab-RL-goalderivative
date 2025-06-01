@@ -614,7 +614,7 @@ class PoseImitationEnv(HumanoidEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
         if achieved_goal.ndim > 1:
-            raise NotImplementedError('HER proved not viable in this dense training env.')
+            raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
             # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             # return goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
@@ -625,7 +625,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = goalconv
+        reward = goalconv * 1000
         # reward = 1 if goalconv > 0 else -1
 
         # scaled with dist to goal and boarder (dynamic)
