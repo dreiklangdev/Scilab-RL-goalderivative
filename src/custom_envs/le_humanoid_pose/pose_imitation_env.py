@@ -195,6 +195,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_goaldist_max: float = 0
         self.tr_goaldist_mins_mean: float = 0
         self.tr_goaldist_maxs_mean: float = 0
+        self.tr_goalconv_min: float = 1
+        self.tr_goalconv_max: float = 0
         self.tr_num_steps: int = 0
         self.tr_ep_num_steps_max: int = 0
         self.fep_savepoint_steps = 0
@@ -277,27 +279,33 @@ class PoseImitationEnv(HumanoidEnv):
             actiondb_best_similarity = obs['observation'].dtype.metadata['actiondb_best_similarity']
             self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
 
-        # records
-        if goaldist < self.ep_goaldist_min:
-            self.ep_goaldist_min = goaldist
-            self.ep_lives = cfg.General.MAX_LIVES
-
-        if goaldist < self.fep_goaldist_min:
-            self.fep_goaldist_min = goaldist
-            
+        # records                    
         if goaldist < self.tr_goaldist_min:
             LOG.debug(f"TR IMPROVED: {goaldist} < {self.tr_goaldist_min}")
             self.tr_goaldist_min = goaldist
 
-        if goaldist > self.ep_goaldist_max:
-            self.ep_goaldist_max = goaldist
-            
-        if goaldist > self.fep_goaldist_max:
-            self.fep_goaldist_max = goaldist
-            
         if goaldist > self.tr_goaldist_max:
             LOG.debug(f"TR DEPROVED: {goaldist} > {self.tr_goaldist_max}")
-            self.tr_goaldist_max = goaldist
+            self.tr_goaldist_max = goaldist        
+
+        if goaldist < self.ep_goaldist_min:
+            self.ep_goaldist_min = goaldist
+            self.ep_lives = cfg.General.MAX_LIVES
+
+        if goaldist > self.ep_goaldist_max:
+            self.ep_goaldist_max = goaldist
+
+        if goaldist < self.fep_goaldist_min:
+            self.fep_goaldist_min = goaldist
+
+        if goaldist > self.fep_goaldist_max:
+            self.fep_goaldist_max = goaldist
+
+        if goalconv < self.tr_goalconv_min:
+            self.tr_goalconv_min = goalconv
+
+        if goalconv > self.tr_goalconv_max:
+            self.tr_goalconv_max = goalconv
 
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
@@ -625,20 +633,24 @@ class PoseImitationEnv(HumanoidEnv):
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
 
-        # (!) just goalconv
-        # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = goalconv * 100
-        # reward = 1 if goalconv > 0 else -1
+        # just is_converging (no info about goaldist or goalconv-amount: converging anymuch and everywhere is worth)
+        # reward = goalconv > 0
 
-        # upscale with dist to goal and boarder (dynamic)
+        # just goalconv (no info about goaldist: faster converging everywhere is worth)
+        # reward = goalconv * 100
+        # TODO adaptive-normalize to recorded min/max goalconv instead?
+        reward = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
+
+        # goaldist-scaled goalconf (faster converging close to goal is worth)
+        # upscale with dist to goal and boarder (dynamic) ("converging around goal is more worth"; but possibly mappable by goaldims. shaping?)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
-            '''positive rewards upscaled by distance to border ("far pleases more")'''
+            '''positive rewards upscaled by distance to border ("far from border pleases more")'''
             borderdist = np.abs(self.tr_goaldist_max - goaldist)
-            # borderdist = self._normalize_unit_limit(borderdist, self.tr_goaldist_min, self.tr_goaldist_max)
-            borderdist += 1 # ensure at least 1 (else counter-effect by downscale)
+            # borderdist = self._normalize_unit_limit(borderdist, self.tr_goaldist_min, self.tr_goaldist_max) # may converge too early to higher, but enough goaldist
+            borderdist = max(1, borderdist + 1) # ensure at least 1 (else counter-effect by downscale)
             reward *= borderdist
         # if reward < 0:
-        #     '''penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)'''
+        #     '''penalties * distance to goal ("far from goal hurts more") (also not abs: rewards surpassing)'''
         #     goaldist = (goaldist - self.tr_goaldist_min)
         #     # goaldist = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
         #     goaldist += 1 # ensure at least 1
@@ -723,6 +735,8 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('tr_goaldist_max %s', self.tr_goaldist_max)
         LOG.debug('tr_goaldist_mins_mean %s', self.tr_goaldist_mins_mean)
         LOG.debug('tr_goaldist_maxs_mean %s', self.tr_goaldist_maxs_mean)
+        LOG.debug('tr_goalconv_min %s', self.tr_goalconv_min)
+        LOG.debug('tr_goalconv_max %s', self.tr_goalconv_max)
         LOG.debug('tr_actiondb_size %s', self.actiondb.count())
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
