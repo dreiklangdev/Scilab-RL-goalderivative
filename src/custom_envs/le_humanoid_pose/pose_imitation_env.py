@@ -350,10 +350,9 @@ class PoseImitationEnv(HumanoidEnv):
     # obs = achieved_obs + metaobs
     # TODO keep obs keys/indices mapping (eg. dict, vs. "counting")
     def _get_obs(self):
-
-        # =========== OBS
-
         obs = np.array([])
+
+        # =========== WORLD OBS
 
         # stabilizer
         ob_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
@@ -372,9 +371,9 @@ class PoseImitationEnv(HumanoidEnv):
         obs = np.append(obs, ob_primary_r_foot_touch)
 
         obs = np.append(obs, super()._get_obs())
+        
 
-
-
+        # needs denoising for (near-)linearity in NN
         # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
         # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
         # # detect pose(s) only every nth step, else use last valid
@@ -403,6 +402,14 @@ class PoseImitationEnv(HumanoidEnv):
         #     # bottleneck end
 
         # desired_pose = self.desired_pose
+
+
+        # =========== ACTION OBS
+
+        if len(self.action_space) >= 2:
+            obs = np.append(obs, self.action_space[-2]) # prev action
+        else:
+            obs = np.append(obs, self.action_space[-1]) # first action
 
 
         # ========= DESIRED OBS
@@ -605,7 +612,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = goalconv * 10
+        reward = goalconv
 
         # scaled with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
