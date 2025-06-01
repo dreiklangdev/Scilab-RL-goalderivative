@@ -321,7 +321,9 @@ class PoseImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            if self.data.qpos[2] < 0.7:  # practice height (tight limit for efficiency?)
+            BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
+            # BORDER_HEIGHT_MIN = 0.2 # op3
+            if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
                 LOG.info('HEIGHT TOO LOW/HIGH. %s', self.ep_rewards_sum)
                 # reward = -self.ep_rewards_mean
                 terminated = True
@@ -433,11 +435,12 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs_desired = np.array([])
 
-        obs_desired = np.append(obs_desired, 0.5) # velo-z
+        ob_desired_velo_z = 0.5
+        obs_desired = np.append(obs_desired, ob_desired_velo_z) # velo-z
 
-        desired_ob_primary_height = self._normalize_unit_limit(1.4, 0.0, 2.0) # gym-humanoid
-        # desired_ob_primary_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # height (op3)
-        obs_desired = np.append(obs_desired, desired_ob_primary_height)
+        ob_desired_height = self._normalize_unit_limit(1.4, 0.0, 2.0) # gym-humanoid
+        # ob_desired_height = self._normalize_unit_limit(0.6, 0.0, 0.3) # height (op3)
+        obs_desired = np.append(obs_desired, ob_desired_height)
 
         # ob_desired_primary_velo_head = 0
         # obs_desired = np.append(obs_desired, ob_desired_primary_velo_head)
@@ -463,9 +466,9 @@ class PoseImitationEnv(HumanoidEnv):
         ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
         obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
 
-        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
-        # ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        obs_achieved = np.append(obs_achieved, ob_achieved_primary_height) # ob_primary_height
+        ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
+        # ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        obs_achieved = np.append(obs_achieved, ob_achieved_height) # ob_primary_height
         
         # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
 
@@ -491,8 +494,8 @@ class PoseImitationEnv(HumanoidEnv):
         # ========= GOAL
 
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
-        self.ep_goalweight = np.full(obs_desired.shape, 0.0)
-        self.ep_goalweight[0] = 1 # base primary dim
+        self.ep_goalweight = np.full(obs_desired.shape, 1.0)
+        # self.ep_goalweight[0] = 1 # base primary dim
         # self.ep_goalweight[1] = 1 # base primary dim
         # goaldims_primary = np.random.randint(2, size=1) # multiple?
         # self.ep_goalweight[goaldims_primary] = 1
@@ -635,22 +638,23 @@ class PoseImitationEnv(HumanoidEnv):
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
 
-        # just is_converging (no info about goaldist or goalconv-amount: converging anymuch and everywhere is worth)
+        # TODO move everything to goal_obs?
+        # 1. just is_converging (no info about goaldist or goalconv-amount: converging anymuch and everywhere is worth)
         # reward = goalconv > 0
 
-        # just goalconv (no info about goaldist: faster converging everywhere is worth)
+        # 2. just goalconv (no info about goaldist: faster converging everywhere is worth)
         # reward = goalconv * 100
         # TODO adaptive-normalize to recorded min/max goalconv instead?
-        reward = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
+        goalconv = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
 
-        # goaldist-scaled goalconf (faster converging close to goal is worth)
+        # 3. goaldist-scaled goalconv (faster converging close to goal is worth)
         # upscale with dist to goal and boarder (dynamic) ("converging around goal is more worth"; but possibly mappable by goaldims. shaping?)
-        if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
-            '''positive rewards upscaled by distance to border ("far from border pleases more")'''
+        if goalconv > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
+            '''positive goalconv upscaled by distance to border ("far from border is more worth")'''
             borderdist = np.abs(self.tr_goaldist_max - goaldist)
             # borderdist = self._normalize_unit_limit(borderdist, self.tr_goaldist_min, self.tr_goaldist_max) # may converge too early to higher, but enough goaldist
             borderdist = max(1, borderdist + 1) # ensure at least 1 (else counter-effect by downscale)
-            reward *= borderdist
+            goalconv *= borderdist
         # if reward < 0:
         #     '''penalties * distance to goal ("far from goal hurts more") (also not abs: rewards surpassing)'''
         #     goaldist = (goaldist - self.tr_goaldist_min)
@@ -658,7 +662,11 @@ class PoseImitationEnv(HumanoidEnv):
         #     goaldist += 1 # ensure at least 1
         #     reward *= goaldist
 
-        return np.clip(reward, 0, 1)
+        # 4. TODO put/encode even more goal-info into (normalized) reward signal? (eg. time/duration, last-k-conv, full-k-conv, multigoal,...)
+        # vs. more info into goal-signal (eg. goaldims.)
+
+        reward = np.clip(goalconv, 0, 1) # TODO better: normalize to unit
+        return reward
 
 
     def reset_model(self):
