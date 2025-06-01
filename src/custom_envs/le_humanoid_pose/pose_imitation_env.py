@@ -242,6 +242,7 @@ class PoseImitationEnv(HumanoidEnv):
         qpos = self.data.qpos.flat.copy()
         qvel = self.data.qvel.flat.copy()
         self.ep_states.append((qpos, qvel))
+        self.ep_actions.append(action)
 
         obs = self._get_obs()
         goaldist = obs['achieved_goal'][0]
@@ -498,8 +499,8 @@ class PoseImitationEnv(HumanoidEnv):
             best_reward = 0
             best_action = np.zeros(self.action_space.shape)
 
-            qpos = self.data.qpos[2:]
-            qvel = self.data.qvel
+            qpos = self.data.qpos.flat.copy()
+            qvel = self.data.qvel.flat.copy()
             best_embedding = self._normalize_L2(np.hstack((qpos, qvel)))
 
             reward_current = self.compute_reward(np.array([goaldist, goalconv]), None, None)
@@ -513,52 +514,53 @@ class PoseImitationEnv(HumanoidEnv):
             )
 
             if len(db_query['ids'][0]) > 0:
+                # db action found
                 best_id = db_query['ids'][0][0]
                 best_similarity = db_query['distances'][0][0]
                 best_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
                 best_reward = db_query['metadatas'][0][0]['reward']
 
-                # else too different # TODO find good threshold
-                if best_similarity < 0.01 and best_reward > reward_current:
-                    LOG.debug('better action found than the chosen action. attach to obs for learning... %s', best_similarity)
+                # if best_similarity < 0.01 and best_reward > reward_current:
+                #     LOG.debug('db action is better than chosen action: %s > %s (%s)', best_reward, reward_current, best_similarity)
 
-                # elif reward_current > 0:
-                    # save/overwrite good action for prev state to actiondb
-                    # self.actiondb.add(
-                    #     embeddings=[np.hstack((prev_qpos, prev_qvel))],
-                    #     documents=[np.array2string(action, separator=',', precision=16)],
-                    #     # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
-                    #     ids=[uuid.uuid4().hex],
-                    #     metadatas=[{
-                    #         "reward": reward,
-                    #         "goaldist": goaldist,
-                    #         "goalconv": goalconv,
-                    #         }]
-                    # )
+            if reward_current > 0 and len(self.ep_states) >= 2:
+                # save chosen action for prev state to actiondb
+                (prev_qpos, prev_qvel) = self.ep_states[-2]
+                self.actiondb.add(
+                    embeddings=[np.hstack((prev_qpos, prev_qvel))],
+                    documents=[np.array2string(self.ep_actions[-2], separator=',', precision=16)],
+                    # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
+                    ids=[uuid.uuid4().hex],
+                    metadatas=[{
+                        "reward": reward_current,
+                        "goaldist": goaldist,
+                        "goalconv": goalconv,
+                        }]
+                )
 
                     # if reward > actiondb_best_reward and actiondb_best_similarity < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD:
-                    #     # better action in proximity: replace neighbor
-                    #     if actiondb_best_id:
-                    #         LOG.info('DB IMPROVED. %s > %s', reward, actiondb_best_reward)
+                        # # better action in proximity: replace neighbor
+                        # if actiondb_best_id:
+                        #     LOG.info('DB IMPROVED. %s > %s', reward, actiondb_best_reward)
 
-                    #         db_query = self.actiondb.query(
-                    #             include=['distances'],
-                    #             query_embeddings=[actiondb_best_embedding],
-                    #             n_results=100,
-                    #         )
+                        #     db_query = self.actiondb.query(
+                        #         include=['distances'],
+                        #         query_embeddings=[actiondb_best_embedding],
+                        #         n_results=100,
+                        #     )
 
-                    #         ids = np.array(db_query['ids'][0])
-                    #         dists = np.array(db_query['distances'][0])
-                    #         self.actiondb.delete(
-                    #             ids=ids[np.argwhere(dists < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD)].ravel().tolist()
-                    #         )
+                        #     ids = np.array(db_query['ids'][0])
+                        #     dists = np.array(db_query['distances'][0])
+                        #     self.actiondb.delete(
+                        #         ids=ids[np.argwhere(dists < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD)].ravel().tolist()
+                        #     )
 
 
             # too much context necessary?
             obs = np.append(obs, best_similarity)
             obs = np.append(obs, best_reward)
             # directed: action? reward-/similarity-scaled action? (similarity-scaled) diff between chosen action and best action? 
-            obs = np.append(obs, best_reward * self._normalize_unit_limit(best_action, -np.pi, np.pi))
+            obs = np.append(obs, best_similarity * self._normalize_unit_limit(best_action, -np.pi, np.pi))
 
             # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
             obs = obs.astype(np.dtype(float, metadata={
@@ -575,7 +577,7 @@ class PoseImitationEnv(HumanoidEnv):
         dictobs = dict(
             observation=obs,
             achieved_goal=np.array([goaldist, goalconv]),
-            desired_goal=np.array([0.0, 1.0]), # or arbitrary big number for max.??
+            desired_goal=np.array([0.0, 999.0]), # or arbitrary big number for max.??
         )
 
         # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
@@ -603,7 +605,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = goalconv
+        reward = goalconv * 10
 
         # scaled with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
@@ -736,6 +738,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = self.ep_goaldist_min
         
         self.ep_states = [(qpos, qvel)]
+        self.ep_actions = []
         self.ep_dictobs = []
         self.ep_goaldists = []
         self.ep_goalconvs = []
@@ -756,6 +759,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldists = []
         self.ep_goalconvs = []
         self.ep_states = []
+        self.ep_actions = []
         self.ep_num_steps_goal_zone = 0
         self.ep_count_fails_pose_detection = 0
         self.ep_actiondb_similarity_mean: float = 0
