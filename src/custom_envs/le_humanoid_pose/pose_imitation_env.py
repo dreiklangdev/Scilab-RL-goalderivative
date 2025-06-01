@@ -153,15 +153,19 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims = 0
         if ACTION_OBS_IS_ENABLED:
             obspace_total_dims += self.action_space.shape[0] # action
+
+        # world obs
         obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += 2 # height, head_velo
+        # obspace_total_dims += 2 # height, head_velo
         # obspace_total_dims += 5 # head acc (3), l_foot_touch, r_foot_touch
-        obspace_total_dims += 1 # achieved: velo-z, height
+
+        # goal obs
+        obspace_total_dims += 2 # achieved: velo-z, height
         # # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         if self.cfg.MetaObservation.IS_ENABLED:
             obspace_total_dims += 2 # goaldist, goal_convergence
-            obspace_total_dims += 1 # desired: velo-z, height
+            obspace_total_dims += 2 # desired: velo-z, height
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         
         # if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
@@ -357,11 +361,11 @@ class PoseImitationEnv(HumanoidEnv):
         obs_world = np.array([])
 
         # stabilizer
-        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        obs_world = np.append(obs_world, ob_achieved_primary_height)
+        # ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        # obs_world = np.append(obs_world, ob_achieved_primary_height)
 
-        ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
-        obs_world = np.append(obs_world, ob_primary_velo_head)
+        # ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
+        # obs_world = np.append(obs_world, ob_primary_velo_head)
 
         # ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
         # obs_world = np.append(obs_world, ob_primary_acc_head) # 3
@@ -421,7 +425,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs_desired = np.array([])
 
-        # obs_desired = np.append(obs_desired, 1) # # velo-z
+        obs_desired = np.append(obs_desired, 0.5) # velo-z
 
         # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
         obs_desired = np.append(obs_desired, self._normalize_unit_limit(0.3, 0.0, 0.3)) # # height (op3)
@@ -447,8 +451,8 @@ class PoseImitationEnv(HumanoidEnv):
         obs_achieved = np.array([])
 
         # velo-z
-        # ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
-        # obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
+        ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
+        obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
 
         # ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
         ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 1.3) # op3
@@ -623,7 +627,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = max(0, goalconv) * 100
+        reward = goalconv * 100
         # reward = 1 if goalconv > 0 else -1
 
         # upscale with dist to goal and boarder (dynamic)
@@ -640,8 +644,7 @@ class PoseImitationEnv(HumanoidEnv):
         #     goaldist += 1 # ensure at least 1
         #     reward *= goaldist
 
-        # return np.clip(reward, 0, None)
-        return np.array([reward])
+        return np.clip(reward, 0, 1)
 
 
     def reset_model(self):
