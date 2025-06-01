@@ -312,16 +312,8 @@ class PoseImitationEnv(HumanoidEnv):
             if self.data.qpos[2] < 0.7:  # practice height (tight limit for efficiency?)
                 LOG.info('HEIGHT TOO LOW/HIGH. %s', self.ep_rewards_sum)
                 # reward = -self.ep_rewards_mean
-                # terminated = True
-                # self.ep_lives -= 1
+                terminated = True
 
-                if self.is_eval or not cfg.TrajectoryHalving.IS_ENABLED:
-                    terminated = True
-
-                # respawn (lighter, instead of heavy terminate/reset)
-                elif len(self.ep_goaldists) > 2:        
-                    if not self._reset_half_episode():
-                        terminated = True
             # min. convergence terminate? ("flaming wall")
             
             # elif self.ep_count_fails_pose_detection > 10:
@@ -631,30 +623,28 @@ class PoseImitationEnv(HumanoidEnv):
 
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = goalconv * 100
+        reward = max(0, goalconv) * 100
         # reward = 1 if goalconv > 0 else -1
 
         # upscale with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
-            '''positive rewards * distance to border ("far pleases more")'''
+            '''positive rewards upscaled by distance to border ("far pleases more")'''
             borderdist = np.abs(self.tr_goaldist_max - goaldist)
             # borderdist = self._normalize_unit_limit(borderdist, self.tr_goaldist_min, self.tr_goaldist_max)
             borderdist += 1 # ensure at least 1 (else counter-effect by downscale)
             reward *= borderdist
-        if reward < 0:
-            '''penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)'''
-            goaldist = (goaldist - self.tr_goaldist_min)
-            # goaldist = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
-            goaldist += 1 # ensure at least 1
-            reward *= goaldist
+        # if reward < 0:
+        #     '''penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)'''
+        #     goaldist = (goaldist - self.tr_goaldist_min)
+        #     # goaldist = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
+        #     goaldist += 1 # ensure at least 1
+        #     reward *= goaldist
 
         # return np.clip(reward, 0, None)
-        return reward
+        return np.array([reward])
 
 
     def reset_model(self):
-        obs_init = None
-
         if self.ep_current_obs and len(self.ep_goaldists) > 0:
             # episode report
             LOG.debug('ep_lives %s', self.ep_lives)
@@ -675,9 +665,13 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_goalconv_mean %s', np.mean(np.diff(self.ep_goaldists)))
             LOG.debug('ep_actiondb_similarity_mean %s', self.ep_actiondb_similarity_mean)
             LOG.debug('\n')
+        
+        if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
+            self.ep_lives -= 1
+            if self.ep_lives > 0 and len(self.ep_goaldists) > 2:
+                return self._reset_half_episode()
 
-        obs_init = self._reset_full_episode()
-        return obs_init
+        return self._reset_full_episode()
     
 
     def _reset_full_episode(self):
@@ -748,10 +742,6 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def _reset_half_episode(self):
-        self.ep_lives -= 1
-        if self.ep_lives <= 0:
-            return None
-
         idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT, 50)
     
         if idx_halving > 0: # improved
