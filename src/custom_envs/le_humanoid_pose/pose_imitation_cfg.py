@@ -69,7 +69,7 @@ class PracticeTime(base.PracticeTime):
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
     # MAX_FRAC_DEFAULT = 0.05 # should be greater than drift/noise
-    MAX_FRAC_DEFAULT = 0.05
+    MAX_FRAC_DEFAULT = 0.15
     # vs. not finding goal (sparse rewards) (no direction/orientation: headless wandering)
     IS_NUDGING = True
     IS_ADAPTIVE = False
