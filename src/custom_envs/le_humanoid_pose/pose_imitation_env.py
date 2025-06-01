@@ -435,8 +435,9 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs_desired = np.append(obs_desired, 0.5) # velo-z
 
-        # desired_ob_primary_height = self._normalize_to_limits(1.4, 0.0, 2.0) # gym-humanoid
-        obs_desired = np.append(obs_desired, self._normalize_unit_limit(0.3, 0.0, 0.3)) # # height (op3)
+        desired_ob_primary_height = self._normalize_unit_limit(1.4, 0.0, 2.0) # gym-humanoid
+        # desired_ob_primary_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # height (op3)
+        obs_desired = np.append(obs_desired, desired_ob_primary_height)
 
         # ob_desired_primary_velo_head = 0
         # obs_desired = np.append(obs_desired, ob_desired_primary_velo_head)
@@ -462,9 +463,10 @@ class PoseImitationEnv(HumanoidEnv):
         ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
         obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
 
+        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
         # ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 1.3) # op3
         obs_achieved = np.append(obs_achieved, ob_achieved_primary_height) # ob_primary_height
+        
         # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
 
         # if desired_pose.pose_world_landmarks:
