@@ -119,6 +119,8 @@ class TrajectoryHalving:
         HIGHEST_GOAL_CONVERGENCE = 1 # reach
         LOWEST_GOAL_DISTANCE = 2 # reach
         LAST_STEP_GOAL_ZONE = 3 # hold
+        HIGHEST_REWARD = 3
+        LAST_POSITIVE_REWARD = 4
     STRAT = Strat.LOWEST_GOAL_DISTANCE
 
 

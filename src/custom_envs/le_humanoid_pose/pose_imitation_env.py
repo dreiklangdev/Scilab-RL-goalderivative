@@ -91,6 +91,9 @@ ACTION_OBS_IS_ENABLED = False
 # 1M, convRewarding, groundContactTerm., metaGoals0.5, threshold0.05:  converging, no pleateaus yet /home/t14/Documents/tuhh/dsf/Scilab-RL/data/053b120/le-pose-imitation-v4/10-43-06/rl_model_finished
 # 1M(!!!!), posConvRewardingOnly, no goalzone, meanTermPen: clear converging, no plateau yet restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/7aca00b/le-pose-imitation-v4/18-52-08/rl_model_finished
 
+# 0.1M, convRewMagNorm, no HER:     uses some momentum /home/t14/Documents/tuhh/dsf/Scilab-RL/data/62fb159/le-pose-imitation-v4/13-13-53/rl_model_finished
+# 0.1M, convRewMagNorm, HER:    uses arms to support /home/t14/Documents/tuhh/dsf/Scilab-RL/data/62fb159/le-pose-imitation-v4/13-13-53/rl_model_finished
+
 # TODO cleansac#296: add locality propagation exps. to HER?
 # TODO obs appender func with limits warning (for normalization(!))
 class PoseImitationEnv(HumanoidEnv):
@@ -103,8 +106,9 @@ class PoseImitationEnv(HumanoidEnv):
                              exclude_current_positions_from_observation=True,
                              width=cfg.General.RENDER_IMAGE_SIZE,
                              height=cfg.General.RENDER_IMAGE_SIZE,
-                             # xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid_face.xml')
-                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/robotis_op3/scene.xml')
+                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid.xml')
+                            #  xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/robotis_op3/scene.xml')
+                            #  xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/agility_cassie/scene.xml')
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
         assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
@@ -150,7 +154,8 @@ class PoseImitationEnv(HumanoidEnv):
         if ACTION_OBS_IS_ENABLED:
             obspace_total_dims += self.action_space.shape[0] # action
         obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += 7 # height, head_velo, head acc (3), l_foot_touch, r_foot_touch
+        obspace_total_dims += 2 # height, head_velo
+        # obspace_total_dims += 5 # head acc (3), l_foot_touch, r_foot_touch
         obspace_total_dims += 1 # achieved: velo-z, height
         # # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
@@ -256,8 +261,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_dictobs.append(obs)
         self.ep_current_obs = obs
 
-
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
+        self.ep_rewards.append(reward)
 
         if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
             # currently: adding db-obs worsens performance/rewards
@@ -304,13 +309,13 @@ class PoseImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            if self.data.qpos[2] < 0.20:  # practice height (tight limit for efficiency?)
+            if self.data.qpos[2] < 0.7:  # practice height (tight limit for efficiency?)
                 LOG.info('HEIGHT TOO LOW/HIGH. %s', self.ep_rewards_sum)
                 # reward = -self.ep_rewards_mean
                 # terminated = True
                 # self.ep_lives -= 1
 
-                if self.is_eval:
+                if self.is_eval or not cfg.TrajectoryHalving.IS_ENABLED:
                     terminated = True
 
                 # respawn (lighter, instead of heavy terminate/reset)
@@ -366,19 +371,19 @@ class PoseImitationEnv(HumanoidEnv):
         ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
         obs_world = np.append(obs_world, ob_primary_velo_head)
 
-        ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
-        obs_world = np.append(obs_world, ob_primary_acc_head) # 3
+        # ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
+        # obs_world = np.append(obs_world, ob_primary_acc_head) # 3
 
-        ob_primary_l_foot_touch = self._normalize_unit_limit(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
-        obs_world = np.append(obs_world, ob_primary_l_foot_touch)
+        # ob_primary_l_foot_touch = self._normalize_unit_limit(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
+        # obs_world = np.append(obs_world, ob_primary_l_foot_touch)
 
-        ob_primary_r_foot_touch = self._normalize_unit_limit(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
-        obs_world = np.append(obs_world, ob_primary_r_foot_touch)
+        # ob_primary_r_foot_touch = self._normalize_unit_limit(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
+        # obs_world = np.append(obs_world, ob_primary_r_foot_touch)
 
         obs_world = np.append(obs_world, super()._get_obs())
 
         obs = np.append(obs, obs_world)
-        
+
 
         # needs denoising for (near-)linearity in NN
         # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
@@ -453,7 +458,8 @@ class PoseImitationEnv(HumanoidEnv):
         # ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
         # obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
 
-        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        # ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 1.3) # op3
         obs_achieved = np.append(obs_achieved, ob_achieved_primary_height) # ob_primary_height
         # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
 
@@ -616,28 +622,30 @@ class PoseImitationEnv(HumanoidEnv):
         if achieved_goal.ndim > 1:
             raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
-            # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             # return goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
-            return achieved_goal[:,1] # unscaled goalconvs
+            # return achieved_goal[:,1] # unscaled goalconvs
 
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
 
         # (!) just goalconv
         # TODO adaptive-normalize to recorded min/max goalconv?
-        reward = goalconv * 1000
+        reward = goalconv * 100
         # reward = 1 if goalconv > 0 else -1
 
-        # scaled with dist to goal and boarder (dynamic)
+        # upscale with dist to goal and boarder (dynamic)
         if reward > 0: # TODO adaptive-normalize to recorded min/max goaldist? (early accommodation, but less strive (premature converge))
-            # positive rewards * distance to border ("far pleases more")
+            '''positive rewards * distance to border ("far pleases more")'''
             borderdist = np.abs(self.tr_goaldist_max - goaldist)
-            # reward *= self._normalize_unit_limit(borderdist, self.tr_goaldist_min, self.tr_goaldist_max)
+            # borderdist = self._normalize_unit_limit(borderdist, self.tr_goaldist_min, self.tr_goaldist_max)
+            borderdist += 1 # ensure at least 1 (else counter-effect by downscale)
             reward *= borderdist
-        else:
-            # penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)
+        if reward < 0:
+            '''penalties * distance to goal ("far hurts more") (also not abs: rewards surpassing)'''
             goaldist = (goaldist - self.tr_goaldist_min)
-            # reward *= self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
+            # goaldist = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
+            goaldist += 1 # ensure at least 1
             reward *= goaldist
 
         # return np.clip(reward, 0, None)
@@ -740,26 +748,30 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def _reset_half_episode(self):
-        idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT)
-        self.fep_savepoint_steps += idx_halving
-        if idx_halving > 0: # improved
-            self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
-
-        LOG.info('savepoint at step %s of %s', idx_halving, len(self.ep_states))
-        if len(self.ep_states) < 100: # TODO or lives depleted? 
-            # corrupt savepoint (too short, full reset instead)
+        self.ep_lives -= 1
+        if self.ep_lives <= 0:
             return None
 
+        idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT, 50)
+    
+        if idx_halving > 0: # improved
+            pass
+
         qpos, qvel = self.ep_states[idx_halving]
+        self.fep_savepoint_steps += idx_halving
+        LOG.info('savepoint at step %s (%s)', self.fep_savepoint_steps, self.ep_lives)
+
         # TODO remove or add noise?
         # qpos, qvel = self._add_noise(qpos, qvel)
         self.set_state(qpos, qvel)
         self.ep_traj_is_halved = True
+        self.ep_rewards_sum = 0
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
-        
+
         self.ep_states = [(qpos, qvel)]
         self.ep_actions = []
+        self.ep_rewards = []
         self.ep_dictobs = []
         self.ep_goaldists = []
         self.ep_goalconvs = []
@@ -780,6 +792,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldists = []
         self.ep_goalconvs = []
         self.ep_states = []
+        self.ep_rewards = []
         self.ep_actions = []
         self.ep_num_steps_goal_zone = 0
         self.ep_count_fails_pose_detection = 0
@@ -790,7 +803,7 @@ class PoseImitationEnv(HumanoidEnv):
             self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
 
-    def _get_idx_for_trajectory_halving(self, strat):
+    def _get_idx_for_trajectory_halving(self, strat, min_steps_before_term):
         idx_step = 0
         match strat:
             case self.cfg.TrajectoryHalving.Strat.HALF:
@@ -803,6 +816,13 @@ class PoseImitationEnv(HumanoidEnv):
                 idx_step = np.argmin(self.ep_goaldists)
             case self.cfg.TrajectoryHalving.Strat.LAST_STEP_GOAL_ZONE:
                 idx_step = max(0, self.ep_last_reward_step)
+            case self.cfg.TrajectoryHalving.Strat.HIGHEST_REWARD:
+                idx_step = np.argmax(self.ep_rewards)
+            case self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD:
+                idx_step = len(self.ep_rewards) - np.argmax(np.array(self.ep_rewards[::-1]) > 0)
+
+        if (len(self.ep_states) - idx_step) < min_steps_before_term:
+             idx_step = max(0, len(self.ep_states) - min_steps_before_term)
         return idx_step
 
 
