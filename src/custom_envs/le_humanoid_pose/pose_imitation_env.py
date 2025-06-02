@@ -116,7 +116,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.cfg = cfg
         self.is_render = is_render
         self.is_eval = is_eval
-        self.outfile_ep_num_steps_goal_zone = open('ep_num_steps_goal_zone.dat', 'a')
+        self.outfile_fep_num_steps_goal_zone = open('fep_num_steps_goal_zone.dat', 'a')
 
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
@@ -367,7 +367,8 @@ class PoseImitationEnv(HumanoidEnv):
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_num_steps_goal_zone', str(self.ep_num_steps_goal_zone))
+            fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_num_steps_goal_zone', str(fep_num_steps_goal_zone))
             human_viewer.render()
 
         self.ep_current_reward = reward
@@ -680,14 +681,14 @@ class PoseImitationEnv(HumanoidEnv):
         if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             # goalzone reached
             reward = 1
-        # if goalconv > 0.0: # may lead to velocity-dependent rewarding?
-        #     reward = 0.5
+            if goalconv > 0.0:
+                reward = 2
 
         elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
             # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
-            reward = 0
-            # reward = int(goalconv > 0.0)        
+            reward = 0      
 
+        # TODO maybe last k goalconvs? (also as obs?)
         elif goalconv > 0: # goalzone not yet (long enough) reached: dense mode ("reach goal")
             reward = 0.5
 
@@ -735,7 +736,12 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_goalconv_mean %s', np.mean(np.diff(self.ep_goaldists)))
             LOG.debug('ep_actiondb_similarity_mean %s', self.ep_actiondb_similarity_mean)
             LOG.debug('\n')
-        
+
+            if not self.is_eval and self.tr_num_steps > 10:
+                fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
+                self.outfile_fep_num_steps_goal_zone.write('%s\n' % (fep_num_steps_goal_zone))
+                self.outfile_fep_num_steps_goal_zone.flush()
+
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.ep_lives -= 1
             if self.ep_lives > 0 and len(self.ep_states) > 2:
@@ -777,10 +783,6 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_goaldist_mins_mean = ((self.tr_feps_total * self.tr_goaldist_mins_mean) + self.fep_goaldist_min) / (self.tr_feps_total + 1)
         self.tr_goaldist_maxs_mean = ((self.tr_feps_total * self.tr_goaldist_maxs_mean) + self.fep_goaldist_max) / (self.tr_feps_total + 1)
         self.tr_feps_total += 1
-
-        if not self.is_eval and self.tr_num_steps > 10:
-            self.outfile_ep_num_steps_goal_zone.write('%s\n' % (self.ep_num_steps_goal_zone))
-            self.outfile_ep_num_steps_goal_zone.flush()
 
         LOG.debug('tr_feps_total %s', self.tr_feps_total)
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
@@ -827,7 +829,8 @@ class PoseImitationEnv(HumanoidEnv):
         idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)    
 
         if idx_halving > 0: # improved
-            pass
+            self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
+
 
         qpos, qvel = self.ep_states[idx_halving]
         self.fep_savepoint_steps += idx_halving
