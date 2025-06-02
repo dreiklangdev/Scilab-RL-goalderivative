@@ -829,7 +829,7 @@ class PoseImitationEnv(HumanoidEnv):
         else:
             strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_CONVERGENCE
 
-        idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)    
+        idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)
 
         if idx_halving > 0: # improved
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
