@@ -355,7 +355,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_rewards_mean = (((self.ep_num_steps - 1) * self.ep_rewards_mean) + reward) / (self.ep_num_steps)
 
         # also skip first buggy render
-        if self.tr_feps_total == 1 or self.ep_num_steps > self.cfg.General.EPISODE_TRUNCATION_STEPS_MAX:
+        if self.tr_feps_total == 1 or self.ep_num_steps > self.cfg.General.MAX_STEPS_EPISODE_TRUNCATION:
             LOG.info('TRUNCATED.')
             truncated = True
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
@@ -678,13 +678,16 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO z-score normalisation
         goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
         
+
+        fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
         if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             # goalzone reached
             reward = 1
             if goalconv > 0.0:
                 reward = 2
+            reward += fep_num_steps_goal_zone / self.cfg.General.MAX_STEPS_EPISODE_TRUNCATION
 
-        elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
+        elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and fep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
             # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
             reward = 0      
 
@@ -821,10 +824,10 @@ class PoseImitationEnv(HumanoidEnv):
     def _reset_half_episode(self, steps_before_term, steps_offset):
         idx_halving = 0
 
-        # if self.ep_num_steps_goal_zone == 0:
-        #     strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-        # else:
-        strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_CONVERGENCE
+        if self.ep_num_steps_goal_zone == 0:
+            strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
+        else:
+            strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_CONVERGENCE
 
         idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)    
 

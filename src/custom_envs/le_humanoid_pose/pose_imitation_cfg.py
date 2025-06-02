@@ -4,7 +4,7 @@ import numpy as np
 
 
 class General(base.General):
-    EPISODE_TRUNCATION_STEPS_MAX = 1500
+    MAX_STEPS_EPISODE_TRUNCATION = 1500
 
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
