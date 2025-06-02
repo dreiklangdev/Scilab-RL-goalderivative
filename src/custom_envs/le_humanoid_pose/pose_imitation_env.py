@@ -249,7 +249,7 @@ class PoseImitationEnv(HumanoidEnv):
         info['success'] = False
 
         # reduce action space?
-        # action = np.clip(action, -np.pi/2, np.pi/2)
+        action = np.clip(action, -np.pi/2, np.pi/2)
         self.do_simulation(action, self.frame_skip)
         self.ep_num_steps += 1
         self.tr_num_steps += 1
@@ -364,8 +364,9 @@ class PoseImitationEnv(HumanoidEnv):
         if self.is_render:
             self.render_mode = 'human'
             human_viewer = self.mujoco_renderer._get_viewer('human')
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(goaldist))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_num_steps_goal_zone', str(self.ep_num_steps_goal_zone))
             human_viewer.render()
 
@@ -447,6 +448,47 @@ class PoseImitationEnv(HumanoidEnv):
                 obs = np.append(obs, np.zeros(self.action_space.shape)) # no/first action
 
 
+        
+        # ========= ACHIEVED OBS
+
+        obs_achieved = np.array([])
+
+        # velo-z
+        # ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
+        # obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
+
+        head_velo_x = self._normalize_unit_limit(self.data.qvel[0], -1, 1)
+        head_velo_y = self._normalize_unit_limit(self.data.qvel[1], -1, 1)
+        head_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
+        ob_achieved_velo = np.abs(np.mean([head_velo_x, head_velo_y, head_velo_z]))
+        obs_achieved = np.append(obs_achieved, ob_achieved_velo)
+
+        ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
+        # ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
+        obs_achieved = np.append(obs_achieved, ob_achieved_height) # ob_primary_height
+
+
+        # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
+
+        # if desired_pose.pose_world_landmarks:
+        #     achieved_pose = copy.deepcopy(desired_pose)
+        #     # body
+        #     # TODO extend/unite with geom?
+        #     for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
+        #         if body_id:
+        #             achieved_pose.pose_world_landmarks[0][i].x = self.data.body(body_id).xpos[0] * 3.6
+        #             achieved_pose.pose_world_landmarks[0][i].z = self.data.body(body_id).xpos[1] * 3.6
+        #             achieved_pose.pose_world_landmarks[0][i].y = -self.data.body(body_id).xpos[2] * 3.6 + 0.85
+        #         else:
+        #             achieved_pose.pose_world_landmarks[0][i].x = -1
+        #             achieved_pose.pose_world_landmarks[0][i].y = -1
+        #             achieved_pose.pose_world_landmarks[0][i].z = -1
+
+        # achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+
+        obs = np.append(obs, obs_achieved)
+
+
         # ========= DESIRED OBS
 
         obs_desired = np.array([])
@@ -472,39 +514,6 @@ class PoseImitationEnv(HumanoidEnv):
         #     # TODO check if detected pose is valid/possible (height, change, confidence etc.)
         #     self.last_ob_pose_desired = desired_ob_pose
         # desired_obs = np.append(desired_obs, desired_ob_pose)
-
-
-        # ========= ACHIEVED OBS
-
-        obs_achieved = np.array([])
-
-        # velo-z
-        ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
-        obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
-
-        ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
-        # ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        obs_achieved = np.append(obs_achieved, ob_achieved_height) # ob_primary_height
-        
-        # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
-
-        # if desired_pose.pose_world_landmarks:
-        #     achieved_pose = copy.deepcopy(desired_pose)
-        #     # body
-        #     # TODO extend/unite with geom?
-        #     for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
-        #         if body_id:
-        #             achieved_pose.pose_world_landmarks[0][i].x = self.data.body(body_id).xpos[0] * 3.6
-        #             achieved_pose.pose_world_landmarks[0][i].z = self.data.body(body_id).xpos[1] * 3.6
-        #             achieved_pose.pose_world_landmarks[0][i].y = -self.data.body(body_id).xpos[2] * 3.6 + 0.85
-        #         else:
-        #             achieved_pose.pose_world_landmarks[0][i].x = -1
-        #             achieved_pose.pose_world_landmarks[0][i].y = -1
-        #             achieved_pose.pose_world_landmarks[0][i].z = -1
-
-        # achieved_obs = np.append(achieved_obs, achieved_ob_pose)
-
-        obs = np.append(obs, obs_achieved)
 
 
         # ========= GOAL
@@ -669,9 +678,18 @@ class PoseImitationEnv(HumanoidEnv):
         goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
         
         if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            # goalzone reached
             reward = 1
-        if goalconv > 0:
-            reward = 1
+        # if goalconv > 0.0: # may lead to velocity-dependent rewarding?
+        #     reward = 0.5
+
+        elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
+            # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
+            reward = 0
+            # reward = int(goalconv > 0.0)        
+
+        elif goalconv > 0: # goalzone not yet (long enough) reached: dense mode ("reach goal")
+            reward = 0.5
 
 
         # if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:

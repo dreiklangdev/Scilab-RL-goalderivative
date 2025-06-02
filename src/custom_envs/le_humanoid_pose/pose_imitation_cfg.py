@@ -75,7 +75,7 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
     IS_ADAPTIVE = False
 
     IS_SPARSE_MODE_TOGGLE_ENABLED = True
-    MIN_STEPS_FOR_SPARSE_MODE_TOGGLE = 0 # 10 # makes it rather worse if enabled?
+    MIN_STEPS_FOR_SPARSE_MODE_TOGGLE = 10 # 10 # makes it rather worse if enabled?
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
