@@ -39,7 +39,7 @@ class General(base.General):
     STEPSKIP_DETECT = 9999999999 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
-    MAX_LIVES = 10
+    MAX_LIVES = 3
 
 
 # vs. single goal proficiency
@@ -75,13 +75,13 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
     IS_ADAPTIVE = False
 
     IS_SPARSE_MODE_TOGGLE_ENABLED = True
-    MIN_STEPS_FOR_SPARSE_MODE_TOGGLE = 10
+    MIN_STEPS_FOR_SPARSE_MODE_TOGGLE = 0 # 10 # makes it rather worse if enabled?
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
     # more relevant for envs where goal-state is far from the start
-    IS_ENABLED = False
+    IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
 

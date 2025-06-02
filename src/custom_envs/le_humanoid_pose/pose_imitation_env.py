@@ -244,8 +244,6 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('le-walker-2d initialized.')
 
 
-
-
     def step(self, action):
         info = {}
         info['success'] = False
@@ -329,13 +327,22 @@ class PoseImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
+            MAX_DIVERGENT_STEPS = 500 # 75
             # BORDER_HEIGHT_MIN = 0.2 # op3
-            if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
-                LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
-                # reward = -self.ep_rewards_mean
-                terminated = True
+            BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
+            # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
+            if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
+                terminated = True
+                # reward = -1
+                LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
+
+            elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+                terminated = True
+                # reward = -1
+                LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
+
+          
             # min. convergence terminate? ("flaming wall")
             
             # elif self.ep_count_fails_pose_detection > 10:
@@ -658,23 +665,33 @@ class PoseImitationEnv(HumanoidEnv):
         reward = 0
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
-
+        # TODO z-score normalisation
+        goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
+        
         if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            # goalzone reached
+            reward = 1
+        if goalconv > 0:
             reward = 1
 
-        elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
-            # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
-            reward = 0
 
-        else: # goalzone not yet (long enough) reached: dense mode ("reach goal")
-            goaldist_adapt = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
-            goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
-            # goaldist-scaled goalconv (faster converging close to goal (= far from border) is worth)
-            # reward = np.mean([(1 - goaldist), goalconv]) # additive
-            reward = max(1, (2 - goaldist_adapt)) * goalconv_adapt # multpl. ("rewards better performance even more")
-            reward = max(0, reward)
-            reward = min(0.9, reward)
+        # if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+        #     # goalzone reached
+        #     reward = 1
+
+        # elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
+        #     # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
+        #     # reward = 0
+        #     # goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
+        #     reward = int(goalconv > 0.0)
+
+        # else: # goalzone not yet (long enough) reached: dense mode ("reach goal")
+        #     goaldist_adapt = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
+        #     goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
+        #     # goaldist-scaled goalconv (faster converging close to goal (= far from border) is worth)
+        #     # reward = np.mean([(1 - goaldist), goalconv]) # additive
+        #     reward = max(1, (2 - goaldist_adapt)) * goalconv_adapt # multpl. ("rewards better performance even more")
+        #     reward = max(0, reward)
+        #     reward = min(0.9, reward)
 
         return np.array([reward])
 
@@ -703,11 +720,12 @@ class PoseImitationEnv(HumanoidEnv):
         
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.ep_lives -= 1
-            if self.ep_lives > 0 and len(self.ep_goaldists) > 2:
-                return self._reset_half_episode()
+            if self.ep_lives > 0 and len(self.ep_states) > 2:
+                SAVEPOINT_MIN_STEPS_BEFORE_TERMINATION = 100
+                return self._reset_half_episode(SAVEPOINT_MIN_STEPS_BEFORE_TERMINATION, 0)
 
         return self._reset_full_episode()
-    
+
 
     def _reset_full_episode(self):
         LOG.info('\nNEW GAME.')
@@ -780,13 +798,15 @@ class PoseImitationEnv(HumanoidEnv):
         return obs_init
 
 
-    def _reset_half_episode(self):
-        if self.ep_num_steps_goal_zone == 0:
-            strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-        else:
-            strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD
+    def _reset_half_episode(self, steps_before_term, steps_offset):
+        idx_halving = 0
 
-        idx_halving = self._get_idx_for_trajectory_halving(strat, 50, -10)
+        # if self.ep_num_steps_goal_zone == 0:
+        #     strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
+        # else:
+        strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_CONVERGENCE
+
+        idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)    
 
         if idx_halving > 0: # improved
             pass
@@ -800,6 +820,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.set_state(qpos, qvel)
         self.ep_traj_is_halved = True
         self.ep_rewards_sum = 0
+        self.ep_num_steps = 0
+        self.ep_num_steps_goal_zone = 0
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
 
@@ -837,7 +859,7 @@ class PoseImitationEnv(HumanoidEnv):
             self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
 
-    def _get_idx_for_trajectory_halving(self, strat, steps_before_term, steps_offset):
+    def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):
         idx_step = 0
         match strat:
             case self.cfg.TrajectoryHalving.Strat.HALF:
@@ -854,11 +876,13 @@ class PoseImitationEnv(HumanoidEnv):
                 idx_step = np.argmax(self.ep_rewards)
             case self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD:
                 idx_step = len(self.ep_rewards) - np.argmax(np.array(self.ep_rewards[::-1]) > 0)
-
-        if (len(self.ep_states) - idx_step) < steps_before_term:
-            idx_step = len(self.ep_states) - steps_before_term + steps_offset
-            idx_step = max(0, idx_step)
-            idx_step = min(len(self.ep_states), idx_step)
+            case self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_CONVERGENCE:
+                idx_step = len(self.ep_goalconvs) - np.argmax(np.array(self.ep_goalconvs[::-1]) > 0)
+        
+        idx_step = min(idx_step, len(self.ep_states) - steps_before_term)
+        idx_step += steps_offset
+        idx_step = max(0, idx_step)
+        idx_step = min(len(self.ep_states) - 1, idx_step)
         return idx_step
 
 
@@ -978,3 +1002,7 @@ def vector_to_uniform_scalar(vector, base=256):
         return 1
     else:
         return scalar / max_val
+
+
+def trunc(vals, decs=0):
+    return np.trunc(vals*10**decs)/(10**decs)
