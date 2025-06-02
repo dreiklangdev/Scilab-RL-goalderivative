@@ -116,7 +116,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.cfg = cfg
         self.is_render = is_render
         self.is_eval = is_eval
-        self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'a')
+        self.outfile_ep_num_steps_goal_zone = open('ep_num_steps_goal_zone.dat', 'a')
 
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
@@ -164,7 +164,7 @@ class PoseImitationEnv(HumanoidEnv):
         # # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += 2 # goaldist, goal_convergence
+            obspace_total_dims += 3 # goaldist, goal_convergence, is_seeking_goal
             obspace_total_dims += 2 # desired: velo-z, height
             # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         
@@ -197,6 +197,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_goaldist_maxs_mean: float = 0
         self.tr_goalconv_min: float = 1
         self.tr_goalconv_max: float = 0
+        self.tr_reward_min: float = 1
+        self.tr_reward_max: float = 0
         self.tr_num_steps: int = 0
         self.tr_ep_num_steps_max: int = 0
         self.fep_savepoint_steps = 0
@@ -307,6 +309,12 @@ class PoseImitationEnv(HumanoidEnv):
         if goalconv > self.tr_goalconv_max:
             self.tr_goalconv_max = goalconv
 
+        if reward < self.tr_reward_min:
+            self.tr_reward_min = reward
+
+        if reward > self.tr_reward_max:
+            self.tr_reward_max = reward
+
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
 
@@ -351,6 +359,7 @@ class PoseImitationEnv(HumanoidEnv):
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(reward))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(goaldist))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_num_steps_goal_zone', str(self.ep_num_steps_goal_zone))
             human_viewer.render()
 
         self.ep_current_reward = reward
@@ -505,6 +514,7 @@ class PoseImitationEnv(HumanoidEnv):
         # goaldist = self._normalize_unit_limit(goaldist, 0, self.tr_goaldist_max)
         goalconv = 0
         is_converging = 0
+        is_seeking_goal = self.ep_num_steps_goal_zone < self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE
         if len(self.ep_goaldists) > 1:
             goalconv = self.ep_goaldists[-1] - goaldist
             is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
@@ -521,6 +531,7 @@ class PoseImitationEnv(HumanoidEnv):
             # record_dist = max(0, goaldist - self.tr_goaldist_min)
             # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
             obs_meta = np.append(obs_meta, goalconv)
+            obs_meta = np.append(obs_meta, np.float_(is_seeking_goal))
             # obs_meta = np.append(obs_meta, is_converging)
             obs = np.append(obs, obs_meta)
 
@@ -638,26 +649,34 @@ class PoseImitationEnv(HumanoidEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
         if achieved_goal.ndim > 1:
-            # TODO possibly only after reaching goalzone? (switched to sparse)
+            # TODO possibly only after reaching goalzone? (in sparse mode)
             # raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
-            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT 
 
         reward = 0
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
 
-        if self.ep_num_steps_goal_zone == 0: # goalzone not yet reached: dense rewards ("reach goal")
+        if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            # goalzone reached
+            reward = 1
+
+        elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
+            # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
+            reward = 0
+
+        else: # goalzone not yet (long enough) reached: dense mode ("reach goal")
             goaldist_adapt = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
             goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
-            # 3. goaldist-scaled goalconv (faster converging close to goal (= far from border) is worth)
+            # goaldist-scaled goalconv (faster converging close to goal (= far from border) is worth)
             # reward = np.mean([(1 - goaldist), goalconv]) # additive
-            reward = np.array([max(1, (2 - goaldist_adapt)) * goalconv_adapt]) # multpl. ("rewards better performance even more")
+            reward = max(1, (2 - goaldist_adapt)) * goalconv_adapt # multpl. ("rewards better performance even more")
+            reward = max(0, reward)
+            reward = min(0.9, reward)
 
-        else: # goalzone reached: sparse rewards ("now knows where goal is: keep goal")
-            reward = np.float16(goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
-
-        return reward
+        return np.array([reward])
 
 
     def reset_model(self):
@@ -724,8 +743,8 @@ class PoseImitationEnv(HumanoidEnv):
         self.tr_feps_total += 1
 
         if not self.is_eval and self.tr_num_steps > 10:
-            self.outfile_ep_rewards_mean.write('%s\n' % (self.ep_rewards_mean))
-            self.outfile_ep_rewards_mean.flush()
+            self.outfile_ep_num_steps_goal_zone.write('%s\n' % (self.ep_num_steps_goal_zone))
+            self.outfile_ep_num_steps_goal_zone.flush()
 
         LOG.debug('tr_feps_total %s', self.tr_feps_total)
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
@@ -738,6 +757,8 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('tr_goaldist_maxs_mean %s', self.tr_goaldist_maxs_mean)
         LOG.debug('tr_goalconv_min %s', self.tr_goalconv_min)
         LOG.debug('tr_goalconv_max %s', self.tr_goalconv_max)
+        LOG.debug('tr_reward_min %s', self.tr_reward_min)
+        LOG.debug('tr_reward_max %s', self.tr_reward_max)
         LOG.debug('tr_actiondb_size %s', self.actiondb.count())
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
@@ -760,8 +781,13 @@ class PoseImitationEnv(HumanoidEnv):
 
 
     def _reset_half_episode(self):
-        idx_halving = self._get_idx_for_trajectory_halving(self.cfg.TrajectoryHalving.STRAT, 50)
-    
+        if self.ep_num_steps_goal_zone == 0:
+            strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
+        else:
+            strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD
+
+        idx_halving = self._get_idx_for_trajectory_halving(strat, 50, -10)
+
         if idx_halving > 0: # improved
             pass
 
@@ -811,7 +837,7 @@ class PoseImitationEnv(HumanoidEnv):
             self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
 
 
-    def _get_idx_for_trajectory_halving(self, strat, min_steps_before_term):
+    def _get_idx_for_trajectory_halving(self, strat, steps_before_term, steps_offset):
         idx_step = 0
         match strat:
             case self.cfg.TrajectoryHalving.Strat.HALF:
@@ -829,8 +855,10 @@ class PoseImitationEnv(HumanoidEnv):
             case self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD:
                 idx_step = len(self.ep_rewards) - np.argmax(np.array(self.ep_rewards[::-1]) > 0)
 
-        if (len(self.ep_states) - idx_step) < min_steps_before_term:
-             idx_step = max(0, len(self.ep_states) - min_steps_before_term)
+        if (len(self.ep_states) - idx_step) < steps_before_term:
+            idx_step = len(self.ep_states) - steps_before_term + steps_offset
+            idx_step = max(0, idx_step)
+            idx_step = min(len(self.ep_states), idx_step)
         return idx_step
 
 

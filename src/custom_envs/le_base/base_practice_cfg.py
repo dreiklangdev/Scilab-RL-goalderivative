@@ -107,7 +107,9 @@ class GoalRewardThreshold:
     # too small: will never hold?
     MIN_FRAC = 0.05 # REWARD TOLERANCE ( > 0: better/easier for goal-holding (at all? "nobody is perfect"))
     MAX_FRAC_DEFAULT = 0.1 # decaying?
-    # need to earn adaption (only bad performance => no rewards!)
+    
+    IS_TOGGLE_SPARSE = True
+    MIN_STEPS_FOR_TOGGLE_SPARSE = 10
 
 
 class TrajectoryHalving:
