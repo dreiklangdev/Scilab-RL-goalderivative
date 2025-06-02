@@ -833,6 +833,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         if idx_halving > 0: # improved
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
+            self.ep_lives = self.cfg.General.MAX_LIVES
 
 
         qpos, qvel = self.ep_states[idx_halving]
