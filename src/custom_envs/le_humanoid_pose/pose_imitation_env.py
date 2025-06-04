@@ -714,7 +714,7 @@ class PoseImitationEnv(HumanoidEnv):
             if goalconv > 0 and goalacce >= 0:
                 reward = 1
             elif goalconv <= 0 and goalacce > 0:
-                reward = 0
+                reward = 0 # 1 
             elif goalconv <= 0 and goalacce <= 0:
                 reward = -1
 
