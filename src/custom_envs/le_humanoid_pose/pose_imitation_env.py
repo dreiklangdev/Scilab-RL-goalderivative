@@ -331,16 +331,22 @@ class PoseImitationEnv(HumanoidEnv):
             # BORDER_HEIGHT_MIN = 0.2 # op3
             BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
-            # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
-            if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
+            if self.ep_rewards_sum < -30:
                 terminated = True
-                # reward = -1
-                LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
 
-            elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
-                terminated = True
-                # reward = -1
-                LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
+            # if reward <= 0:
+            #     terminated = True
+
+            # # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
+            # elif len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
+            #     terminated = True
+            #     # reward = -1
+            #     LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
+
+            # elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+            #     terminated = True
+            #     # reward = -1
+            #     LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
 
           
             # min. convergence terminate? ("flaming wall")
@@ -680,20 +686,46 @@ class PoseImitationEnv(HumanoidEnv):
         
 
         fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
-        if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            # goalzone reached
+
+        
+        # if np.mean(np.abs(self.data.qvel)) > 2.5:
+        #     reward = 0
+
+        # kinda stabilizing, but does not know what to do inside and outside goalzone
+        # if np.mean(np.abs(self.data.qpos)) > 0.35:
+        #     reward = -1
+
+
+        if np.mean(self.ep_goalconvs) > 0:
             reward = 1
-            if goalconv > 0.0:
-                reward = 2
-            reward += fep_num_steps_goal_zone / self.cfg.General.MAX_STEPS_EPISODE_TRUNCATION
+        elif goaldist > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            if np.mean(self.ep_goalconvs) < 0:
+                reward = -1
 
-        elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and fep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
-            # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
-            reward = 0      
 
-        # TODO maybe last k goalconvs? (also as obs?)
-        elif goalconv > 0: # goalzone not yet (long enough) reached: dense mode ("reach goal")
-            reward = 0.5
+        
+
+        # if np.mean(np.abs(self.data.qpos[0:2]))
+
+        # total_vel_diff = np.linalg.norm(np.array(self.ep_states[0][1]) - np.array(self.ep_states[-1][1]), axis=-1)
+        # if startdist > 0.01:
+        #     reward = -1
+
+
+        # elif goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+        #     # goalzone reached
+        #     reward = 1
+        #     if goalconv > 0.0:
+        #         reward = 2
+        #     reward += fep_num_steps_goal_zone / self.cfg.General.MAX_STEPS_EPISODE_TRUNCATION
+
+        # elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and fep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
+        #     # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
+        #     reward = 0      
+
+        # # TODO maybe last k goalconvs? (also as obs?)
+        # elif goalconv > 0: # goalzone not yet (long enough) reached: dense mode ("reach goal")
+        #     reward = 0.5
 
 
         # if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:

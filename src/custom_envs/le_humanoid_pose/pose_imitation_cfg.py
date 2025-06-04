@@ -55,7 +55,7 @@ class DbObservation(base.DbObservation):
 # termination shaping (vs. too big search space)
 class PracticeSpace(base.PracticeSpace):
     IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE = True
-    STEPS_INVINCIBLE_SPAWN = 25 # eg. if instable start (falling)
+    STEPS_INVINCIBLE_SPAWN = 0 # eg. if instable start (falling)
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
@@ -81,7 +81,7 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
     # more relevant for envs where goal-state is far from the start
-    IS_ENABLED = True
+    IS_ENABLED = False
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
 
