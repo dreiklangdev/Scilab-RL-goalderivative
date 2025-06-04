@@ -6,6 +6,8 @@ import numpy as np
 class General(base.General):
     MAX_STEPS_EPISODE_TRUNCATION = 1500
 
+    WORLD_OBS_DIFFS_ORDER = 6
+
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
         # [8, 6, 5, 4, 1, 2, 3, 7],       # face
@@ -81,7 +83,7 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
     # more relevant for envs where goal-state is far from the start
-    IS_ENABLED = True
+    IS_ENABLED = False
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
 

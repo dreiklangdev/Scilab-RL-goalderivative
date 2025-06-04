@@ -156,6 +156,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         # world obs
         obspace_total_dims += self.observation_space.shape[0] # super
+        obspace_total_dims += self.data.qpos.shape[0] * self.cfg.General.WORLD_OBS_DIFFS_ORDER # superpos-diffs
+
         # obspace_total_dims += 2 # height, head_velo
         # obspace_total_dims += 5 # head acc (3), l_foot_touch, r_foot_touch
 
@@ -412,7 +414,16 @@ class PoseImitationEnv(HumanoidEnv):
         # ob_primary_r_foot_touch = self._normalize_unit_limit(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
         # obs_world = np.append(obs_world, ob_primary_r_foot_touch)
 
-        obs_world = np.append(obs_world, super()._get_obs())
+        obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
+
+        diff_order = self.cfg.General.WORLD_OBS_DIFFS_ORDER
+        if diff_order > 0:
+            qposs = np.array([q[0] for q in self.ep_states])
+            qposs = np.pad(qposs, ((2 ** diff_order,0), (0,0))) # pad for always enough recent posis
+            qposs = qposs [-(2 ** diff_order):] # only enough recent posis for all orders
+
+            for i in range(1, diff_order + 1):
+                obs_world = np.append(obs_world, np.diff(qposs, n=i, axis=0)[-1])
 
         obs = np.append(obs, obs_world)
 
