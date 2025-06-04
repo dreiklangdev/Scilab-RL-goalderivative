@@ -173,7 +173,7 @@ class PoseImitationEnv(HumanoidEnv):
         #     obspace_total_dims += 20 # best_action
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
-        goal_space = spaces.Box(-np.inf, np.inf, shape=(2,), dtype='float64') # goaldist, goalconv
+        goal_space = spaces.Box(-np.inf, np.inf, shape=(3,), dtype='float64') # goaldist, goalconv
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
@@ -262,8 +262,10 @@ class PoseImitationEnv(HumanoidEnv):
         obs = self._get_obs()
         goaldist = obs['achieved_goal'][0]
         goalconv = obs['achieved_goal'][1]
+        goalacce = obs['achieved_goal'][2]
         self.ep_goaldists.append(goaldist)
         self.ep_goalconvs.append(goalconv)
+        self.ep_goalacces.append(goalacce)
         self.ep_dictobs.append(obs)
         self.ep_current_obs = obs
 
@@ -331,7 +333,8 @@ class PoseImitationEnv(HumanoidEnv):
             # BORDER_HEIGHT_MIN = 0.2 # op3
             BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
-            if self.ep_rewards_sum < -30:
+            if self.ep_rewards_sum < 0:
+                # never more penalties than pos. rewards? ( < 0)
                 terminated = True
 
             # if reward <= 0:
@@ -343,10 +346,10 @@ class PoseImitationEnv(HumanoidEnv):
             #     # reward = -1
             #     LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
 
-            # elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
-            #     terminated = True
-            #     # reward = -1
-            #     LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
+            elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+                terminated = True
+                # reward = -1
+                LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
 
           
             # min. convergence terminate? ("flaming wall")
@@ -536,10 +539,13 @@ class PoseImitationEnv(HumanoidEnv):
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
         # goaldist = self._normalize_unit_limit(goaldist, 0, self.tr_goaldist_max)
         goalconv = 0
+        goalacce = 0
+
         is_converging = 0
         is_seeking_goal = self.ep_num_steps_goal_zone < self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE
         if len(self.ep_goaldists) > 1:
             goalconv = self.ep_goaldists[-1] - goaldist
+            goalacce = self.ep_goalconvs[-1] - goalconv
             is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
 
 
@@ -645,8 +651,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         dictobs = dict(
             observation=obs,
-            achieved_goal=np.array([goaldist, goalconv]),
-            desired_goal=np.array([0.0, 999.0]), # or arbitrary big number for max.??
+            achieved_goal=np.array([goaldist, goalconv, goalacce]),
+            desired_goal=np.array([0, 0, 0]), # or arbitrary big number for max.??
         )
 
         # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
@@ -681,6 +687,7 @@ class PoseImitationEnv(HumanoidEnv):
         reward = 0
         goaldist = achieved_goal[0]
         goalconv = achieved_goal[1]
+        goalacce = achieved_goal[2]
         # TODO z-score normalisation
         goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
         
@@ -695,12 +702,23 @@ class PoseImitationEnv(HumanoidEnv):
         # if np.mean(np.abs(self.data.qpos)) > 0.35:
         #     reward = -1
 
-
-        if np.mean(self.ep_goalconvs) > 0:
-            reward = 1
+        # if goaldist <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+        # if np.mean(self.ep_goalconvs) > 0:
+        if goaldist <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            if goalconv >= 0:
+                reward = 1
+            elif goalconv < 0 and goalacce > 0:
+                reward = 1
         elif goaldist > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            if np.mean(self.ep_goalconvs) < 0:
+            # if np.mean(self.ep_goalconvs) < 0:
+
+            if goalconv > 0 and goalacce >= 0:
+                reward = 1
+            elif goalconv <= 0 and goalacce > 0:
+                reward = 0
+            elif goalconv <= 0 and goalacce <= 0:
                 reward = -1
+
 
 
         
@@ -788,7 +806,8 @@ class PoseImitationEnv(HumanoidEnv):
 
     def _reset_full_episode(self):
         LOG.info('\nNEW GAME.')
-        (init_qpos, init_qvel) = self._add_noise(self.init_qpos, self.init_qvel)
+        (init_qpos, init_qvel) = self.init_qpos, self.init_qvel
+        # (init_qpos, init_qvel) = self._add_noise(init_qpos, init_qvel)
         self.set_state(init_qpos, init_qvel)
         self.ep_states.append((init_qpos, init_qvel))
         obs_init = self._get_obs()
@@ -888,6 +907,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_dictobs = []
         self.ep_goaldists = []
         self.ep_goalconvs = []
+        self.ep_goalacces = []
 
         obs_init = self._get_obs()
         return obs_init
@@ -904,6 +924,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_current_reward = 0
         self.ep_goaldists = []
         self.ep_goalconvs = []
+        self.ep_goalacces = []
         self.ep_states = []
         self.ep_rewards = []
         self.ep_actions = []
