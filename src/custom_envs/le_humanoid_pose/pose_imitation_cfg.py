@@ -6,13 +6,15 @@ import numpy as np
 class General(base.General):
     MAX_STEPS_EPISODE_TRUNCATION = 1500
 
-    OBS_WORLD_DERIV_ORDERS = 4
-    GOAL_DERIV_ORDERS = 2 # possibly better for multidim.-goal(s)?
+    OBS_WORLD_DERIV_ORDERS = 5
+    GOAL_DERIV_ORDERS = 2 # plateaus fast on higher orders: possibly better for multidim.-goal(s)? (order ~ #dims?)
+    OBS_REWARD_HISTORY_LENGTH = 10
+    REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
         # [8, 6, 5, 4, 1, 2, 3, 7],       # face
-        # [10, 9],                       # mouth    
+        # [10, 9],                       # mouth  
         [11, 13, 15, 17, 19, 15, 21],  # right arm
         [12, 14, 16, 18, 20, 16, 22],  # left arm
         # [11, 23, 25, 27, 29, 31, 27],  # right body side

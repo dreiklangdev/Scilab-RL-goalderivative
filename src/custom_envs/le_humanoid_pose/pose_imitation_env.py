@@ -166,8 +166,13 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims += 2 # desired: velo-z, height
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
 
-        # goal
+        # goal obs
         obspace_total_dims += 1 + self.cfg.General.GOAL_DERIV_ORDERS
+
+        # reward obs
+        obspace_total_dims += 1 + self.cfg.General.OBS_REWARD_HISTORY_LENGTH
+        obspace_total_dims += self.cfg.General.REWARD_DERIV_ORDERS
+
 
 
         # if self.cfg.MetaObservation.IS_ENABLED:
@@ -554,9 +559,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
         goalderivs = np.array([])
-
         if goalderiv_orders > 0:
-
             goaldists = np.array(self.ep_goaldists)
             goaldists = np.append(goaldists, goaldist) # most recent
             goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)
@@ -564,7 +567,6 @@ class PoseImitationEnv(HumanoidEnv):
 
             for i in range(1, goalderiv_orders + 1):
                 goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
-
 
         obs = np.append(obs, obs_desired.ravel()) # goal
         obs = np.append(obs, goaldist)
@@ -585,6 +587,32 @@ class PoseImitationEnv(HumanoidEnv):
             obs = np.append(obs, obs_meta)
 
 
+        # ========= REWARD OBS 
+        reward = self.compute_reward(np.array([goaldist] + goalderivs.tolist()), None, None)
+        history_length = self.cfg.General.OBS_REWARD_HISTORY_LENGTH
+        reward_history = np.resize(self.ep_rewards[-history_length:], history_length)
+
+        rewardderiv_orders = self.cfg.General.REWARD_DERIV_ORDERS
+        rewardderivs = np.array([])
+        if rewardderiv_orders > 0:
+            rewards = np.array(self.ep_rewards)
+            rewards = np.append(rewards, reward) # most recent
+            rewards = np.array(rewards[-(2 ** rewardderiv_orders):]) # only enough recent goaldists for all orders (2^k)
+            rewards = np.pad(rewards, (2 ** rewardderiv_orders,0)) # pad for more than enough recents
+
+            for i in range(1, rewardderiv_orders + 1):
+                rewardderivs = np.append(rewardderivs, np.diff(rewards, n=i, axis=0)[-1])
+
+        obs = np.append(obs, reward)
+        obs = np.append(obs, reward_history)
+        obs = np.append(obs, rewardderivs)
+    
+
+            # obs = obs.astype(np.dtype(float, metadata={
+            #     'reward': reward,
+            #     }))
+
+
         # ========= DB ACTION OBS
 
         if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
@@ -598,7 +626,6 @@ class PoseImitationEnv(HumanoidEnv):
             qvel = self.data.qvel.flat.copy()
             best_embedding = self._normalize_L2(np.hstack((qpos, qvel)))
 
-            reward_current = self.compute_reward(np.array([goaldist] + goalderivs.tolist()), None, None)
 
             db_query = self.actiondb.query(
                 query_embeddings=[best_embedding],
@@ -618,7 +645,7 @@ class PoseImitationEnv(HumanoidEnv):
                 # if best_similarity < 0.01 and best_reward > reward_current:
                 #     LOG.debug('db action is better than chosen action: %s > %s (%s)', best_reward, reward_current, best_similarity)
 
-            if reward_current > 0 and len(self.ep_states) >= 2:
+            if reward > 0 and len(self.ep_states) >= 2:
                 # save chosen action for prev state to actiondb
                 (prev_qpos, prev_qvel) = self.ep_states[-2]
                 self.actiondb.add(
@@ -627,7 +654,7 @@ class PoseImitationEnv(HumanoidEnv):
                     # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
                     ids=[uuid.uuid4().hex],
                     metadatas=[{
-                        "reward": reward_current,
+                        "reward": reward,
                         "goaldist": goaldist,
                         "goalconv": goalderivs[0],
                         }]
