@@ -418,9 +418,8 @@ class PoseImitationEnv(HumanoidEnv):
 
         diff_order = self.cfg.General.WORLD_OBS_DIFFS_ORDER
         if diff_order > 0:
-            qposs = np.array([q[0] for q in self.ep_states])
+            qposs = np.array([q[0] for q in self.ep_states[-(2 ** diff_order):]]) # only enough recent posis for all orders (2^k)
             qposs = np.pad(qposs, ((2 ** diff_order,0), (0,0))) # pad for always enough recent posis
-            qposs = qposs [-(2 ** diff_order):] # only enough recent posis for all orders
 
             for i in range(1, diff_order + 1):
                 obs_world = np.append(obs_world, np.diff(qposs, n=i, axis=0)[-1])
