@@ -333,8 +333,7 @@ class PoseImitationEnv(HumanoidEnv):
             # BORDER_HEIGHT_MIN = 0.2 # op3
             BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
-            if self.ep_rewards_sum < 0:
-                # never more penalties than pos. rewards? ( < 0)
+            if self.ep_rewards_sum < -30:
                 terminated = True
 
             # if reward <= 0:
@@ -351,7 +350,7 @@ class PoseImitationEnv(HumanoidEnv):
                 # reward = -1
                 LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
 
-          
+
             # min. convergence terminate? ("flaming wall")
             
             # elif self.ep_count_fails_pose_detection > 10:
@@ -507,7 +506,7 @@ class PoseImitationEnv(HumanoidEnv):
         obs_desired = np.append(obs_desired, ob_desired_velo_z) # velo-z
 
         ob_desired_height = self._normalize_unit_limit(1.4, 0.0, 2.0) # gym-humanoid
-        # ob_desired_height = self._normalize_unit_limit(0.6, 0.0, 0.3) # height (op3)
+        # ob_desired_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # height (op3)
         obs_desired = np.append(obs_desired, ob_desired_height)
 
         # ob_desired_primary_velo_head = 0
@@ -878,7 +877,7 @@ class PoseImitationEnv(HumanoidEnv):
         if self.ep_num_steps_goal_zone == 0:
             strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
         else:
-            strat = self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_CONVERGENCE
+            strat = self.cfg.TrajectoryHalving.Strat.LAST_STEP_GOAL_ZONE
 
         idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)
 
@@ -949,7 +948,7 @@ class PoseImitationEnv(HumanoidEnv):
             case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
                 idx_step = np.argmin(self.ep_goaldists)
             case self.cfg.TrajectoryHalving.Strat.LAST_STEP_GOAL_ZONE:
-                idx_step = max(0, self.ep_last_reward_step)
+                idx_step = len(self.ep_goaldists) - np.argmax(np.array(self.ep_goaldists[::-1]) < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
             case self.cfg.TrajectoryHalving.Strat.HIGHEST_REWARD:
                 idx_step = np.argmax(self.ep_rewards)
             case self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD:
