@@ -700,27 +700,13 @@ class PoseImitationEnv(HumanoidEnv):
         # TODO z-score normalisation
         goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
         
-
-        fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
-
-        
-        # if np.mean(np.abs(self.data.qvel)) > 2.5:
-        #     reward = 0
-
-        # kinda stabilizing, but does not know what to do inside and outside goalzone
-        # if np.mean(np.abs(self.data.qpos)) > 0.35:
-        #     reward = -1
-
-        # if goaldist <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-        # if np.mean(self.ep_goalconvs) > 0:
         if goaldist <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             if goalconv >= 0:
                 reward = 1
             elif goalconv < 0 and goalacce > 0:
                 reward = 1
-        elif goaldist > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            # if np.mean(self.ep_goalconvs) < 0:
 
+        elif goaldist > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             if goalconv > 0 and goalacce >= 0:
                 reward = 1
             elif goalconv <= 0 and goalacce > 0:

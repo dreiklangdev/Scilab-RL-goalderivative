@@ -6,7 +6,7 @@ import numpy as np
 class General(base.General):
     MAX_STEPS_EPISODE_TRUNCATION = 1500
 
-    WORLD_OBS_DIFFS_ORDER = 6
+    WORLD_OBS_DIFFS_ORDER = 4
 
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
