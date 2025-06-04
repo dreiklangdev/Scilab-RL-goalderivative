@@ -156,26 +156,30 @@ class PoseImitationEnv(HumanoidEnv):
 
         # world obs
         obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += self.data.qpos.shape[0] * self.cfg.General.WORLD_OBS_DIFFS_ORDER # superpos-diffs
+        obspace_total_dims += self.data.qpos.shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-diffs
 
-        # obspace_total_dims += 2 # height, head_velo
-        # obspace_total_dims += 5 # head acc (3), l_foot_touch, r_foot_touch
-
-        # goal obs
+        # achieved obs
         obspace_total_dims += 2 # achieved: velo-z, height
-        # # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
-        if self.cfg.MetaObservation.IS_ENABLED:
-            obspace_total_dims += 3 # goaldist, goal_convergence, is_seeking_goal
-            obspace_total_dims += 2 # desired: velo-z, height
-            # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+        # desired obs
+        obspace_total_dims += 2 # desired: velo-z, height
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+
+        # goal
+        obspace_total_dims += 1 + self.cfg.General.GOAL_DERIV_ORDERS
+
+
+        # if self.cfg.MetaObservation.IS_ENABLED:
+            # obspace_total_dims += 3 # goaldist, goal_convergence, is_seeking_goal
+            # obspace_total_dims += 2 # desired: velo-z, height
         
         # if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
         #     obspace_total_dims += 2 # best_similarity, best_reward
         #     obspace_total_dims += 20 # best_action
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
-        goal_space = spaces.Box(-np.inf, np.inf, shape=(3,), dtype='float64') # goaldist, goalconv
+        goal_space = spaces.Box(-np.inf, np.inf, shape=(1 + self.cfg.General.GOAL_DERIV_ORDERS,), dtype='float64') # goaldist, goalconv
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
@@ -416,13 +420,13 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
 
-        diff_order = self.cfg.General.WORLD_OBS_DIFFS_ORDER
-        if diff_order > 0:
-            qposs = np.array([q[0] for q in self.ep_states[-(2 ** diff_order):]]) # only enough recent posis for all orders (2^k)
-            qposs = np.pad(qposs, ((2 ** diff_order,0), (0,0))) # pad for always enough recent posis
+        worldderiv_orders = self.cfg.General.OBS_WORLD_DERIV_ORDERS
+        if worldderiv_orders > 0:
+            joint_posis = np.array([q[0] for q in self.ep_states[-(2 ** worldderiv_orders):]]) # only enough recent posis for all orders (2^k)
+            joint_posis = np.pad(joint_posis, ((2 ** worldderiv_orders,0), (0,0))) # pad for always enough recent posis
 
-            for i in range(1, diff_order + 1):
-                obs_world = np.append(obs_world, np.diff(qposs, n=i, axis=0)[-1])
+            for i in range(1, worldderiv_orders + 1):
+                obs_world = np.append(obs_world, np.diff(joint_posis, n=i, axis=0)[-1])
 
         obs = np.append(obs, obs_world)
 
@@ -535,6 +539,7 @@ class PoseImitationEnv(HumanoidEnv):
         # desired_obs = np.append(desired_obs, desired_ob_pose)
 
 
+
         # ========= GOAL
 
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
@@ -546,16 +551,24 @@ class PoseImitationEnv(HumanoidEnv):
         # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
-        # goaldist = self._normalize_unit_limit(goaldist, 0, self.tr_goaldist_max)
-        goalconv = 0
-        goalacce = 0
 
-        is_converging = 0
-        is_seeking_goal = self.ep_num_steps_goal_zone < self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE
-        if len(self.ep_goaldists) > 1:
-            goalconv = self.ep_goaldists[-1] - goaldist
-            goalacce = self.ep_goalconvs[-1] - goalconv
-            is_converging = np.sign(goalconv) / 2 # normalized to [-0.5,0.5]
+        goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
+        goalderivs = np.array([])
+
+        if goalderiv_orders > 0:
+
+            goaldists = np.array(self.ep_goaldists)
+            goaldists = np.append(goaldists, goaldist) # most recent
+            goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)
+            goaldists = np.pad(goaldists, (2 ** goalderiv_orders,0)) # pad for always enough recents
+
+            for i in range(1, goalderiv_orders + 1):
+                goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
+
+
+        obs = np.append(obs, obs_desired.ravel()) # goal
+        obs = np.append(obs, goaldist)
+        obs = np.append(obs, goalderivs)
 
 
         # ========= META OBS
@@ -564,12 +577,10 @@ class PoseImitationEnv(HumanoidEnv):
             obs_meta = np.array([])
             # goalweight_hash = vector_to_uniform_scalar(self.ep_goalweight, len(self.ep_goalweight))
             # obs_meta = np.append(obs_meta, goalweight_hash)
-            obs_meta = np.append(obs_meta, goaldist)
-            obs_meta = np.append(obs_meta, obs_desired.ravel())
+            # obs_meta = np.append(obs_meta, obs_desired.ravel())
             # record_dist = max(0, goaldist - self.tr_goaldist_min)
             # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
-            obs_meta = np.append(obs_meta, goalconv)
-            obs_meta = np.append(obs_meta, np.float_(is_seeking_goal))
+            # obs_meta = np.append(obs_meta, np.float_(is_seeking_goal))
             # obs_meta = np.append(obs_meta, is_converging)
             obs = np.append(obs, obs_meta)
 
@@ -587,7 +598,7 @@ class PoseImitationEnv(HumanoidEnv):
             qvel = self.data.qvel.flat.copy()
             best_embedding = self._normalize_L2(np.hstack((qpos, qvel)))
 
-            reward_current = self.compute_reward(np.array([goaldist, goalconv]), None, None)
+            reward_current = self.compute_reward(np.array([goaldist] + goalderivs.tolist()), None, None)
 
             db_query = self.actiondb.query(
                 query_embeddings=[best_embedding],
@@ -618,7 +629,7 @@ class PoseImitationEnv(HumanoidEnv):
                     metadatas=[{
                         "reward": reward_current,
                         "goaldist": goaldist,
-                        "goalconv": goalconv,
+                        "goalconv": goalderivs[0],
                         }]
                 )
 
@@ -658,10 +669,12 @@ class PoseImitationEnv(HumanoidEnv):
         # achieved_goal = 0.5 * goaldist + 0.5 * goalconv
         # desired_goal = self.ep_reward_threshold
 
+        achieved_goal = np.array([goaldist] + goalderivs.tolist())
+        desired_goal = np.zeros(achieved_goal.shape)  # or arbitrary big numbers for max.??
         dictobs = dict(
             observation=obs,
-            achieved_goal=np.array([goaldist, goalconv, goalacce]),
-            desired_goal=np.array([0, 0, 0]), # or arbitrary big number for max.??
+            achieved_goal=achieved_goal,
+            desired_goal=desired_goal,
         )
 
         # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
@@ -694,71 +707,50 @@ class PoseImitationEnv(HumanoidEnv):
             return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT 
 
         reward = 0
-        goaldist = achieved_goal[0]
-        goalconv = achieved_goal[1]
-        goalacce = achieved_goal[2]
-        # TODO z-score normalisation
-        goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
-        
-        if goaldist <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            if goalconv >= 0:
-                reward = 1
-            elif goalconv < 0 and goalacce > 0:
-                reward = 1
+        diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
 
-        elif goaldist > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            if goalconv > 0 and goalacce >= 0:
-                reward = 1
-            elif goalconv <= 0 and goalacce > 0:
-                reward = 0 # 1 
-            elif goalconv <= 0 and goalacce <= 0:
-                reward = -1
+        # goaldist
+        if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
 
+            for k in range(1, diff_orders + 1):
+                if achieved_goal[k] >= 0:
+                    reward = 1
+                    break
+                
+                # elif achieved_goal[k] < 0 and achieved_goal[k+1] > 0:
+                #     reward = 1
+                #     break
+                # elif achieved_goal[k] < 0 and achieved_goal[k+1] <= 0:
+                #     reward = 0
+                #     break
 
+                # if goalconv >= 0:
+                #     reward = 1
+                # elif goalconv < 0 and goalacce > 0:
+                #     reward = 1
 
-        
+        # goaldist
+        elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
 
-        # if np.mean(np.abs(self.data.qpos[0:2]))
+            for k in range(1, diff_orders):
+                if achieved_goal[k] > 0 and achieved_goal[k+1] >= 0:
+                    reward = 1
+                    break
 
-        # total_vel_diff = np.linalg.norm(np.array(self.ep_states[0][1]) - np.array(self.ep_states[-1][1]), axis=-1)
-        # if startdist > 0.01:
-        #     reward = -1
+                elif achieved_goal[k] <= 0 and achieved_goal[k+1] > 0:
+                    reward = 0 # 1
+                    break
 
+                elif achieved_goal[k] <= 0 and achieved_goal[k+1] <= 0:
+                    reward = -1
+                    break
 
-        # elif goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-        #     # goalzone reached
-        #     reward = 1
-        #     if goalconv > 0.0:
-        #         reward = 2
-        #     reward += fep_num_steps_goal_zone / self.cfg.General.MAX_STEPS_EPISODE_TRUNCATION
-
-        # elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and fep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
-        #     # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
-        #     reward = 0      
-
-        # # TODO maybe last k goalconvs? (also as obs?)
-        # elif goalconv > 0: # goalzone not yet (long enough) reached: dense mode ("reach goal")
-        #     reward = 0.5
-
-
-        # if goaldist < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-        #     # goalzone reached
-        #     reward = 1
-
-        # elif self.cfg.GoalRewardThreshold.IS_SPARSE_MODE_TOGGLE_ENABLED and self.ep_num_steps_goal_zone > self.cfg.GoalRewardThreshold.MIN_STEPS_FOR_SPARSE_MODE_TOGGLE:
-        #     # goalzone long enough reached: toggle sparse mode ("now knows where goal is: hold goal")
-        #     # reward = 0
-        #     # goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
-        #     reward = int(goalconv > 0.0)
-
-        # else: # goalzone not yet (long enough) reached: dense mode ("reach goal")
-        #     goaldist_adapt = self._normalize_unit_limit(goaldist, self.tr_goaldist_min, self.tr_goaldist_max)
-        #     goalconv_adapt = self._normalize_unit_limit(goalconv, self.tr_goalconv_min, self.tr_goalconv_max)
-        #     # goaldist-scaled goalconv (faster converging close to goal (= far from border) is worth)
-        #     # reward = np.mean([(1 - goaldist), goalconv]) # additive
-        #     reward = max(1, (2 - goaldist_adapt)) * goalconv_adapt # multpl. ("rewards better performance even more")
-        #     reward = max(0, reward)
-        #     reward = min(0.9, reward)
+                # if goalconv > 0 and goalacce >= 0:
+                #     reward = 1
+                # elif goalconv <= 0 and goalacce > 0:
+                #     reward = 0 # 1 
+                # elif goalconv <= 0 and goalacce <= 0:
+                #     reward = -1
 
         return np.array([reward])
 
