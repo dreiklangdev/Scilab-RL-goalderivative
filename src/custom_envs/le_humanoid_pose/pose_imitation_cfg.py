@@ -6,10 +6,13 @@ import numpy as np
 class General(base.General):
     MAX_STEPS_EPISODE_TRUNCATION = 1500
 
-    OBS_WORLD_DERIV_ORDERS = 4
-    GOAL_DERIV_ORDERS = 2 # plateaus fast on higher orders: possibly better for multidim.-goal(s)? (order ~ #dims?)
+    OBS_WORLD_DERIV_ORDERS = 4 # finer action selection (possibly better for complex worlds?)
+    # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
+    # needs heterogeneous rewarding!
+    GOAL_DERIV_ORDERS = 4 # finer rewarding: possibly better for complex goal(s)? (multidim.: order ~ #dims?)
     OBS_REWARD_HISTORY_LENGTH = 10
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
+    IS_REWARDING_BINARY = False
 
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
@@ -43,8 +46,6 @@ class General(base.General):
     # vs. "lost in details"
     STEPSKIP_DETECT = 9999999999 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
-
-    MAX_LIVES = 3
 
 
 # vs. single goal proficiency
@@ -86,8 +87,9 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
     # more relevant for envs where goal-state is far from the start
-    IS_ENABLED = True
+    IS_ENABLED = False
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
+    MAX_LIVES = 3
 
 
 # for better reward signal (single-/low-dim., piece-wise emphasize)

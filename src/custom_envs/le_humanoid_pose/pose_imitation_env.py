@@ -227,7 +227,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = 0
         self.ep_goalweight = []
-        self.ep_lives = cfg.General.MAX_LIVES
+        self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
         self.lp_num_steps = 0
 
         # constant threshold
@@ -303,7 +303,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         if goaldist < self.ep_goaldist_min:
             self.ep_goaldist_min = goaldist
-            self.ep_lives = cfg.General.MAX_LIVES
+            self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
 
         if goaldist > self.ep_goaldist_max:
             self.ep_goaldist_max = goaldist
@@ -730,48 +730,29 @@ class PoseImitationEnv(HumanoidEnv):
             # TODO possibly only after reaching goalzone? (in sparse mode)
             # raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
-            # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
-            return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT 
+            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            # return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT 
 
         diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
+        is_rewarding_binary = self.cfg.General.IS_REWARDING_BINARY
 
         # inside goaldist
         if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             reward = 0 # idle
 
-            for k in range(1, diff_orders + 1):
-                if achieved_goal[k] >= 0:
-                    reward = 1
+            for k in range(1, diff_orders):
+                if achieved_goal[k] > 0 and achieved_goal[k+1] > 0: # effort
+                    reward = 1 if is_rewarding_binary else 1/k
                     break
-
-                # if goalconv >= 0:
-                #     reward = 1
-                # elif goalconv < 0 and goalacce > 0:
-                #     reward = 1
 
         # outside goaldist
         elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            reward = 0 # cautious (-1) vs. curious (0)
+            reward = -1 # burn (-1) vs. idle (0)
 
             for k in range(1, diff_orders):
-                if achieved_goal[k] > 0 and achieved_goal[k+1] >= 0:
-                    reward = 1
+                if achieved_goal[k] > 0 and achieved_goal[k+1] > 0: # escape
+                    reward = 1 if is_rewarding_binary else 1/k
                     break
-
-                elif achieved_goal[k] <= 0 and achieved_goal[k+1] > 0:
-                    reward = 0 # explore (0) vs. return asap (1)
-                    break
-
-                elif achieved_goal[k] <= 0 and achieved_goal[k+1] <= 0:
-                    reward = -1
-                    break
-
-                # if goalconv > 0 and goalacce >= 0:
-                #     reward = 1
-                # elif goalconv <= 0 and goalacce > 0:
-                #     reward = 0 # 1 
-                # elif goalconv <= 0 and goalacce <= 0:
-                #     reward = -1
 
         return np.array([reward])
 
@@ -833,7 +814,7 @@ class PoseImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
-        self.ep_lives = cfg.General.MAX_LIVES
+        self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
@@ -892,7 +873,7 @@ class PoseImitationEnv(HumanoidEnv):
 
         if idx_halving > 0: # improved
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
-            self.ep_lives = self.cfg.General.MAX_LIVES
+            self.ep_lives = self.cfg.TrajectoryHalving.MAX_LIVES
 
 
         qpos, qvel = self.ep_states[idx_halving]

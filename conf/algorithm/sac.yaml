@@ -21,8 +21,8 @@ policy: 'MultiInputPolicy' # MlpPolicy
 # n_timesteps: !!float 20000
 # normalize: True
 buffer_size: 1000000
-# ent_coef: 'auto' # reach-exploration
-ent_coef: 'auto_0.01' # hold-conservation
+ent_coef: 'auto' # reach-exploration
+# ent_coef: 'auto_0.01' # hold-conservation
 
 batch_size: 256
 gamma: 0.95
