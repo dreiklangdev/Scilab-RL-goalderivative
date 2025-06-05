@@ -12,7 +12,6 @@ class General(base.General):
     GOAL_DERIV_ORDERS = 4 # finer rewarding: possibly better for complex goal(s)? (multidim.: order ~ #dims?)
     OBS_REWARD_HISTORY_LENGTH = 10
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
-    IS_REWARDING_BINARY = False
 
     LANDMARK_GROUPS = [ # redundant duplicates?
         # [0],                            # nose
