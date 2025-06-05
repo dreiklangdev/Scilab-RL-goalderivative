@@ -727,45 +727,24 @@ class PoseImitationEnv(HumanoidEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
         if achieved_goal.ndim > 1:
-            # TODO possibly only after reaching goalzone? (in sparse mode)
             # raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
             return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             # return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
         diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
+        reward = 0
 
         # inside goaldist
         if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            reward = 0 # idle
-
-            for k in range(1, diff_orders + 1):
-                if achieved_goal[k] > 0: # effort
-                    reward += 1
-
-
-            # if goalconv >= 0:
-            #     reward = 1
-            # elif goalconv < 0 and goalacce > 0:
-            #     reward = 1
-
+            for k in range(1, diff_orders + 1): # every deriv. effort
+                if achieved_goal[k] > 0:
+                    reward += 1/diff_orders
 
         # outside goaldist
         elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            reward = -1 # burn (-1) vs. idle (0)
-
-            for k in range(1, diff_orders):
-                if achieved_goal[k] > 0 and achieved_goal[k+1] > 0: # escape
-                    reward += 1/k
-                elif achieved_goal[k] <= 0 and achieved_goal[k+1] > 0: # escape
-                    reward += 1/k
-
-            # if goalconv > 0 and goalacce >= 0:
-            #     reward = 1
-            # elif goalconv <= 0 and goalacce > 0:
-            #     reward = 0 # 1 
-            # elif goalconv <= 0 and goalacce <= 0:
-            #     reward = -1
+            if achieved_goal[diff_orders] > 0: # only last deriv. effort (temp. "squashed mean")
+                reward += 1/diff_orders
 
         return np.array([reward])
 
