@@ -129,9 +129,9 @@ def  get_algo_instance(cfg, logger, env):
 
         # https://datascience.stackexchange.com/questions/26021/negative-rewards-and-activation-functions
         # outputs smoother action [-1,1]
-        # activation_fn=nn.Tanh,
+        activation_fn=nn.Tanh,
         # not for negative inputs? (clips off!) [0,1]
-        activation_fn=nn.ReLU,
+        # activation_fn=nn.ReLU,
 
         # net_arch=[64, 64],
         # outputs more diverse action (complex input spaces)

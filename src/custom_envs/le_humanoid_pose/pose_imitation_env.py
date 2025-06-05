@@ -260,7 +260,7 @@ class PoseImitationEnv(HumanoidEnv):
         info['success'] = False
 
         # reduce action space?
-        action = np.clip(action, -np.pi/2, np.pi/2)
+        # action = np.clip(action, -np.pi/2, np.pi/2)
         self.do_simulation(action, self.frame_skip)
         self.ep_num_steps += 1
         self.tr_num_steps += 1
