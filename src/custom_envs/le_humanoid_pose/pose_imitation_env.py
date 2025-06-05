@@ -485,11 +485,8 @@ class PoseImitationEnv(HumanoidEnv):
         # ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
         # obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
 
-        head_velo_x = self._normalize_unit_limit(self.data.qvel[0], -1, 1)
-        head_velo_y = self._normalize_unit_limit(self.data.qvel[1], -1, 1)
         head_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
-        ob_achieved_velo = np.abs(np.mean([head_velo_x, head_velo_y, head_velo_z]))
-        obs_achieved = np.append(obs_achieved, ob_achieved_velo)
+        obs_achieved = np.append(obs_achieved, head_velo_z)
 
         ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
         # ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
@@ -729,22 +726,24 @@ class PoseImitationEnv(HumanoidEnv):
         if achieved_goal.ndim > 1:
             # raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
-            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
-            # return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
+            # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
         diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
-        reward = 0
 
         # inside goaldist
         if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            reward = 1
             for k in range(1, diff_orders + 1): # every deriv. effort
-                if achieved_goal[k] > 0:
-                    reward += 1/diff_orders
+                if achieved_goal[k] > 0: # from goal
+                    reward -= 1 / diff_orders
 
         # outside goaldist
         elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            if achieved_goal[diff_orders] > 0: # only last deriv. effort (temp. "squashed mean")
-                reward += 1/diff_orders
+            reward = 0
+            for k in range(1, diff_orders + 1):
+                if achieved_goal[k] < 0: # to goal
+                    reward += 1 / diff_orders
 
         return np.array([reward])
 
