@@ -563,7 +563,7 @@ class PoseImitationEnv(HumanoidEnv):
             goaldists = np.array(self.ep_goaldists)
             goaldists = np.append(goaldists, goaldist) # most recent
             goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)
-            goaldists = np.pad(goaldists, (2 ** goalderiv_orders,0)) # pad for always enough recents
+            goaldists = np.pad(goaldists, (2 ** goalderiv_orders,0)) # pad for more than enough recents
 
             for i in range(1, goalderiv_orders + 1):
                 goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
@@ -733,31 +733,25 @@ class PoseImitationEnv(HumanoidEnv):
             # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT 
 
-        reward = 0
         diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
 
-        # goaldist
+        # inside goaldist
         if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            reward = 0 # idle
 
             for k in range(1, diff_orders + 1):
                 if achieved_goal[k] >= 0:
                     reward = 1
                     break
-                
-                # elif achieved_goal[k] < 0 and achieved_goal[k+1] > 0:
-                #     reward = 1
-                #     break
-                # elif achieved_goal[k] < 0 and achieved_goal[k+1] <= 0:
-                #     reward = 0
-                #     break
 
                 # if goalconv >= 0:
                 #     reward = 1
                 # elif goalconv < 0 and goalacce > 0:
                 #     reward = 1
 
-        # goaldist
+        # outside goaldist
         elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+            reward = 0 # cautious (-1) vs. curious (0)
 
             for k in range(1, diff_orders):
                 if achieved_goal[k] > 0 and achieved_goal[k+1] >= 0:
@@ -765,7 +759,7 @@ class PoseImitationEnv(HumanoidEnv):
                     break
 
                 elif achieved_goal[k] <= 0 and achieved_goal[k+1] > 0:
-                    reward = 0 # 1
+                    reward = 0 # explore (0) vs. return asap (1)
                     break
 
                 elif achieved_goal[k] <= 0 and achieved_goal[k+1] <= 0:

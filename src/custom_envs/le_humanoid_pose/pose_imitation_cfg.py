@@ -6,7 +6,7 @@ import numpy as np
 class General(base.General):
     MAX_STEPS_EPISODE_TRUNCATION = 1500
 
-    OBS_WORLD_DERIV_ORDERS = 5
+    OBS_WORLD_DERIV_ORDERS = 4
     GOAL_DERIV_ORDERS = 2 # plateaus fast on higher orders: possibly better for multidim.-goal(s)? (order ~ #dims?)
     OBS_REWARD_HISTORY_LENGTH = 10
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
