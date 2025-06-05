@@ -358,7 +358,7 @@ class PoseImitationEnv(HumanoidEnv):
 
             elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
                 terminated = True
-                # reward = -1
+                reward = -1
                 LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
 
 
@@ -734,16 +734,24 @@ class PoseImitationEnv(HumanoidEnv):
         # inside goaldist
         if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             reward = 1
-            for k in range(1, diff_orders + 1): # every deriv. effort
-                if achieved_goal[k] > 0: # from goal
-                    reward -= 1 / diff_orders
+            # for k in range(1, diff_orders + 1): # every deriv. effort
+            #     if achieved_goal[k] > 0: # from goal
+            #         reward -= 1 / diff_orders
+
+            # if achieved_goal[diff_orders] > 0: # from goal
+            #     reward -= 1 / diff_orders
+            if achieved_goal[1] > 0 and achieved_goal[2] > 0 and achieved_goal[3] > 0 and achieved_goal[4] > 0: # to goal
+                reward = 0.5
 
         # outside goaldist
         elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            reward = 0
-            for k in range(1, diff_orders + 1):
-                if achieved_goal[k] < 0: # to goal
-                    reward += 1 / diff_orders
+            reward = -1
+            # for k in range(1, diff_orders + 1):
+            #     if achieved_goal[k] < 0: # to goal
+            #         reward += 1 / diff_orders
+
+            if achieved_goal[1] < 0 and achieved_goal[2] < 0 and achieved_goal[3] < 0 and achieved_goal[4] < 0: # to goal
+                reward = -0.5
 
         return np.array([reward])
 
