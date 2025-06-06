@@ -729,41 +729,35 @@ class PoseImitationEnv(HumanoidEnv):
             # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
-        diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
-
         threshold_hold = (0 + cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
         threshold_seek = (self.tr_goaldist_max - cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
         threshold_escape = self.tr_goaldist_max
 
         INCL_PHASE_GOALSEEK = False
 
-
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
 
-        #     if achieved_goal[1] > 0 and achieved_goal[2] > 0 and achieved_goal[3] > 0 and achieved_goal[4] > 0: # from goal
-            if np.mean([achieved_goal[1], achieved_goal[2], achieved_goal[3], achieved_goal[4]]) > 0:
+            # if np.all(achieved_goal[1:] > 0):
+            if np.mean(achieved_goal[1:]) > 0:
                 reward = 0.5 if INCL_PHASE_GOALSEEK else 0
        
         elif INCL_PHASE_GOALSEEK and achieved_goal[0] <= threshold_seek:
             reward = 0.5
 
-            if np.mean([achieved_goal[1], achieved_goal[2], achieved_goal[3], achieved_goal[4]]) > 0:
+            if np.mean(achieved_goal[1:]) > 0:
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
-        #     if achieved_goal[1] < 0 or achieved_goal[2] < 0 or achieved_goal[3] < 0 or achieved_goal[4] < 0: # to goal
-            if np.mean([achieved_goal[1], achieved_goal[2], achieved_goal[3], achieved_goal[4]]) > 0:
+            # if np.any(achieved_goal[1:] > 0):
+            if np.mean(achieved_goal[1:]) > 0:
                 reward = -1 # no
 
-
-       
         else:
             reward = -1
-            print('missing reward cases')
-
+            LOG.warning('unhandled reward case.')
 
         return np.array([reward])
 
