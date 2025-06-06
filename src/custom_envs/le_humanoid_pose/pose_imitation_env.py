@@ -731,31 +731,39 @@ class PoseImitationEnv(HumanoidEnv):
 
         diff_orders = self.cfg.General.GOAL_DERIV_ORDERS
 
-        # inside goaldist
-        if achieved_goal[0] <= cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            reward = 1
-            # for k in range(1, diff_orders + 1): # every deriv. effort
-            #     if achieved_goal[k] > 0: # from goal
-            #         reward -= 1 / diff_orders
+        threshold_hold = (0 + cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
+        threshold_seek = (self.tr_goaldist_max - cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
+        threshold_escape = self.tr_goaldist_max
 
-            # if achieved_goal[diff_orders] > 0: # from goal
-            #     reward -= 1 / diff_orders
-            if achieved_goal[1] > 0 and achieved_goal[2] > 0 and achieved_goal[3] > 0 and achieved_goal[4] > 0: # from goal
-                reward = 0.5
+        INCL_PHASE_GOALSEEK = False
 
 
-        # outside goaldist
-        elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
+        if achieved_goal[0] <= threshold_hold:
+            reward = 1 # yes
+
+        #     if achieved_goal[1] > 0 and achieved_goal[2] > 0 and achieved_goal[3] > 0 and achieved_goal[4] > 0: # from goal
+            if np.mean([achieved_goal[1], achieved_goal[2], achieved_goal[3], achieved_goal[4]]) > 0:
+                reward = 0.5 if INCL_PHASE_GOALSEEK else 0
+       
+        elif INCL_PHASE_GOALSEEK and achieved_goal[0] <= threshold_seek:
+            reward = 0.5
+
+            if np.mean([achieved_goal[1], achieved_goal[2], achieved_goal[3], achieved_goal[4]]) > 0:
+                reward = 0
+
+        elif achieved_goal[0] <= threshold_escape:
+            reward = 0
+
+        #     if achieved_goal[1] < 0 or achieved_goal[2] < 0 or achieved_goal[3] < 0 or achieved_goal[4] < 0: # to goal
+            if np.mean([achieved_goal[1], achieved_goal[2], achieved_goal[3], achieved_goal[4]]) > 0:
+                reward = -1 # no
+
+
+       
+        else:
             reward = -1
-            # for k in range(1, diff_orders + 1):
-            #     if achieved_goal[k] < 0: # to goal
-            #         reward += 1 / diff_orders
+            print('missing reward cases')
 
-            if achieved_goal[1] < 0 or achieved_goal[2] < 0 or achieved_goal[3] < 0 or achieved_goal[4] < 0: # to goal
-                reward = 0.5
-
-        # reward *= self.ep_num_steps
-        # reward *= (cfg.General.EPISODE_TRUNCATION_STEPS_MAX - self.ep_num_steps)
 
         return np.array([reward])
 
