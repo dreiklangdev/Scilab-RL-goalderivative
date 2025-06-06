@@ -344,8 +344,8 @@ class PoseImitationEnv(HumanoidEnv):
             # BORDER_HEIGHT_MIN = 0.2 # op3
             BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
-            if self.ep_rewards_sum < -30:
-                terminated = True
+            # if self.ep_rewards_sum < -30:
+            #     terminated = True
 
             # if reward <= 0:
             #     terminated = True
@@ -356,7 +356,7 @@ class PoseImitationEnv(HumanoidEnv):
             #     # reward = -1
             #     LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
 
-            elif self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+            if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
                 terminated = True
                 reward = -1
                 LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
@@ -740,8 +740,9 @@ class PoseImitationEnv(HumanoidEnv):
 
             # if achieved_goal[diff_orders] > 0: # from goal
             #     reward -= 1 / diff_orders
-            if achieved_goal[1] > 0 and achieved_goal[2] > 0 and achieved_goal[3] > 0 and achieved_goal[4] > 0: # to goal
+            if achieved_goal[1] > 0 and achieved_goal[2] > 0 and achieved_goal[3] > 0 and achieved_goal[4] > 0: # from goal
                 reward = 0.5
+
 
         # outside goaldist
         elif achieved_goal[0] > cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
@@ -750,8 +751,11 @@ class PoseImitationEnv(HumanoidEnv):
             #     if achieved_goal[k] < 0: # to goal
             #         reward += 1 / diff_orders
 
-            if achieved_goal[1] < 0 and achieved_goal[2] < 0 and achieved_goal[3] < 0 and achieved_goal[4] < 0: # to goal
-                reward = -0.5
+            if achieved_goal[1] < 0 or achieved_goal[2] < 0 or achieved_goal[3] < 0 or achieved_goal[4] < 0: # to goal
+                reward = 0.5
+
+        # reward *= self.ep_num_steps
+        # reward *= (cfg.General.EPISODE_TRUNCATION_STEPS_MAX - self.ep_num_steps)
 
         return np.array([reward])
 
