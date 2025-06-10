@@ -424,16 +424,18 @@ class PoseImitationEnv(HumanoidEnv):
         # obs_world = np.append(obs_world, ob_primary_r_foot_touch)
 
         obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
+        obs = np.append(obs, obs_world)
 
+        obs_worldderivs = np.array([])
         worldderiv_orders = self.cfg.General.OBS_WORLD_DERIV_ORDERS
         if worldderiv_orders > 0:
             joint_posis = np.array([q[0] for q in self.ep_states[-(2 ** worldderiv_orders):]]) # only enough recent posis for all orders (2^k)
             joint_posis = np.pad(joint_posis, ((2 ** worldderiv_orders,0), (0,0))) # pad for always enough recent posis
 
             for i in range(1, worldderiv_orders + 1):
-                obs_world = np.append(obs_world, np.diff(joint_posis, n=i, axis=0)[-1])
+                obs_worldderivs = np.append(obs_worldderivs, np.diff(joint_posis, n=i, axis=0)[-1])
 
-        obs = np.append(obs, obs_world)
+        obs = np.append(obs, obs_worldderivs)
 
 
         # needs denoising for (near-)linearity in NN

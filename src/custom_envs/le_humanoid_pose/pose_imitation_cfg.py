@@ -86,7 +86,7 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
     # more relevant for envs where goal-state is far from the start
-    IS_ENABLED = True
+    IS_ENABLED = False
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
     MAX_LIVES = 3
 
