@@ -174,6 +174,12 @@ def register_custom_envs():
         max_episode_steps=1500,
     )
 
+    register(
+        id="le-hand-imitation-v1",
+        entry_point='custom_envs.le_humanoid_hand.hand_imitation_env:HandImitationEnv',
+        max_episode_steps=1500,
+    )
+
 
 def register_metaworld_envs():
     for env_name, env_class in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE.items():

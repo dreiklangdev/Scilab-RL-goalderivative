@@ -1,12 +1,13 @@
 
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 import time
+import copy
 import logging
 import git
 import uuid
-import chromadb
 from types import SimpleNamespace
-from . import pose_imitation_cfg as cfg
+from . import hand_imitation_cfg as cfg
 from gymnasium import spaces
 
 import multiprocessing
@@ -31,9 +32,9 @@ consoleHandler.setFormatter(logging.Formatter(fmt='%(message)s'))
 LOG.addHandler(consoleHandler)
 
 BaseOptions = mp.tasks.BaseOptions
-PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+HandLandmarker = mp.tasks.vision.HandLandmarker
+HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
-PoseLandmarker = mp.tasks.vision.PoseLandmarker
 
 PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tree_dir
 
@@ -84,31 +85,19 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://cookbook.chromadb.dev/running/performance-tips/#__tabbed_1_1
 
 
-ACTION_OBS_IS_ENABLED = False
 
-
-
-# 1M, convRewarding, groundContactTerm., metaGoals0.5, threshold0.05:  converging, no pleateaus yet /home/t14/Documents/tuhh/dsf/Scilab-RL/data/053b120/le-pose-imitation-v4/10-43-06/rl_model_finished
-# 1M(!!!!), posConvRewardingOnly, no goalzone, meanTermPen: clear converging, no plateau yet restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/7aca00b/le-pose-imitation-v4/18-52-08/rl_model_finished
-
-# 0.1M, convRewMagNorm, no HER:     uses some momentum /home/t14/Documents/tuhh/dsf/Scilab-RL/data/62fb159/le-pose-imitation-v4/13-13-53/rl_model_finished
-# 0.1M, convRewMagNorm, HER:    uses arms to support /home/t14/Documents/tuhh/dsf/Scilab-RL/data/62fb159/le-pose-imitation-v4/13-13-53/rl_model_finished
-
-# TODO cleansac#296: add locality propagation exps. to HER?
 # TODO obs appender func with limits warning (for normalization(!))
-class PoseImitationEnv(HumanoidEnv):
+class HandImitationEnv(HumanoidEnv):
 
 
-    def __init__(self, is_eval=False, is_render=True, log_level=logging.INFO):
+    def __init__(self, is_eval=False, is_render=True, is_plot=True, log_level=logging.INFO):
         LOG.setLevel(log_level)
 
         HumanoidEnv.__init__(self,
                              exclude_current_positions_from_observation=True,
                              width=cfg.General.RENDER_IMAGE_SIZE,
                              height=cfg.General.RENDER_IMAGE_SIZE,
-                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/humanoid.xml')
-                            #  xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/robotis_op3/scene.xml')
-                            #  xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_pose/agility_cassie/scene.xml')
+                             xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_hand/adroit_hand/adroit_relocate.xml')
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
         assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
@@ -116,17 +105,17 @@ class PoseImitationEnv(HumanoidEnv):
         self.cfg = cfg
         self.is_render = is_render
         self.is_eval = is_eval
+        self.is_plot = is_plot
         self.outfile_fep_num_steps_goal_zone = open('fep_num_steps_goal_zone.dat', 'a')
 
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose2.jpg')
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/pose1.jpg')
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand1.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
         self.desired_pose = None
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
-        self.landmarker_options_achieved = PoseLandmarkerOptions(
+        self.landmarker_options_achieved = HandLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/pose_landmarker_full.task',            
+                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/hand_landmarker.task',          
                 # cpu vs gpu
                 # https://forums.developer.nvidia.com/t/how-to-install-opengl-libs-of-nvidia/175409
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
@@ -137,34 +126,32 @@ class PoseImitationEnv(HumanoidEnv):
                 # MUJOCO_GL=egl|glfw|osmesa %python ...% (glfw seems fastest)
                 delegate=BaseOptions.Delegate.GPU),
             running_mode=VisionRunningMode.VIDEO,
-            min_pose_detection_confidence=0.5,
-            min_pose_presence_confidence=0.5)
-        self.landmarker_achieved = PoseLandmarker.create_from_options(self.landmarker_options_achieved)
+            min_hand_detection_confidence=0.1,
+            min_hand_presence_confidence=0.1,
+            min_tracking_confidence=0.1)
+        self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
 
-        self.landmarker_options_desired = PoseLandmarkerOptions(
+        self.landmarker_options_desired = HandLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/pose_landmarker_lite.task',            
+                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/hand_landmarker.task',          
                 delegate=BaseOptions.Delegate.GPU),
             running_mode=VisionRunningMode.IMAGE,
-            min_pose_detection_confidence=0.1,
-            min_pose_presence_confidence=0.1)
-        self.landmarker_desired = PoseLandmarker.create_from_options(self.landmarker_options_desired)
+            min_hand_detection_confidence=0.1,
+            min_hand_presence_confidence=0.1,
+            min_tracking_confidence=0.1)
+        self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
         obspace_total_dims = 0
-        if ACTION_OBS_IS_ENABLED:
-            obspace_total_dims += self.action_space.shape[0] # action
 
         # world obs
         obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += self.data.qpos.shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-diffs
 
         # achieved obs
-        obspace_total_dims += 2 # achieved: velo-z, height
-        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
+        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         # desired obs
-        obspace_total_dims += 2 # desired: velo-z, height
-        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
 
         # goal obs
         obspace_total_dims += 1 + self.cfg.General.GOAL_DERIV_ORDERS
@@ -173,14 +160,6 @@ class PoseImitationEnv(HumanoidEnv):
         obspace_total_dims += 1 + self.cfg.General.OBS_REWARD_HISTORY_LENGTH
         obspace_total_dims += self.cfg.General.REWARD_DERIV_ORDERS
 
-
-        # if self.cfg.MetaObservation.IS_ENABLED:
-            # obspace_total_dims += 3 # goaldist, goal_convergence, is_seeking_goal
-            # obspace_total_dims += 2 # desired: velo-z, height
-        
-        # if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
-        #     obspace_total_dims += 2 # best_similarity, best_reward
-        #     obspace_total_dims += 20 # best_action
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(1 + self.cfg.General.GOAL_DERIV_ORDERS,), dtype='float64') # goaldist, goalconv
@@ -235,20 +214,13 @@ class PoseImitationEnv(HumanoidEnv):
         self.landmarker_achieved = None
         self.landmarker_desired = None
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
-        self.last_ob_pose_desired = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
+        self.last_ob_desired_pose = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
-        # vecDB
-        chroma_client = chromadb.EphemeralClient()
-        if is_eval:
-            # https://cookbook.chromadb.dev/core/collections/#collection-properties
-            self.actiondb = chroma_client.create_collection(name='obs_eval', metadata={'hnsw:space': 'cosine'}) # l2, cosine, ip
-        else:
-            self.actiondb = chroma_client.create_collection(name='obs_train', metadata={'hnsw:space': 'cosine'})
 
-        # if self.is_plot:
-        #     self.parallel_plot_queue = multiprocessing.Queue()
-        #     multiprocessing.log_to_stderr(logging.DEBUG)
-        #     multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
+        if self.is_plot:
+            self.parallel_plot_queue = multiprocessing.Queue()
+            multiprocessing.log_to_stderr(logging.DEBUG)
+            multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
 
         self._reset()
         LOG.debug('le-walker-2d initialized.')
@@ -282,14 +254,6 @@ class PoseImitationEnv(HumanoidEnv):
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
         self.ep_rewards.append(reward)
 
-        if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
-            # currently: adding db-obs worsens performance/rewards
-            # TODO polluted: keep only the best of the best! (needs cleaning/denoising/filtering) ("king-of-the-canyon")
-            actiondb_best_embedding = obs['observation'].dtype.metadata['actiondb_best_embedding']
-            actiondb_best_id = obs['observation'].dtype.metadata['actiondb_best_id']
-            actiondb_best_reward = obs['observation'].dtype.metadata['actiondb_best_reward']
-            actiondb_best_similarity = obs['observation'].dtype.metadata['actiondb_best_similarity']
-            self.ep_actiondb_similarity_mean = (((self.tr_num_steps - 1) * self.ep_actiondb_similarity_mean) + actiondb_best_similarity) / (self.tr_num_steps)
 
         # records                    
         if goaldist < self.tr_goaldist_min:
@@ -350,15 +314,15 @@ class PoseImitationEnv(HumanoidEnv):
             #     terminated = True
 
             # # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
-            # elif len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
-            #     terminated = True
-            #     # reward = -1
-            #     LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
-
-            if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+            if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
                 terminated = True
-                reward = -1
-                LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
+                # reward = -1
+                LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
+
+            # if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
+            #     terminated = True
+            #     reward = -1
+            #     LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
 
 
             # min. convergence terminate? ("flaming wall")
@@ -406,25 +370,9 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs_world = np.array([])
 
-        # stabilizer
-        # ob_achieved_primary_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        # obs_world = np.append(obs_world, ob_achieved_primary_height)
-
-        # ob_primary_velo_head = np.sqrt(np.square(self.data.qvel[0]) + np.square(self.data.qvel[1]) + np.square(self.data.qvel[2]))
-        # obs_world = np.append(obs_world, ob_primary_velo_head)
-
-        # ob_primary_acc_head = self._normalize_unit_limit(self.data.sensor('head_acc_sensor').data, -50, 50) # op3
-        # obs_world = np.append(obs_world, ob_primary_acc_head) # 3
-
-        # ob_primary_l_foot_touch = self._normalize_unit_limit(self.data.sensor('l_foot_touch_sensor').data, 0, 100) # op3
-        # obs_world = np.append(obs_world, ob_primary_l_foot_touch)
-
-        # ob_primary_r_foot_touch = self._normalize_unit_limit(self.data.sensor('r_foot_touch_sensor').data, 0, 100) # op3
-        # obs_world = np.append(obs_world, ob_primary_r_foot_touch)
-
         obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
         obs = np.append(obs, obs_world)
-
+        
         obs_worldderivs = np.array([])
         worldderiv_orders = self.cfg.General.OBS_WORLD_DERIV_ORDERS
         if worldderiv_orders > 0:
@@ -440,77 +388,86 @@ class PoseImitationEnv(HumanoidEnv):
         # needs denoising for (near-)linearity in NN
         # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
         # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
-        # # detect pose(s) only every nth step, else use last valid
-        # if not self.desired_pose or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-        #     # renders only rgb (cant render multiple modes simultanously)
-        #     render_tmp = self.render_mode
-        #     self.render_mode = 'rgb_array'
+        # detect pose(s) only every nth step, else use last valid
+        if not self.desired_pose or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
+            # renders only rgb (cant render multiple modes simultanously)
+            render_tmp = self.render_mode
+            self.render_mode = 'rgb_array'
 
-        #     # https://github.com/jurgisp/memory-maze/issues/26
-        #     achieved_img = self.render().copy() # MUJOCO_GL=glfw
-        #     self.render_mode = render_tmp
-        #     achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
-        #     # TODO get desired img from video?
-        #     desired_img = self.desired_img
+            # https://github.com/jurgisp/memory-maze/issues/26
+            achieved_img = self.render().copy() # MUJOCO_GL=glfw
+            self.render_mode = render_tmp
+            achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
+            # TODO get desired img from video?
+            desired_img = self.desired_img
 
-        #     # bottleneck start
-        #     # t = time.perf_counter()
-        #     # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
-        #     # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
-        #     # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
+            # bottleneck start
+            # t = time.perf_counter()
+            # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
+            # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
+            # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
 
-        #     if not self.desired_pose:
-        #         # only once at the beginning (still image)
-        #         self.desired_pose = self.landmarker_desired.detect(desired_img)
-        #     # LOG.debug(time.perf_counter() - t)
-        #     # bottleneck end
+            if not self.desired_pose:
+                # only once at the beginning (still image)
+                self.desired_pose = self.landmarker_desired.detect(desired_img)
+            # LOG.debug(time.perf_counter() - t)
+            # bottleneck end
 
-        # desired_pose = self.desired_pose
-
-
-        # =========== ACTION OBS
-
-        if ACTION_OBS_IS_ENABLED:
-            if len(self.ep_actions) >= 2:
-                obs = np.append(obs, self.ep_actions[-2]) # prev action
-            else:
-                obs = np.append(obs, np.zeros(self.action_space.shape)) # no/first action
+        desired_pose = self.desired_pose
 
 
-        
+
         # ========= ACHIEVED OBS
 
         obs_achieved = np.array([])
 
-        # velo-z
-        # ob_achieved_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
-        # obs_achieved = np.append(obs_achieved, ob_achieved_velo_z)
+        if desired_pose.hand_landmarks:
+            achieved_pose = copy.deepcopy(desired_pose)
 
-        head_velo_z = self._normalize_unit_limit(self.data.qvel[2], -1, 1)
-        obs_achieved = np.append(obs_achieved, head_velo_z)
+            # if desired_pose.hand_landmarks[0][0].x != 0.0: 
+            #     # origin
+            #     translation_x = desired_pose.hand_landmarks[0][0].x
+            #     translation_y = desired_pose.hand_landmarks[0][0].y
+            #     translation_z = desired_pose.hand_landmarks[0][0].z
 
-        ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 2.0) # gym-humanoid
-        # ob_achieved_height = self._normalize_unit_limit(self.data.qpos[2], 0.0, 0.3) # op3
-        obs_achieved = np.append(obs_achieved, ob_achieved_height) # ob_primary_height
+            #     for landmark in desired_pose.hand_landmarks[0]:
+            #         landmark.x -= translation_x
+            #         landmark.y -= translation_y
+            #         landmark.z -= translation_z
+
+            for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
+                if body_id:
+                    achieved_pose.hand_landmarks[0][i].x = self.data.body(body_id).xpos[0]
+                    achieved_pose.hand_landmarks[0][i].y = -self.data.body(body_id).xpos[2]
+                    achieved_pose.hand_landmarks[0][i].z = self.data.body(body_id).xpos[1]
+
+                    # origin: wrist
+                    # achieved_pose.hand_landmarks[0][i].x -= self.data.body('wrist').xpos[0]
+                    # achieved_pose.hand_landmarks[0][i].y -= self.data.body('wrist').xpos[2]
+                    # achieved_pose.hand_landmarks[0][i].z -= self.data.body('wrist').xpos[1]
+
+                    achieved_pose.hand_landmarks[0][i].x *= 3
+                    achieved_pose.hand_landmarks[0][i].y *= 3
+                    achieved_pose.hand_landmarks[0][i].z *= 3
+
+                    # translate: desired-wrist
+                    # achieved_pose.hand_landmarks[0][i].x += desired_pose.hand_landmarks[0][0].x
+                    # achieved_pose.hand_landmarks[0][i].y += desired_pose.hand_landmarks[0][0].y
+                    # achieved_pose.hand_landmarks[0][i].z += desired_pose.hand_landmarks[0][0].z
+
+                else:
+                    achieved_pose.hand_landmarks[0][i].x = -1
+                    achieved_pose.hand_landmarks[0][i].y = -1
+                    achieved_pose.hand_landmarks[0][i].z = -1
 
 
-        # obs_achieved = np.append(obs_achieved, obs[1]) # ob_primary_velo_head
-
-        # if desired_pose.pose_world_landmarks:
-        #     achieved_pose = copy.deepcopy(desired_pose)
-        #     # body
-        #     # TODO extend/unite with geom?
-        #     for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
-        #         if body_id:
-        #             achieved_pose.pose_world_landmarks[0][i].x = self.data.body(body_id).xpos[0] * 3.6
-        #             achieved_pose.pose_world_landmarks[0][i].z = self.data.body(body_id).xpos[1] * 3.6
-        #             achieved_pose.pose_world_landmarks[0][i].y = -self.data.body(body_id).xpos[2] * 3.6 + 0.85
-        #         else:
-        #             achieved_pose.pose_world_landmarks[0][i].x = -1
-        #             achieved_pose.pose_world_landmarks[0][i].y = -1
-        #             achieved_pose.pose_world_landmarks[0][i].z = -1
-
-        # achieved_obs = np.append(achieved_obs, achieved_ob_pose)
+        ob_achieved_pose = np.array([])
+        if achieved_pose.hand_landmarks:
+            # only first detected pose
+            ob_achieved_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.hand_landmarks[0]]
+            ob_achieved_pose = np.array(ob_achieved_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
+            ob_achieved_pose = self._normalize_unit_limit(ob_achieved_pose, -2, 2)
+        obs_achieved = np.append(obs_achieved, ob_achieved_pose)
 
         obs = np.append(obs, obs_achieved)
 
@@ -519,27 +476,14 @@ class PoseImitationEnv(HumanoidEnv):
 
         obs_desired = np.array([])
 
-        ob_desired_velo_z = 0.5
-        obs_desired = np.append(obs_desired, ob_desired_velo_z) # velo-z
-
-        ob_desired_height = self._normalize_unit_limit(1.4, 0.0, 2.0) # gym-humanoid
-        # ob_desired_height = self._normalize_unit_limit(0.3, 0.0, 0.3) # height (op3)
-        obs_desired = np.append(obs_desired, ob_desired_height)
-
-        # ob_desired_primary_velo_head = 0
-        # obs_desired = np.append(obs_desired, ob_desired_primary_velo_head)
-
-        # desired_ob_pose = self.last_ob_pose_desired
-        # # desired_ob_pose = self.last_ob_pose_desired
-        # if desired_pose.pose_world_landmarks:
-        #     # only first detected pose
-        #     # desired_ob_pose = [(landmark.x, landmark.y - 1.2, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-        #     desired_ob_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.pose_world_landmarks[0]]
-        #     desired_ob_pose = np.array(desired_ob_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
-        #     desired_ob_pose = self._normalize_to_limits(desired_ob_pose, -1, 1)
-        #     # TODO check if detected pose is valid/possible (height, change, confidence etc.)
-        #     self.last_ob_pose_desired = desired_ob_pose
-        # desired_obs = np.append(desired_obs, desired_ob_pose)
+        ob_desired_pose = self.last_ob_desired_pose
+        if desired_pose.hand_landmarks:
+            # only first detected pose
+            ob_desired_pose = [(landmark.x, landmark.y, landmark.z) for landmark in desired_pose.hand_landmarks[0]]
+            ob_desired_pose = np.array(ob_desired_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
+            ob_desired_pose = self._normalize_unit_limit(ob_desired_pose, -2, 2)
+            self.last_ob_desired_pose = ob_desired_pose
+        obs_desired = np.append(obs_desired, ob_desired_pose)
 
 
 
@@ -585,7 +529,8 @@ class PoseImitationEnv(HumanoidEnv):
             obs = np.append(obs, obs_meta)
 
 
-        # ========= REWARD OBS 
+        # ========= REWARD OBS
+
         reward = self.compute_reward(np.array([goaldist] + goalderivs.tolist()), None, None)
         history_length = self.cfg.General.OBS_REWARD_HISTORY_LENGTH
         reward_history = np.resize(self.ep_rewards[-history_length:], history_length)
@@ -606,94 +551,6 @@ class PoseImitationEnv(HumanoidEnv):
         obs = np.append(obs, rewardderivs)
     
 
-            # obs = obs.astype(np.dtype(float, metadata={
-            #     'reward': reward,
-            #     }))
-
-
-        # ========= DB ACTION OBS
-
-        if self.cfg.DbObservation.IS_ACTIONDB_ENABLED:
-            # find best action for current state
-            best_id = None
-            best_similarity = 0
-            best_reward = 0
-            best_action = np.zeros(self.action_space.shape)
-
-            qpos = self.data.qpos.flat.copy()
-            qvel = self.data.qvel.flat.copy()
-            best_embedding = self._normalize_L2(np.hstack((qpos, qvel)))
-
-
-            db_query = self.actiondb.query(
-                query_embeddings=[best_embedding],
-                n_results=1,
-                # TODO also filter by goaldist?
-                # performance worsens gradually with db size
-                # where={'reward': {'$gt': reward_current}},
-            )
-
-            if len(db_query['ids'][0]) > 0:
-                # db action found
-                best_id = db_query['ids'][0][0]
-                best_similarity = db_query['distances'][0][0]
-                best_action = np.fromstring(db_query['documents'][0][0].strip('[]'), sep=',')
-                best_reward = db_query['metadatas'][0][0]['reward']
-
-                # if best_similarity < 0.01 and best_reward > reward_current:
-                #     LOG.debug('db action is better than chosen action: %s > %s (%s)', best_reward, reward_current, best_similarity)
-
-            if reward > 0 and len(self.ep_states) >= 2:
-                # save chosen action for prev state to actiondb
-                (prev_qpos, prev_qvel) = self.ep_states[-2]
-                self.actiondb.add(
-                    embeddings=[np.hstack((prev_qpos, prev_qvel))],
-                    documents=[np.array2string(self.ep_actions[-2], separator=',', precision=16)],
-                    # https://cookbook.chromadb.dev/faq/#large-distances-in-search-results
-                    ids=[uuid.uuid4().hex],
-                    metadatas=[{
-                        "reward": reward,
-                        "goaldist": goaldist,
-                        "goalconv": goalderivs[0],
-                        }]
-                )
-
-                    # if reward > actiondb_best_reward and actiondb_best_similarity < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD:
-                        # # better action in proximity: replace neighbor
-                        # if actiondb_best_id:
-                        #     LOG.info('DB IMPROVED. %s > %s', reward, actiondb_best_reward)
-
-                        #     db_query = self.actiondb.query(
-                        #         include=['distances'],
-                        #         query_embeddings=[actiondb_best_embedding],
-                        #         n_results=100,
-                        #     )
-
-                        #     ids = np.array(db_query['ids'][0])
-                        #     dists = np.array(db_query['distances'][0])
-                        #     self.actiondb.delete(
-                        #         ids=ids[np.argwhere(dists < cfg.DbObservation.ACTIONDB_SIMILARITY_THRESHOLD)].ravel().tolist()
-                        #     )
-
-
-            # too much context necessary?
-            obs = np.append(obs, best_similarity)
-            obs = np.append(obs, best_reward)
-            # directed: action? reward-/similarity-scaled action? (similarity-scaled) diff between chosen action and best action? 
-            obs = np.append(obs, best_similarity * self._normalize_unit_limit(best_action, -np.pi, np.pi))
-
-            # https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
-            obs = obs.astype(np.dtype(float, metadata={
-                'actiondb_best_embedding': best_embedding,
-                'actiondb_best_id': best_id,
-                'actiondb_best_reward': best_reward,
-                'actiondb_best_similarity': best_similarity,
-                }))
-
-        # metagoal(s) only
-        # achieved_goal = 0.5 * goaldist + 0.5 * goalconv
-        # desired_goal = self.ep_reward_threshold
-
         achieved_goal = np.array([goaldist] + goalderivs.tolist())
         desired_goal = np.zeros(achieved_goal.shape)  # or arbitrary big numbers for max.??
         dictobs = dict(
@@ -702,11 +559,11 @@ class PoseImitationEnv(HumanoidEnv):
             desired_goal=desired_goal,
         )
 
-        # if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
-        #     achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-        #     desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
-        #     if self.parallel_plot_queue.empty():
-        #         self.parallel_plot_queue.put_nowait((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+        if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
+            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
+            desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
+            if self.parallel_plot_queue.empty():
+                self.parallel_plot_queue.put_nowait((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
     
@@ -782,7 +639,6 @@ class PoseImitationEnv(HumanoidEnv):
             LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
             LOG.debug('ep_goalzone_per_step %s', np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2))
             LOG.debug('ep_goalconv_mean %s', np.mean(np.diff(self.ep_goaldists)))
-            LOG.debug('ep_actiondb_similarity_mean %s', self.ep_actiondb_similarity_mean)
             LOG.debug('\n')
 
             if not self.is_eval and self.tr_num_steps > 10:
@@ -846,7 +702,6 @@ class PoseImitationEnv(HumanoidEnv):
         LOG.debug('tr_goalconv_max %s', self.tr_goalconv_max)
         LOG.debug('tr_reward_min %s', self.tr_reward_min)
         LOG.debug('tr_reward_max %s', self.tr_reward_max)
-        LOG.debug('tr_actiondb_size %s', self.actiondb.count())
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
@@ -925,11 +780,10 @@ class PoseImitationEnv(HumanoidEnv):
         self.ep_actions = []
         self.ep_num_steps_goal_zone = 0
         self.ep_count_fails_pose_detection = 0
-        self.ep_actiondb_similarity_mean: float = 0
 
         if not self.landmarker_achieved:
-            self.landmarker_achieved = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_achieved)
-            self.landmarker_desired = mp.tasks.vision.PoseLandmarker.create_from_options(self.landmarker_options_desired)
+            self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
+            self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
 
     def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):
@@ -988,35 +842,97 @@ class PoseImitationEnv(HumanoidEnv):
         return vector / norm
 
 
+def unit_vector(vector):
+    return vector / np.linalg.norm(vector)
+    
+
+def angle_between(v1, v2):
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+
+def get_rotation_matrix(vec1, vec2):
+    """get rotation matrix between two vectors using scipy"""
+    vec1 = np.reshape(vec1, (1, -1))
+    vec2 = np.reshape(vec2, (1, -1))
+    r = R.align_vectors(vec2, vec1)
+    return r[0].as_matrix()
+
+
+def rotate_vector_to_match(vec_a, vec_b):
+    # Normalize vectors
+    a = vec_a / np.linalg.norm(vec_a)
+    b = vec_b / np.linalg.norm(vec_b)
+
+    # Compute rotation axis (cross product) and angle (dot product)
+    axis = np.cross(a, b)
+    angle = np.arccos(np.clip(np.dot(a, b), -1.0, 1.0))
+
+    # Handle the case when vectors are already aligned or opposite
+    if np.allclose(axis, 0):  # vectors are collinear
+        if np.dot(a, b) > 0:
+            return vec_a  # already aligned
+        else:
+            # 180° rotation around any orthogonal axis
+            orthogonal = np.array([1, 0, 0]) if not np.allclose(a, [1, 0, 0]) else np.array([0, 1, 0])
+            axis = np.cross(a, orthogonal)
+            axis /= np.linalg.norm(axis)
+            rot = R.from_rotvec(np.pi * axis)
+            return rot.apply(vec_a)
+
+    # Normalize axis and create rotation
+    axis /= np.linalg.norm(axis)
+    rot = R.from_rotvec(angle * axis)
+
+    # Apply rotation
+    return rot.apply(vec_a)
+
+
+MARGIN = 10  # pixels
+FONT_SIZE = 1
+FONT_THICKNESS = 1
+HANDEDNESS_TEXT_COLOR = (88, 205, 54) # vibrant green
 
 def draw_landmarks_on_image(rgb_image, detection_result):
-    pose_landmarks_list = detection_result.pose_landmarks
-    annotated_image = np.copy(rgb_image)
+  hand_landmarks_list = detection_result.hand_landmarks
+  handedness_list = detection_result.handedness
+  annotated_image = np.copy(rgb_image)
 
-    # Loop through the detected poses to visualize.
-    for idx in range(len(pose_landmarks_list)):
-        pose_landmarks = pose_landmarks_list[idx]
+  # Loop through the detected hands to visualize.
+  for idx in range(len(hand_landmarks_list)):
+    hand_landmarks = hand_landmarks_list[idx]
+    handedness = handedness_list[idx]
 
-        # Draw the pose landmarks.
-        pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
-        pose_landmarks_proto.landmark.extend([
-            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z)
-            for landmark in pose_landmarks])
-        solutions.drawing_utils.draw_landmarks(
-            annotated_image,
-            pose_landmarks_proto,
-            solutions.pose.POSE_CONNECTIONS,
-            solutions.drawing_styles.get_default_pose_landmarks_style())
-    return annotated_image
+    # Draw the hand landmarks.
+    hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+    hand_landmarks_proto.landmark.extend([
+      landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in hand_landmarks
+    ])
+    solutions.drawing_utils.draw_landmarks(
+      annotated_image,
+      hand_landmarks_proto,
+      solutions.hands.HAND_CONNECTIONS,
+      solutions.drawing_styles.get_default_hand_landmarks_style(),
+      solutions.drawing_styles.get_default_hand_connections_style())
+
+    # Get the top left corner of the detected hand's bounding box.
+    height, width, _ = annotated_image.shape
+    x_coordinates = [landmark.x for landmark in hand_landmarks]
+    y_coordinates = [landmark.y for landmark in hand_landmarks]
+    text_x = int(min(x_coordinates) * width)
+    text_y = int(min(y_coordinates) * height) - MARGIN
+
+  return annotated_image
 
 
 def parallel_plot(queue: multiprocessing.Queue):
     fig = plt.figure()
-    ax2 = fig.add_subplot(131)
+    ax2 = fig.add_subplot(211)
     plot_desired = ax2.imshow(np.zeros((1,1,3)))
-    ax1 = fig.add_subplot(132)
-    plot_achieved = ax1.imshow(np.zeros((1,1,3)))
-    extplot = fig.add_subplot(133, projection="3d")
+    # ax1 = fig.add_subplot(132)
+    # plot_achieved = ax1.imshow(np.zeros((1,1,3)))
+    extplot = fig.add_subplot(212, projection="3d")
 
     while True:
         achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
@@ -1024,8 +940,8 @@ def parallel_plot(queue: multiprocessing.Queue):
         plot_desired.set_data(desired_img)
         plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
 
-        plot_achieved.set_data(achieved_img)
-        plot_achieved.draw(plot_achieved.get_figure().canvas.get_renderer())
+        # plot_achieved.set_data(achieved_img)
+        # plot_achieved.draw(plot_achieved.get_figure().canvas.get_renderer())
 
         # plot topology connections
         # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
@@ -1037,21 +953,21 @@ def parallel_plot(queue: multiprocessing.Queue):
         extplot.set_ylim3d(-1, 1)
         extplot.set_zlim3d(1, -1) # flip z-axis
 
-        if achieved_pose.pose_world_landmarks:
+        if achieved_pose.hand_landmarks:
             for group in cfg.General.groups_filtered:
-                plotX = [achieved_pose.pose_world_landmarks[0][i].x for i in group]
-                plotY = [achieved_pose.pose_world_landmarks[0][i].y for i in group]
-                plotZ = [achieved_pose.pose_world_landmarks[0][i].z for i in group]
+                plotX = [achieved_pose.hand_landmarks[0][i].x for i in group]
+                plotY = [achieved_pose.hand_landmarks[0][i].y for i in group]
+                plotZ = [achieved_pose.hand_landmarks[0][i].z for i in group]
                 if 11 in group: # right side
                     extplot.plot(plotX, plotZ, plotY, color='red')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='red', linestyle = 'dashed')
 
-        if desired_pose.pose_world_landmarks:
+        if desired_pose.hand_landmarks:
             for group in cfg.General.groups_filtered:
-                plotX = [desired_pose.pose_world_landmarks[0][i].x for i in group]
-                plotY = [desired_pose.pose_world_landmarks[0][i].y for i in group]
-                plotZ = [desired_pose.pose_world_landmarks[0][i].z for i in group]
+                plotX = [desired_pose.hand_landmarks[0][i].x for i in group]
+                plotY = [desired_pose.hand_landmarks[0][i].y for i in group]
+                plotZ = [desired_pose.hand_landmarks[0][i].z for i in group]
                 if 11 in group: # right side
                     extplot.plot(plotX, plotZ, plotY, color='green')
                 else:
