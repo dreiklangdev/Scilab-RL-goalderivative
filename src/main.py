@@ -22,6 +22,7 @@ from utils.mlflow_util import setup_mlflow, get_hyperopt_score, log_params_from_
 from utils.custom_logger import setup_logger
 from utils.custom_callbacks import EarlyStopCallback, EvalCallback
 from utils.custom_wrappers import DisplayWrapper, RecordVideo
+from utils.custom_stateful_observation import NormalizeDictObservation
 
 # make git_label available in hydra
 OmegaConf.register_new_resolver("git_label", get_git_label)
@@ -81,8 +82,8 @@ def get_env_instance(cfg, logger):
         eval_env = gym.wrappers.ClipAction(eval_env)
 
     if 'normalize_obs' in cfg and cfg.normalize_obs:        
-        train_env = gym.wrappers.NormalizeObservation(train_env)
-        eval_env = gym.wrappers.NormalizeObservation(eval_env)
+        train_env = NormalizeDictObservation(train_env)
+        eval_env = NormalizeDictObservation(eval_env)
 
     if 'normalize_reward' in cfg and cfg.normalize_reward:
         train_env = gym.wrappers.NormalizeReward(train_env)

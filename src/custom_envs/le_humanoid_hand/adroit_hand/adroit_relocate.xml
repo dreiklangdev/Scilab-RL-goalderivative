@@ -23,25 +23,20 @@
         <light directional='false' diffuse='.7 .7 .7' specular='0.03 0.03 0.03' pos='-1 -1.0 4.0' dir='1 1.0 -4'/>
         <geom name='ground' size="1.5 1.5 0.25" pos="0 0 -1" type="plane" contype="1" conaffinity="0" material="groundplane" />
         <camera name="fixed" pos="0 -0.7 0.7" quat="0.92388 0.382683 0 0" />
-        <!-- Camera for the VIL paper -->
+
         <camera name="vil_camera" pos="0 -1.2 1.2" quat="0.92388 0.382683 0 0" />
          
-        <!-- ======= MOCAP ======= -->
-        <body name="vive_tracker" pos="0 -0.35 0.25" mocap="true">
-            <inertial pos="0 0 0" mass="0.064" diaginertia="1.70667e-05 1.70667e-05 1.70667e-05" />
-            <geom size="0.03 0.01" type="cylinder" contype="0" conaffinity="0" group="3" rgba="0.3 0.3 0.3 0.3" />
-        </body>
 
         <!-- ======= HAND ======= -->
         <!-- <body name="forearm" pos="0 -0.7 0.2" euler="-1.57 0 3.14"> -->
         <body name="forearm" pos="0 0 0" euler="0 0 0">
             <inertial pos="0.001 -0.002 0.29" quat="0.982037 -0.0160006 0 -0.188007" mass="4" diaginertia="0.01 0.01 0.0075" />
-            <joint name="ARTx" pos="0 0 0" axis="1 0 0" type="slide" range="-1 1" damping="20" />
-            <joint name="ARTy" pos="0 0 0" axis="0 1 0" type="slide" range="-1 1" damping="20" />
-            <joint name="ARTz" pos="0 0 0" axis="0 0 1" type="slide" range="-1 1" damping="20" />
-            <joint name="ARRx" pos="0 0 0" axis="1 0 0" range="-3.14 3.14" damping="20" />
-            <joint name="ARRy" pos="0 0 0" axis="0 1 0" range="-3.14 3.14" damping="20" />
-            <joint name="ARRz" pos="0 0 0" axis="0 0 1" range="-3.14 3.14" damping="20" />
+            <joint name="ARTx" pos="0 0 0" axis="1 0 0" type="slide" range="-2 2" damping="50" />
+            <joint name="ARTy" pos="0 0 0" axis="0 1 0" type="slide" range="-2 2" damping="50" />
+            <joint name="ARTz" pos="0 0 0" axis="0 0 1" type="slide" range="-2 2" damping="50" />
+            <joint name="ARRx" pos="0 0 0" axis="1 0 0" range="-3.14 3.14" damping="50" />
+            <joint name="ARRy" pos="0 0 0" axis="0 1 0" range="-3.14 3.14" damping="50" />
+            <joint name="ARRz" pos="0 0 0" axis="0 0 1" range="-3.14 3.14" damping="50" />
             <geom name="V_forearm" class="D_Vizual" pos="0 -.01 .181" euler="0 0 -1.57"  mesh="forearm_simple" />
             <geom name="C_forearm1" class="DC_Hand" size="0.05 0.033" pos="0 0 0.29" type="capsule" rgba="0.4 0.5 0.6 0.1" />
             <!-- ======= Adroit ======= -->
@@ -51,9 +46,9 @@
     </worldbody>
     
     <actuator>
-        <general name="A_ARTx" joint="ARTx" ctrlrange="-1 1" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
-        <general name="A_ARTy" joint="ARTy" ctrlrange="-1 1" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
-        <general name="A_ARTz" joint="ARTz" ctrlrange="-1 1" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
+        <general name="A_ARTx" joint="ARTx" ctrlrange="-2 2" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
+        <general name="A_ARTy" joint="ARTy" ctrlrange="-2 2" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
+        <general name="A_ARTz" joint="ARTz" ctrlrange="-2 2" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
         <general name="A_ARRx" joint="ARRx" ctrlrange="-3.14 3.14" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
         <general name="A_ARRy" joint="ARRy" ctrlrange="-3.14 3.14" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
         <general name="A_ARRz" joint="ARRz" ctrlrange="-3.14 3.14" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />

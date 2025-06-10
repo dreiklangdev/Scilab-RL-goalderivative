@@ -303,7 +303,7 @@ class HandImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            MAX_DIVERGENT_STEPS = 500 # 75
+            MAX_DIVERGENT_STEPS = 300 # 75
             # BORDER_HEIGHT_MIN = 0.2 # op3
             BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
@@ -424,16 +424,16 @@ class HandImitationEnv(HumanoidEnv):
         if desired_pose.hand_landmarks:
             achieved_pose = copy.deepcopy(desired_pose)
 
-            # if desired_pose.hand_landmarks[0][0].x != 0.0: 
-            #     # origin
-            #     translation_x = desired_pose.hand_landmarks[0][0].x
-            #     translation_y = desired_pose.hand_landmarks[0][0].y
-            #     translation_z = desired_pose.hand_landmarks[0][0].z
+            if desired_pose.hand_landmarks[0][0].x != 0.0: 
+                # center desired origin
+                translation_x = desired_pose.hand_landmarks[0][0].x
+                translation_y = desired_pose.hand_landmarks[0][0].y
+                translation_z = desired_pose.hand_landmarks[0][0].z
 
-            #     for landmark in desired_pose.hand_landmarks[0]:
-            #         landmark.x -= translation_x
-            #         landmark.y -= translation_y
-            #         landmark.z -= translation_z
+                for landmark in desired_pose.hand_landmarks[0]:
+                    landmark.x -= translation_x
+                    landmark.y -= translation_y
+                    landmark.z -= translation_z
 
             for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
                 if body_id:
