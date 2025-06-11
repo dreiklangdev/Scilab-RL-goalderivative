@@ -106,16 +106,16 @@ class HandImitationEnv(HumanoidEnv):
         self.is_render = is_render
         self.is_eval = is_eval
         self.is_plot = is_plot
-        self.outfile_fep_num_steps_goal_zone = open('fep_num_steps_goal_zone.dat', 'a')
+        self.outfile_ep_goalzone_per_step = open('ep_goalzone_per_step.dat', 'a')
 
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand1.jpg')
+        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand2.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
         self.desired_pose = None
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = HandLandmarkerOptions(
             base_options=BaseOptions(
-                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/hand_landmarker.task',          
+                model_asset_path=PATH_GIT_WORKING_DIR + '/mediapipe/model/hand_landmarker.task',
                 # cpu vs gpu
                 # https://forums.developer.nvidia.com/t/how-to-install-opengl-libs-of-nvidia/175409
                 # https://stackoverflow.com/questions/77707532/how-to-check-for-and-enforce-gpu-usage-for-mediapipe-frame-processing/79202595#79202595
@@ -179,6 +179,7 @@ class HandImitationEnv(HumanoidEnv):
 
         # once
         self.init_qpos[6] = -1.4 # face towards camera
+        self.pose_scale_ratio = 1
         self.tr_feps_total = 0
         self.tr_goaldist_min: float = 1
         self.tr_goaldist_max: float = 0
@@ -295,6 +296,9 @@ class HandImitationEnv(HumanoidEnv):
         if goaldist < self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
             self.ep_num_steps_goal_zone += 1
 
+        if goalconv > 0:
+            self.ep_num_steps_conv += 1
+
 
         terminated = False
         truncated = False
@@ -314,10 +318,11 @@ class HandImitationEnv(HumanoidEnv):
             #     terminated = True
 
             # # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
-            if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
+            # if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
+            if (self.ep_num_steps - self.ep_num_steps_conv) > MAX_DIVERGENT_STEPS:
                 terminated = True
                 # reward = -1
-                LOG.info('TOO MANY CONSEQUENT DIVERGENT STEPS.')
+                LOG.info('TOO MANY DIVERGENT STEPS.')
 
             # if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
             #     terminated = True
@@ -349,8 +354,8 @@ class HandImitationEnv(HumanoidEnv):
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
-            fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_num_steps_goal_zone', str(fep_num_steps_goal_zone))
+            ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_goalzone_per_step', str(ep_goalzone_per_step))
             human_viewer.render()
 
         self.ep_current_reward = reward
@@ -424,8 +429,9 @@ class HandImitationEnv(HumanoidEnv):
         if desired_pose.hand_landmarks:
             achieved_pose = copy.deepcopy(desired_pose)
 
-            if desired_pose.hand_landmarks[0][0].x != 0.0: 
-                # center desired origin
+            if desired_pose.hand_landmarks[0][0].x != 0.0:
+                # TODO redo once if new desired pose
+                # center desired origin?
                 translation_x = desired_pose.hand_landmarks[0][0].x
                 translation_y = desired_pose.hand_landmarks[0][0].y
                 translation_z = desired_pose.hand_landmarks[0][0].z
@@ -434,6 +440,16 @@ class HandImitationEnv(HumanoidEnv):
                     landmark.x -= translation_x
                     landmark.y -= translation_y
                     landmark.z -= translation_z
+
+                norm_v = np.linalg.norm([desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][0].x,
+                                         desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][0].y,
+                                         desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][0].z])
+                norm_u = np.linalg.norm([self.data.body('mfdistal').xpos[0] - self.data.body('wrist').xpos[0],
+                                         self.data.body('mfdistal').xpos[1] - self.data.body('wrist').xpos[1],
+                                         self.data.body('mfdistal').xpos[2] - self.data.body('wrist').xpos[2]])
+
+                self.pose_scale_ratio = norm_v / norm_u
+                LOG.debug('pose_scale_ratio %s', self.pose_scale_ratio)
 
             for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
                 if body_id:
@@ -446,9 +462,9 @@ class HandImitationEnv(HumanoidEnv):
                     # achieved_pose.hand_landmarks[0][i].y -= self.data.body('wrist').xpos[2]
                     # achieved_pose.hand_landmarks[0][i].z -= self.data.body('wrist').xpos[1]
 
-                    achieved_pose.hand_landmarks[0][i].x *= 3
-                    achieved_pose.hand_landmarks[0][i].y *= 3
-                    achieved_pose.hand_landmarks[0][i].z *= 3
+                    achieved_pose.hand_landmarks[0][i].x *= self.pose_scale_ratio
+                    achieved_pose.hand_landmarks[0][i].y *= self.pose_scale_ratio
+                    achieved_pose.hand_landmarks[0][i].z *= self.pose_scale_ratio
 
                     # translate: desired-wrist
                     # achieved_pose.hand_landmarks[0][i].x += desired_pose.hand_landmarks[0][0].x
@@ -622,6 +638,7 @@ class HandImitationEnv(HumanoidEnv):
 
     def reset_model(self):
         if self.ep_current_obs and len(self.ep_goaldists) > 0:
+            ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
             # episode report
             LOG.debug('ep_lives %s', self.ep_lives)
             LOG.debug('ep_num_steps %s', self.ep_num_steps)
@@ -637,14 +654,14 @@ class HandImitationEnv(HumanoidEnv):
             LOG.debug('ep_reward_threshold %s %s', cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT, self.ep_reward_threshold)
             LOG.debug('ep_traj_is_halved %s', self.ep_traj_is_halved)
             LOG.debug('ep_rewards_mean %s', self.ep_rewards_mean)
-            LOG.debug('ep_goalzone_per_step %s', np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2))
+            LOG.debug('ep_goalzone_per_step %s', ep_goalzone_per_step)
             LOG.debug('ep_goalconv_mean %s', np.mean(np.diff(self.ep_goaldists)))
             LOG.debug('\n')
 
             if not self.is_eval and self.tr_num_steps > 10:
-                fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
-                self.outfile_fep_num_steps_goal_zone.write('%s\n' % (fep_num_steps_goal_zone))
-                self.outfile_fep_num_steps_goal_zone.flush()
+                # fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
+                self.outfile_ep_goalzone_per_step.write('%s\n' % (ep_goalzone_per_step))
+                self.outfile_ep_goalzone_per_step.flush()
 
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.ep_lives -= 1
@@ -748,6 +765,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_rewards_sum = 0
         self.ep_num_steps = 0
         self.ep_num_steps_goal_zone = 0
+        self.ep_num_steps_conv = 0
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
 
@@ -767,6 +785,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_rewards_mean: float = 0
         self.ep_rewards_sum = 0
         self.ep_num_steps: int = 0
+        self.ep_num_steps_conv: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_last_reward_step: int = -1
         self.ep_dictobs = []
@@ -958,7 +977,7 @@ def parallel_plot(queue: multiprocessing.Queue):
                 plotX = [achieved_pose.hand_landmarks[0][i].x for i in group]
                 plotY = [achieved_pose.hand_landmarks[0][i].y for i in group]
                 plotZ = [achieved_pose.hand_landmarks[0][i].z for i in group]
-                if 11 in group: # right side
+                if 1 in group: # thumb
                     extplot.plot(plotX, plotZ, plotY, color='red')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='red', linestyle = 'dashed')
@@ -968,7 +987,7 @@ def parallel_plot(queue: multiprocessing.Queue):
                 plotX = [desired_pose.hand_landmarks[0][i].x for i in group]
                 plotY = [desired_pose.hand_landmarks[0][i].y for i in group]
                 plotZ = [desired_pose.hand_landmarks[0][i].z for i in group]
-                if 11 in group: # right side
+                if 1 in group: # thumb
                     extplot.plot(plotX, plotZ, plotY, color='green')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='green', linestyle = 'dashed')
