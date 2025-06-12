@@ -14,6 +14,7 @@ from gymnasium import spaces
 from gymnasium.wrappers.utils import RunningMeanStd
 
 from sklearn.decomposition import PCA, IncrementalPCA
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -191,7 +192,11 @@ class HandImitationEnv(HumanoidEnv):
         # once
         self.buffer_obs_achieved = []
 
-        self.pca = None
+        self.zs_scaler = StandardScaler()
+
+        self.pca_model = None
+        self.pca_fit_count: int = 0
+
         self.ac_model_encobs = autoencoder.Autoencoder(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 5)
         self.ac_criterion = nn.MSELoss()
         self.ac_optimizer = optim.Adam(self.ac_model_encobs.parameters(), lr=1e-3)
@@ -506,7 +511,7 @@ class HandImitationEnv(HumanoidEnv):
 
         obs_achieved = np.append(obs_achieved, ob_achieved_pose)
         self.rms_obs_achieved.update(obs_achieved)
-        obs_achieved = (obs_achieved - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
+        # obs_achieved = (obs_achieved - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
 
 
         # ========= DESIRED OBS
@@ -522,38 +527,54 @@ class HandImitationEnv(HumanoidEnv):
             self.last_ob_desired_pose = ob_desired_pose
             
         obs_desired = np.append(obs_desired, ob_desired_pose)
-        obs_desired = (obs_desired - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
+        # obs_desired = (obs_desired - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
 
 
         # ========= GOAL
+        
+        
+        NORMALIZE_Z_SCORE = True
+        if NORMALIZE_Z_SCORE:
+            self.zs_scaler.partial_fit(obs_achieved.reshape(1, -1))
+            obs_achieved = self.zs_scaler.transform(obs_achieved.reshape(1, -1))[0]
+            obs_desired = self.zs_scaler.transform(obs_desired.reshape(1, -1))[0]
 
-        DECORRELATE_PCA = True
-        if DECORRELATE_PCA:
-            if len(self.buffer_obs_achieved) < 10000: # delayed: should be a while into training to capture goal effort variation? (eg. after primary success)
-                self.buffer_obs_achieved.append(obs_achieved)
-            elif len(self.buffer_obs_achieved) == 10000: # and not self.pca:
-                # self.pca = PCA(whiten=True)
-                # self.pca.fit(self.buffer_obs_achieved)  # train_obs shape: (n_samples, n_features)
 
-                self.pca = IncrementalPCA(whiten=True)
-                self.pca.partial_fit(self.buffer_obs_achieved)
+        GOAL_DECORRELATE_PCA = True
+        PCA_MODEL_MAX_FIT_COUNT = 5
+        PCA_BATCH_SIZE = 10000
+        if GOAL_DECORRELATE_PCA:
+            if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
+                if len(self.buffer_obs_achieved) < PCA_BATCH_SIZE: # delayed: should be a while into training to capture goal effort variation? (eg. after primary success)
+                    self.buffer_obs_achieved.append(obs_achieved)
+                elif len(self.buffer_obs_achieved) == PCA_BATCH_SIZE:
+                    # self.pca_model = PCA(whiten=True)
+                    # self.pca_model.fit(self.buffer_obs_achieved)  # train_obs shape: (n_samples, n_features)
 
-                # TODO online vs. offline PCA?
-                self.buffer_obs_achieved.clear()
-                LOG.info('goal dims: pca fitted: expl.var. %s', self.pca.explained_variance_ratio_.sum())
+                    # self.pca_model = SparsePCA(alpha=1)
+                    # self.pca_model = FactorAnalysis()
+                    self.pca_model = IncrementalPCA(whiten=True)
+                    self.pca_model.partial_fit(self.buffer_obs_achieved)
 
-            if self.pca:
+                    # TODO online vs. offline PCA?
+                    pca_obs_achieved = self.pca_model.transform(obs_achieved.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_ # zca
+                    pca_diff = np.linalg.norm(obs_achieved - pca_obs_achieved)
+                    self.pca_fit_count += 1
+                    self.buffer_obs_achieved.clear()
+                    LOG.info('goal dims: pca fitted. %s', pca_diff)
+
+            if self.pca_model and self.pca_model.n_samples_seen_ > 0:
                 weight = (0.0, 1.0)
-                pca_obs_achieved = self.pca.transform(obs_achieved.reshape(1, -1)) @ self.pca.components_ + self.pca.mean_
+                pca_obs_achieved = self.pca_model.transform(obs_achieved.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_
                 # weighted comb.
-                obs_achieved = weight[0] * obs_achieved + weight[1] * pca_obs_achieved.ravel()
+                obs_achieved = weight[0] * obs_achieved + weight[1] * pca_obs_achieved[0]
 
-                pca_obs_desired = self.pca.transform(obs_desired.reshape(1, -1)) @ self.pca.components_ + self.pca.mean_
-                obs_desired = weight[0] * obs_desired + weight[1] * pca_obs_desired.ravel()
+                pca_obs_desired = self.pca_model.transform(obs_desired.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_
+                obs_desired = weight[0] * obs_desired + weight[1] * pca_obs_desired[0]
 
 
-        AUTOENCODE_GOAL_OBS = False
-        if AUTOENCODE_GOAL_OBS:
+        GOAL_AUTOENCODE = False
+        if GOAL_AUTOENCODE:
             self.buffer_obs_achieved.append(obs_achieved)
 
             # autoencode
@@ -580,7 +601,7 @@ class HandImitationEnv(HumanoidEnv):
 
                 obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
                 obs_desired = np.resize(encobs_desired, obs_desired.shape)
-            
+
 
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
         self.ep_goalweight = np.full(obs_desired.shape, 1.0)
