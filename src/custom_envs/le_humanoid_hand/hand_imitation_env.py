@@ -13,7 +13,7 @@ from . import autoencoder
 from gymnasium import spaces
 from gymnasium.wrappers.utils import RunningMeanStd
 
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, IncrementalPCA
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -22,6 +22,8 @@ import multiprocessing
 import matplotlib
 matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
+plt.rcParams["figure.raise_window"] = False
+
 from matplotlib import image
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -503,11 +505,8 @@ class HandImitationEnv(HumanoidEnv):
             ob_achieved_pose = self._normalize_unit_limit(ob_achieved_pose, -2, 2)
 
         obs_achieved = np.append(obs_achieved, ob_achieved_pose)
-        # z-normalise
         self.rms_obs_achieved.update(obs_achieved)
-        obs_achieved = (obs_achieved - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8)
-
-        obs = np.append(obs, obs_achieved)
+        obs_achieved = (obs_achieved - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
 
 
         # ========= DESIRED OBS
@@ -523,22 +522,28 @@ class HandImitationEnv(HumanoidEnv):
             self.last_ob_desired_pose = ob_desired_pose
             
         obs_desired = np.append(obs_desired, ob_desired_pose)
-        obs_desired = (obs_desired - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8)
+        obs_desired = (obs_desired - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
 
 
         # ========= GOAL
 
-        DECORRELATE_PCA = False
+        DECORRELATE_PCA = True
         if DECORRELATE_PCA:
             if len(self.buffer_obs_achieved) < 10000: # delayed: should be a while into training to capture goal effort variation? (eg. after primary success)
                 self.buffer_obs_achieved.append(obs_achieved)
-            elif not self.pca:
-                # Fit PCA
-                self.pca = PCA(whiten=True)
-                self.pca.fit(self.buffer_obs_achieved)  # train_obs shape: (n_samples, n_features)
+            elif len(self.buffer_obs_achieved) == 10000: # and not self.pca:
+                # self.pca = PCA(whiten=True)
+                # self.pca.fit(self.buffer_obs_achieved)  # train_obs shape: (n_samples, n_features)
 
-            else:
-                weight = (0.5, 0.5)
+                self.pca = IncrementalPCA(whiten=True)
+                self.pca.partial_fit(self.buffer_obs_achieved)
+
+                # TODO online vs. offline PCA?
+                self.buffer_obs_achieved.clear()
+                LOG.info('goal dims: pca fitted: expl.var. %s', self.pca.explained_variance_ratio_.sum())
+
+            if self.pca:
+                weight = (0.0, 1.0)
                 pca_obs_achieved = self.pca.transform(obs_achieved.reshape(1, -1)) @ self.pca.components_ + self.pca.mean_
                 # weighted comb.
                 obs_achieved = weight[0] * obs_achieved + weight[1] * pca_obs_achieved.ravel()
@@ -598,6 +603,7 @@ class HandImitationEnv(HumanoidEnv):
             for i in range(1, goalderiv_orders + 1):
                 goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
 
+        obs = np.append(obs, obs_achieved)
         obs = np.append(obs, obs_desired.ravel()) # goal
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goalderivs)
