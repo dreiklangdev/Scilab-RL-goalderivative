@@ -192,10 +192,16 @@ class HandImitationEnv(HumanoidEnv):
         # once
         self.buffer_obs_achieved = []
 
-        self.zs_scaler = StandardScaler()
+        self.zs_scaler_obs = StandardScaler()
+        self.zs_scaler_goal = StandardScaler()
 
-        self.pca_model = None
-        self.pca_fit_count: int = 0
+
+        # self.pca_reducer = PCA(whiten=True)
+        # self.pca_reducer = SparsePCA(alpha=1)
+        # self.pca_reducer = FactorAnalysis()
+        self.pca_reducer = IncrementalPCA(whiten=True)
+        self.pca_ref = []
+        self.goalmodel_refit_count: int = 0
 
         self.ac_model_encobs = autoencoder.Autoencoder(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 5)
         self.ac_criterion = nn.MSELoss()
@@ -332,7 +338,7 @@ class HandImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            MAX_DIVERGENT_STEPS = 300 # 75
+            MAX_DIVERGENT_STEPS = 1000 # 75
             # BORDER_HEIGHT_MIN = 0.2 # op3
             BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
 
@@ -525,61 +531,58 @@ class HandImitationEnv(HumanoidEnv):
             ob_desired_pose = np.array(ob_desired_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
             ob_desired_pose = self._normalize_unit_limit(ob_desired_pose, -2, 2)
             self.last_ob_desired_pose = ob_desired_pose
-            
+
         obs_desired = np.append(obs_desired, ob_desired_pose)
         # obs_desired = (obs_desired - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8) # z-normalise
 
 
-        # ========= GOAL
-        
-        
-        NORMALIZE_Z_SCORE = True
-        if NORMALIZE_Z_SCORE:
-            self.zs_scaler.partial_fit(obs_achieved.reshape(1, -1))
-            obs_achieved = self.zs_scaler.transform(obs_achieved.reshape(1, -1))[0]
-            obs_desired = self.zs_scaler.transform(obs_desired.reshape(1, -1))[0]
+        # ========= GOAL (MODEL)
 
+        IS_NORMALIZE_Z_SCORE_GOAL = True
+        if IS_NORMALIZE_Z_SCORE_GOAL:
+            self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
+            obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
+            obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
-        GOAL_DECORRELATE_PCA = True
-        PCA_MODEL_MAX_FIT_COUNT = 5
-        PCA_BATCH_SIZE = 10000 # may equal 'algo.learning_starts'
-        if GOAL_DECORRELATE_PCA:
-            if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
-                if len(self.buffer_obs_achieved) < PCA_BATCH_SIZE:
-                    self.buffer_obs_achieved.append(obs_achieved)
-                elif len(self.buffer_obs_achieved) == PCA_BATCH_SIZE:
-                    # self.pca_model = PCA(whiten=True)
-                    # self.pca_model.fit(self.buffer_obs_achieved)  # train_obs shape: (n_samples, n_features)
+        SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
+        if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
+            self.buffer_obs_achieved.append(obs_achieved)
 
-                    # self.pca_model = SparsePCA(alpha=1)
-                    # self.pca_model = FactorAnalysis()
-                    self.pca_model = IncrementalPCA(whiten=True)
-                    self.pca_model.partial_fit(self.buffer_obs_achieved)
+        IS_PCA_REDUCE_GOAL = True
+        if IS_PCA_REDUCE_GOAL:
+            # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
+            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+                self.pca_reducer.partial_fit(self.buffer_obs_achieved)
 
-                    # TODO online vs. offline PCA?
-                    pca_obs_achieved = self.pca_model.transform(obs_achieved.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_ # zca
-                    pca_diff = np.linalg.norm(obs_achieved - pca_obs_achieved)
-                    self.pca_fit_count += 1
-                    self.buffer_obs_achieved.clear()
-                    LOG.info('goal dims: pca fitted. %s', pca_diff)
+                if not self.pca_ref:
+                    self.pca_ref = [obs_achieved, obs_achieved]
 
-            if self.pca_model and self.pca_model.n_samples_seen_ > 0:
+                obs_achieved_reduced = self.pca_reducer.transform(self.pca_ref[0].reshape(1, -1)) @ self.pca_reducer.components_ + self.pca_reducer.mean_ # zca
+                LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.pca_ref[1] - obs_achieved_reduced))
+                self.pca_ref[1] = obs_achieved_reduced
 
+            if hasattr(self.pca_reducer, 'n_samples_seen_') and self.pca_reducer.n_samples_seen_ > 0:
                 pregoaldist = np.linalg.norm((obs_achieved - obs_desired), axis=-1)
-                pregoaldist = goaldist = self._normalize_unit_limit(pregoaldist, 0, self.tr_goaldist_max)
-
-                # weight = (0.0, 1.0)
-                weight = (pregoaldist, 1 - pregoaldist)
-                pca_obs_achieved = self.pca_model.transform(obs_achieved.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_
+                pregoaldist = self._normalize_unit_limit(pregoaldist, 0, 5)
+                pregoaldist = np.clip(pregoaldist, 0, 1)
                 # weighted comb.
-                obs_achieved = weight[0] * obs_achieved + weight[1] * pca_obs_achieved[0]
+                # weight = (pregoaldist, 1 - pregoaldist)
+                weight = (0.5, 0.5)
+                obs_achieved_reduced = self.pca_reducer.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer.components_ + self.pca_reducer.mean_
+                obs_achieved = weight[0] * obs_achieved + weight[1] * obs_achieved_reduced[0]
 
-                pca_obs_desired = self.pca_model.transform(obs_desired.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_
-                obs_desired = weight[0] * obs_desired + weight[1] * pca_obs_desired[0]
+                obs_desired_reduced = self.pca_reducer.transform(obs_desired.reshape(1, -1)) @ self.pca_reducer.components_ + self.pca_reducer.mean_
+                obs_desired = weight[0] * obs_desired + weight[1] * obs_desired_reduced[0]
+
+        GOAL_MODEL_MAX_REFITS = np.inf
+        if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+            if self.goalmodel_refit_count < GOAL_MODEL_MAX_REFITS:
+                self.buffer_obs_achieved.clear()
+                self.goalmodel_refit_count += 1
 
 
-        GOAL_AUTOENCODE = False
-        if GOAL_AUTOENCODE:
+        IS_GOAL_AUTOENCODE = False
+        if IS_GOAL_AUTOENCODE:
             self.buffer_obs_achieved.append(obs_achieved)
 
             # autoencode
@@ -671,10 +674,14 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, reward)
         obs = np.append(obs, reward_history)
         obs = np.append(obs, rewardderivs)
-    
+
+        IS_NORMALIZE_Z_SCORE_OBS = True
+        if IS_NORMALIZE_Z_SCORE_OBS:
+            self.zs_scaler_obs.partial_fit(obs.reshape(1, -1))
+            obs = self.zs_scaler_obs.transform(obs.reshape(1, -1))[0]
 
         achieved_goal = np.array([goaldist] + goalderivs.tolist())
-        desired_goal = np.zeros(achieved_goal.shape)  # or arbitrary big numbers for max.??
+        desired_goal = np.zeros(achieved_goal.shape)  # ignored
         dictobs = dict(
             observation=obs,
             achieved_goal=achieved_goal,
@@ -816,6 +823,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
         LOG.debug('tr_obs_min %s %s', np.min(obs_init['observation']), np.argmin(obs_init['observation']))
         LOG.debug('tr_obs_mean %s', np.mean(obs_init['observation']))
+        LOG.debug('tr_obs_std %s', np.std(obs_init['observation']))
         LOG.debug('tr_obs_max %s %s', np.max(obs_init['observation']), np.argmax(obs_init['observation']))
         LOG.debug('tr_goaldist_min %s', self.tr_goaldist_min)
         LOG.debug('tr_goaldist_max %s', self.tr_goaldist_max)
