@@ -542,10 +542,10 @@ class HandImitationEnv(HumanoidEnv):
 
         GOAL_DECORRELATE_PCA = True
         PCA_MODEL_MAX_FIT_COUNT = 5
-        PCA_BATCH_SIZE = 10000
+        PCA_BATCH_SIZE = 10000 # may equal 'algo.learning_starts'
         if GOAL_DECORRELATE_PCA:
             if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
-                if len(self.buffer_obs_achieved) < PCA_BATCH_SIZE: # delayed: should be a while into training to capture goal effort variation? (eg. after primary success)
+                if len(self.buffer_obs_achieved) < PCA_BATCH_SIZE:
                     self.buffer_obs_achieved.append(obs_achieved)
                 elif len(self.buffer_obs_achieved) == PCA_BATCH_SIZE:
                     # self.pca_model = PCA(whiten=True)
@@ -564,7 +564,12 @@ class HandImitationEnv(HumanoidEnv):
                     LOG.info('goal dims: pca fitted. %s', pca_diff)
 
             if self.pca_model and self.pca_model.n_samples_seen_ > 0:
-                weight = (0.0, 1.0)
+
+                pregoaldist = np.linalg.norm((obs_achieved - obs_desired), axis=-1)
+                pregoaldist = goaldist = self._normalize_unit_limit(pregoaldist, 0, self.tr_goaldist_max)
+
+                # weight = (0.0, 1.0)
+                weight = (pregoaldist, 1 - pregoaldist)
                 pca_obs_achieved = self.pca_model.transform(obs_achieved.reshape(1, -1)) @ self.pca_model.components_ + self.pca_model.mean_
                 # weighted comb.
                 obs_achieved = weight[0] * obs_achieved + weight[1] * pca_obs_achieved[0]
@@ -611,6 +616,8 @@ class HandImitationEnv(HumanoidEnv):
         # self.ep_goalweight[goaldims_primary] = 1
         # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
         goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
+
+        # qualitative bottleneck? (0d)
         goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
 
         goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
