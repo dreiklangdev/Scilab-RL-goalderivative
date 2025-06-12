@@ -2,16 +2,25 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import time
+import random
 import copy
 import logging
 import git
 import uuid
 from types import SimpleNamespace
 from . import hand_imitation_cfg as cfg
+from . import autoencoder
 from gymnasium import spaces
+from gymnasium.wrappers.utils import RunningMeanStd
+
+from sklearn.decomposition import PCA
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 import multiprocessing
-from multiprocessing.queues import Empty
+import matplotlib
+matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 from matplotlib import image
 from mpl_toolkits.mplot3d import Axes3D
@@ -106,7 +115,7 @@ class HandImitationEnv(HumanoidEnv):
         self.is_render = is_render
         self.is_eval = is_eval
         self.is_plot = is_plot
-        self.outfile_ep_goalzone_per_step = open('ep_goalzone_per_step.dat', 'a')
+        self.outfile_ep_goaldist_mean = open('ep_goaldist_mean.dat', 'a')
 
         img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand2.jpg')
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
@@ -178,6 +187,15 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('goal_space %s', goal_space)
 
         # once
+        self.buffer_obs_achieved = []
+
+        self.pca = None
+        self.ac_model_encobs = autoencoder.Autoencoder(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 5)
+        self.ac_criterion = nn.MSELoss()
+        self.ac_optimizer = optim.Adam(self.ac_model_encobs.parameters(), lr=1e-3)
+
+        self.rms_obs_achieved = RunningMeanStd(shape=(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION,), dtype='float64')
+
         self.init_qpos[6] = -1.4 # face towards camera
         self.pose_scale_ratio = 1
         self.tr_feps_total = 0
@@ -480,10 +498,14 @@ class HandImitationEnv(HumanoidEnv):
         ob_achieved_pose = np.array([])
         if achieved_pose.hand_landmarks:
             # only first detected pose
-            ob_achieved_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.hand_landmarks[0]]
+            ob_achieved_pose = [(landmark.x, landmark.y, landmark.z) for landmark in achieved_pose.hand_landmarks[0]]            
             ob_achieved_pose = np.array(ob_achieved_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
             ob_achieved_pose = self._normalize_unit_limit(ob_achieved_pose, -2, 2)
+
         obs_achieved = np.append(obs_achieved, ob_achieved_pose)
+        # z-normalise
+        self.rms_obs_achieved.update(obs_achieved)
+        obs_achieved = (obs_achieved - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8)
 
         obs = np.append(obs, obs_achieved)
 
@@ -499,11 +521,61 @@ class HandImitationEnv(HumanoidEnv):
             ob_desired_pose = np.array(ob_desired_pose)[cfg.General.IDS_LANDMARKS_FILTERED]
             ob_desired_pose = self._normalize_unit_limit(ob_desired_pose, -2, 2)
             self.last_ob_desired_pose = ob_desired_pose
+            
         obs_desired = np.append(obs_desired, ob_desired_pose)
-
+        obs_desired = (obs_desired - self.rms_obs_achieved.mean) / np.sqrt(self.rms_obs_achieved.var + 1e-8)
 
 
         # ========= GOAL
+
+        DECORRELATE_PCA = False
+        if DECORRELATE_PCA:
+            if len(self.buffer_obs_achieved) < 10000: # delayed: should be a while into training to capture goal effort variation? (eg. after primary success)
+                self.buffer_obs_achieved.append(obs_achieved)
+            elif not self.pca:
+                # Fit PCA
+                self.pca = PCA(whiten=True)
+                self.pca.fit(self.buffer_obs_achieved)  # train_obs shape: (n_samples, n_features)
+
+            else:
+                weight = (0.5, 0.5)
+                pca_obs_achieved = self.pca.transform(obs_achieved.reshape(1, -1)) @ self.pca.components_ + self.pca.mean_
+                # weighted comb.
+                obs_achieved = weight[0] * obs_achieved + weight[1] * pca_obs_achieved.ravel()
+
+                pca_obs_desired = self.pca.transform(obs_desired.reshape(1, -1)) @ self.pca.components_ + self.pca.mean_
+                obs_desired = weight[0] * obs_desired + weight[1] * pca_obs_desired.ravel()
+
+
+        AUTOENCODE_GOAL_OBS = False
+        if AUTOENCODE_GOAL_OBS:
+            self.buffer_obs_achieved.append(obs_achieved)
+
+            # autoencode
+            if len(self.buffer_obs_achieved) == 5000:
+                # batch = random.sample(self.ac_buffer_obs_achieved, 1000)
+                batch = self.buffer_obs_achieved
+
+                # Train
+                tensor = torch.tensor(batch, dtype=torch.float32)
+                for epoch in range(100):
+                    self.ac_optimizer.zero_grad()
+                    recon = self.ac_model_encobs(tensor)
+                    loss = self.ac_criterion(recon, tensor)
+                    loss.backward()
+                    self.ac_optimizer.step()
+                self.buffer_obs_achieved.clear()
+
+            if self.ac_model_encobs:
+                obs_achieved_tensor = torch.tensor(obs_achieved, dtype=torch.float32).unsqueeze(0)
+                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
+
+                obs_desired_tensor = torch.tensor(obs_desired, dtype=torch.float32).unsqueeze(0)
+                encobs_desired = self.ac_model_encobs.encoder(obs_desired_tensor).detach().numpy().squeeze()
+
+                obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
+                obs_desired = np.resize(encobs_desired, obs_desired.shape)
+            
 
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
         self.ep_goalweight = np.full(obs_desired.shape, 1.0)
@@ -660,8 +732,8 @@ class HandImitationEnv(HumanoidEnv):
 
             if not self.is_eval and self.tr_num_steps > 10:
                 # fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
-                self.outfile_ep_goalzone_per_step.write('%s\n' % (ep_goalzone_per_step))
-                self.outfile_ep_goalzone_per_step.flush()
+                self.outfile_ep_goaldist_mean.write('%s\n' % (np.mean(self.ep_goaldists)))
+                self.outfile_ep_goaldist_mean.flush()
 
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.ep_lives -= 1
@@ -968,9 +1040,9 @@ def parallel_plot(queue: multiprocessing.Queue):
         extplot.set_xlabel('x')
         extplot.set_ylabel('z')
         extplot.set_zlabel('y')
-        extplot.set_xlim3d(-1, 1)
-        extplot.set_ylim3d(-1, 1)
-        extplot.set_zlim3d(1, -1) # flip z-axis
+        extplot.set_xlim3d(-0.5, 0.5)
+        extplot.set_ylim3d(-0.5, 0.5)
+        extplot.set_zlim3d(0.5, -0.5) # flip z-axis
 
         if achieved_pose.hand_landmarks:
             for group in cfg.General.groups_filtered:

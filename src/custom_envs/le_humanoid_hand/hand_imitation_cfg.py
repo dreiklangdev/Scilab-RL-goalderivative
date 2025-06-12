@@ -27,6 +27,9 @@ class General(base.General):
         [0, 15], # ring
         [0, 19], # pinky
     ]
+    # LANDMARK_GROUPS = [ # wrist and fingerpoints only
+    #     [0, 7], # index
+    # ]
 
     LANDMARK_GROUPS_FLAT = np.hstack(LANDMARK_GROUPS) if LANDMARK_GROUPS else []
 
@@ -88,7 +91,7 @@ class PracticeTime(base.PracticeTime):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    MAX_FRAC_DEFAULT = 0.15
+    MAX_FRAC_DEFAULT = 0.2
     # vs. not finding goal (sparse rewards) (no direction/orientation: headless wandering)
     IS_NUDGING = True
     IS_ADAPTIVE = False
