@@ -338,9 +338,7 @@ class HandImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            MAX_DIVERGENT_STEPS = 1000 # 75
-            # BORDER_HEIGHT_MIN = 0.2 # op3
-            BORDER_HEIGHT_MIN = 0.7 # gym-humanoid
+            MAX_DIVERGENT_STEPS = 100 # 75
 
             # if self.ep_rewards_sum < -30:
             #     terminated = True
@@ -354,12 +352,6 @@ class HandImitationEnv(HumanoidEnv):
                 terminated = True
                 # reward = -1
                 LOG.info('TOO MANY DIVERGENT STEPS.')
-
-            # if self.data.qpos[2] < BORDER_HEIGHT_MIN:  # practice height (tight limit for efficiency?)
-            #     terminated = True
-            #     reward = -1
-            #     LOG.info('HEIGHT TOO LOW/HIGH. %s %s', reward, self.ep_rewards_sum)
-
 
             # min. convergence terminate? ("flaming wall")
             
@@ -720,26 +712,18 @@ class HandImitationEnv(HumanoidEnv):
         threshold_seek = (self.tr_goaldist_max - cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
         threshold_escape = self.tr_goaldist_max
 
-        INCL_PHASE_GOALSEEK = False
-
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
 
-            # if np.all(achieved_goal[1:] > 0):
-            if np.mean(achieved_goal[1:]) > 0:
-                reward = 0.5 if INCL_PHASE_GOALSEEK else 0
-       
-        elif INCL_PHASE_GOALSEEK and achieved_goal[0] <= threshold_seek:
-            reward = 0.5
-
-            if np.mean(achieved_goal[1:]) > 0:
+            if np.all(achieved_goal[1:] > 0):
+            # if np.mean(achieved_goal[1:]) > 0:
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
-            # if np.any(achieved_goal[1:] > 0):
-            if np.mean(achieved_goal[1:]) > 0:
+            if np.any(achieved_goal[1:] > 0):
+            # if np.mean(achieved_goal[1:]) > 0:
                 reward = -1 # no
 
         else:
