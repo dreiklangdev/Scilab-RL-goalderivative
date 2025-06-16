@@ -19,4 +19,4 @@ class Autoencoder(nn.Module):
     def forward(self, x):
         z = self.encoder(x)
         x_recon = self.decoder(z)
-        return x_recon
+        return x_recon, z
