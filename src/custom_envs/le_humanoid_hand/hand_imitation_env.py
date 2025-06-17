@@ -97,7 +97,10 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 
 # https://cookbook.chromadb.dev/running/performance-tips/#__tabbed_1_1
 
-
+# https://imitation.readthedocs.io/en/latest/tutorials/1_train_bc.html
+# https://www.ce.cit.tum.de/mmk/shgd/
+# https://github.com/hukenovs/hagrid/blob/master/images/gestures.png
+# https://www.qualcomm.com/developer/software/jester-dataset#datasetdetails
 
 # TODO obs appender func with limits warning (for normalization(!))
 class HandImitationEnv(HumanoidEnv):
@@ -189,10 +192,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.info('action_space %s', self.action_space)
         LOG.debug('goal_space %s', goal_space)
 
-        # once
-        self.desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
-        self.cache_desired_poses = dict()
-
+        # once        
         self.buffer_obs_achieved = []
         self.buffer_obs = []
 
@@ -434,22 +434,28 @@ class HandImitationEnv(HumanoidEnv):
                 landmark.y -= translation_y
                 landmark.z -= translation_z
 
-            norm_v = np.linalg.norm([desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][0].x,
-                                        desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][0].y,
-                                        desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][0].z])
+            norm_v = np.linalg.norm([desired_pose.hand_landmarks[0][9].x - desired_pose.hand_landmarks[0][0].x,
+                                        desired_pose.hand_landmarks[0][9].y - desired_pose.hand_landmarks[0][0].y,
+                                        desired_pose.hand_landmarks[0][9].z - desired_pose.hand_landmarks[0][0].z])
 
-            norm_u = np.linalg.norm([self.data.body('mfdistal').xpos[0] - self.data.body('wrist').xpos[0],
-                                        self.data.body('mfdistal').xpos[1] - self.data.body('wrist').xpos[1],
-                                        self.data.body('mfdistal').xpos[2] - self.data.body('wrist').xpos[2]])
+            # norm_u = np.linalg.norm([self.data.body('mfproximal').xpos[0] - self.data.body('wrist').xpos[0],
+            #                             self.data.body('mfproximal').xpos[1] - self.data.body('wrist').xpos[1],
+            #                             self.data.body('mfproximal').xpos[2] - self.data.body('wrist').xpos[2]])
+            norm_u = np.linalg.norm([self.data.geom('V_mfproximal').xpos[0] - self.data.geom('V_wrist').xpos[0],
+                                        self.data.geom('V_mfproximal').xpos[1] - self.data.geom('V_wrist').xpos[1],
+                                        self.data.geom('V_mfproximal').xpos[2] - self.data.geom('V_wrist').xpos[2]])
 
                 # self.pose_scale_ratio = norm_v / norm_u
                 # LOG.debug('pose_scale_ratio %s', self.pose_scale_ratio)
 
             for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
                 if body_id:
-                    achieved_pose.hand_landmarks[0][i].x = self.data.body(body_id).xpos[0]
-                    achieved_pose.hand_landmarks[0][i].y = -self.data.body(body_id).xpos[2]
-                    achieved_pose.hand_landmarks[0][i].z = self.data.body(body_id).xpos[1]
+                    # achieved_pose.hand_landmarks[0][i].x = self.data.body(body_id).xpos[0]
+                    # achieved_pose.hand_landmarks[0][i].y = -self.data.body(body_id).xpos[2]
+                    # achieved_pose.hand_landmarks[0][i].z = self.data.body(body_id).xpos[1]
+                    achieved_pose.hand_landmarks[0][i].x = self.data.geom(body_id).xpos[0]
+                    achieved_pose.hand_landmarks[0][i].y = -self.data.geom(body_id).xpos[2]
+                    achieved_pose.hand_landmarks[0][i].z = self.data.geom(body_id).xpos[1]
 
                     # origin: wrist
                     # achieved_pose.hand_landmarks[0][i].x -= self.data.body('wrist').xpos[0]
@@ -881,7 +887,8 @@ class HandImitationEnv(HumanoidEnv):
         # needs denoising? (eg. filter large pose changes?)
         # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
         # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])        
-        desired_imgpath = self.desired_imgpaths[np.random.randint(len(self.desired_imgpaths))]
+        desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
+        desired_imgpath = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
         LOG.debug('desired_imgpath %s', desired_imgpath)
         desired_imgdata = image.imread(desired_imgpath)
         self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())

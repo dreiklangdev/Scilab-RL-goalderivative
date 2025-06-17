@@ -21,12 +21,19 @@ class General(base.General):
         [13, 14, 15, 16], # ring
         [17, 18, 19, 20], # pinky
     ]
-    LANDMARK_GROUPS = [ # wrist and fingerpoints only
-        [0, 3], # thumb
-        [0, 7], # index
-        [0, 11], # middle
-        [0, 15], # ring
-        [0, 19], # pinky
+    # LANDMARK_GROUPS = [ # wrist and fingerpoints only # body
+    #     [0, 3], # thumb
+    #     [0, 7], # index
+    #     [0, 11], # middle
+    #     [0, 15], # ring
+    #     [0, 19], # pinky
+    # ]
+    LANDMARK_GROUPS = [ # wrist and fingerpoints only # geom
+        [0, 4], # thumb
+        [0, 8], # index
+        [0, 12], # middle
+        [0, 16], # ring
+        [0, 20], # pinky
     ]
     # LANDMARK_GROUPS = [ # wrist and fingerpoints only
     #     [0, 7], # index
@@ -41,12 +48,19 @@ class General(base.General):
     #                     'rh_rfproximal', 'rh_rfmiddle', 'rh_rfdistal', None,
     #                     'rh_lfproximal', 'rh_lfmiddle', 'rh_lfdistal', None,
     #                     ]
-    MJBODY_TO_MPPOSE = ['wrist',
-                        'thproximal', 'thmiddle', 'thdistal', None,
-                        'ffproximal', 'ffmiddle', 'ffdistal', None,
-                        'mfproximal', 'mfmiddle', 'mfdistal', None,
-                        'rfproximal', 'rfmiddle', 'rfdistal', None,
-                        'lfproximal', 'lfmiddle', 'lfdistal', None,
+    # MJBODY_TO_MPPOSE = ['wrist', # body
+    #                     'thproximal', 'thmiddle', 'thdistal', None,
+    #                     'ffproximal', 'ffmiddle', 'ffdistal', None,
+    #                     'mfproximal', 'mfmiddle', 'mfdistal', None,
+    #                     'rfproximal', 'rfmiddle', 'rfdistal', None,
+    #                     'lfproximal', 'lfmiddle', 'lfdistal', None,
+    #                     ]
+    MJBODY_TO_MPPOSE = ['V_wrist', # geom
+                        'V_thbase', 'V_thproximal', 'V_thmiddle', 'V_thdistal',
+                        'V_ffknuckle', 'V_ffproximal', 'V_ffmiddle', 'V_ffdistal', 
+                        'V_mfknuckle', 'V_mfproximal', 'V_mfmiddle', 'V_mfdistal',
+                        'V_rfknuckle', 'V_rfproximal', 'V_rfmiddle', 'V_rfdistal',
+                        'V_lfknuckle', 'V_lfproximal', 'V_lfmiddle', 'V_lfdistal',
                         ]
     mjlandmarks = np.where(np.array(MJBODY_TO_MPPOSE) != None)[0]
     IDS_LANDMARKS_FILTERED = np.intersect1d(mjlandmarks, LANDMARK_GROUPS_FLAT)
