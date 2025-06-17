@@ -5,6 +5,7 @@ import numpy as np
 
 class General(base.General):
     MAX_STEPS_EPISODE_TRUNCATION = 1500
+    MAX_DIVERGENT_STEPS = 500
 
     OBS_WORLD_DERIV_ORDERS = 4 # finer action selection (possibly better for complex worlds?)
     # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
@@ -61,7 +62,7 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
-    STEPSKIP_DETECT = 100 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
+    STEPSKIP_DETECT = 50 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
 
@@ -105,7 +106,7 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # more relevant for envs where goal-state is far from the start
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-    MAX_LIVES = 3
+    MAX_LIVES = 10
 
 
 # for better reward signal (single-/low-dim., piece-wise emphasize)

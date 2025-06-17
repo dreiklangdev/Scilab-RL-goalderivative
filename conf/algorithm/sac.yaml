@@ -25,9 +25,10 @@ ent_coef: 'auto' # reach-exploration
 # ent_coef: 'auto_0.01' # hold-conservation
 
 batch_size: 256
+gamma: 0.5
 # gamma: 0.95
-gamma: 0.995
-learning_rate: 0.0001 # reach
+# gamma: 0.995
+learning_rate: 0.001 # reach
 # learning_rate: 0.0001 # hold
 learning_starts: 1000
 

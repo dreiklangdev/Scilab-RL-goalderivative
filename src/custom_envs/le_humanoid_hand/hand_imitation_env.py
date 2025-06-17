@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import multiprocessing
+import glob
 import matplotlib
 matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
@@ -118,11 +119,7 @@ class HandImitationEnv(HumanoidEnv):
         self.is_render = is_render
         self.is_eval = is_eval
         self.is_plot = is_plot
-        self.outfile_ep_goaldist_mean = open('ep_goaldist_mean.dat', 'a')
-
-        img_array = image.imread(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand2.jpg')
-        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_array.copy())
-        self.desired_pose = None
+        self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'a')
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = HandLandmarkerOptions(
@@ -168,6 +165,9 @@ class HandImitationEnv(HumanoidEnv):
         # goal obs
         obspace_total_dims += 1 + self.cfg.General.GOAL_DERIV_ORDERS
 
+        # meta obs
+        obspace_total_dims += 1 # steps_diverging_left https://arxiv.org/abs/1712.00378
+
         # reward obs
         obspace_total_dims += 1 + self.cfg.General.OBS_REWARD_HISTORY_LENGTH
         obspace_total_dims += self.cfg.General.REWARD_DERIV_ORDERS
@@ -190,6 +190,9 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('goal_space %s', goal_space)
 
         # once
+        self.desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
+        self.cache_desired_poses = dict()
+
         self.buffer_obs_achieved = []
         self.buffer_obs = []
 
@@ -337,8 +340,6 @@ class HandImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            MAX_DIVERGENT_STEPS = 50 # 75
-
             # if self.ep_rewards_sum < -30:
             #     terminated = True
 
@@ -347,9 +348,9 @@ class HandImitationEnv(HumanoidEnv):
 
             # # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
             # if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
-            if (self.ep_num_steps - self.ep_num_steps_conv) > MAX_DIVERGENT_STEPS:
+            if (self.ep_num_steps - self.ep_num_steps_conv) > self.cfg.General.MAX_DIVERGENT_STEPS:
                 terminated = True
-                # reward = -1
+                reward = -1
                 LOG.info('TOO MANY DIVERGENT STEPS.')
 
             # min. convergence terminate? ("flaming wall")
@@ -412,37 +413,8 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, obs_worldderivs)
 
 
-        # needs denoising for (near-)linearity in NN
-        # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
-        # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
-        # detect pose(s) only every nth step, else use last valid
-        if not self.desired_pose or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            # renders only rgb (cant render multiple modes simultanously)
-            render_tmp = self.render_mode
-            self.render_mode = 'rgb_array'
-
-            # https://github.com/jurgisp/memory-maze/issues/26
-            achieved_img = self.render().copy() # MUJOCO_GL=glfw
-            self.render_mode = render_tmp
-            achieved_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=achieved_img)
-            # TODO get desired img from video?
-            desired_img = self.desired_img
-
-            # bottleneck start
-            # t = time.perf_counter()
-            # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
-            # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
-            # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
-
-            if not self.desired_pose:
-                # only once at the beginning (still image)
-                self.desired_pose = self.landmarker_desired.detect(desired_img)
-            # LOG.debug(time.perf_counter() - t)
-            # bottleneck end
-
+        desired_img = self.desired_img
         desired_pose = self.desired_pose
-
-
 
         # ========= ACHIEVED OBS
 
@@ -450,28 +422,28 @@ class HandImitationEnv(HumanoidEnv):
 
         if desired_pose.hand_landmarks:
             achieved_pose = copy.deepcopy(desired_pose)
+            
+            # if desired_pose.hand_landmarks[0][0].x != 0.0:
+            # TODO redo once if new desired pose?
+            # center desired origin?
+            translation_x = desired_pose.hand_landmarks[0][0].x
+            translation_y = desired_pose.hand_landmarks[0][0].y
+            translation_z = desired_pose.hand_landmarks[0][0].z
+            for landmark in desired_pose.hand_landmarks[0]:
+                landmark.x -= translation_x
+                landmark.y -= translation_y
+                landmark.z -= translation_z
 
-            if desired_pose.hand_landmarks[0][0].x != 0.0:
-                # TODO redo once if new desired pose
-                # center desired origin?
-                translation_x = desired_pose.hand_landmarks[0][0].x
-                translation_y = desired_pose.hand_landmarks[0][0].y
-                translation_z = desired_pose.hand_landmarks[0][0].z
+            norm_v = np.linalg.norm([desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][0].x,
+                                        desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][0].y,
+                                        desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][0].z])
 
-                for landmark in desired_pose.hand_landmarks[0]:
-                    landmark.x -= translation_x
-                    landmark.y -= translation_y
-                    landmark.z -= translation_z
+            norm_u = np.linalg.norm([self.data.body('mfdistal').xpos[0] - self.data.body('wrist').xpos[0],
+                                        self.data.body('mfdistal').xpos[1] - self.data.body('wrist').xpos[1],
+                                        self.data.body('mfdistal').xpos[2] - self.data.body('wrist').xpos[2]])
 
-                norm_v = np.linalg.norm([desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][0].x,
-                                         desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][0].y,
-                                         desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][0].z])
-                norm_u = np.linalg.norm([self.data.body('mfdistal').xpos[0] - self.data.body('wrist').xpos[0],
-                                         self.data.body('mfdistal').xpos[1] - self.data.body('wrist').xpos[1],
-                                         self.data.body('mfdistal').xpos[2] - self.data.body('wrist').xpos[2]])
-
-                self.pose_scale_ratio = norm_v / norm_u
-                LOG.debug('pose_scale_ratio %s', self.pose_scale_ratio)
+                # self.pose_scale_ratio = norm_v / norm_u
+                # LOG.debug('pose_scale_ratio %s', self.pose_scale_ratio)
 
             for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
                 if body_id:
@@ -484,9 +456,13 @@ class HandImitationEnv(HumanoidEnv):
                     # achieved_pose.hand_landmarks[0][i].y -= self.data.body('wrist').xpos[2]
                     # achieved_pose.hand_landmarks[0][i].z -= self.data.body('wrist').xpos[1]
 
-                    achieved_pose.hand_landmarks[0][i].x *= self.pose_scale_ratio
-                    achieved_pose.hand_landmarks[0][i].y *= self.pose_scale_ratio
-                    achieved_pose.hand_landmarks[0][i].z *= self.pose_scale_ratio
+                    achieved_pose.hand_landmarks[0][i].x *= 1 / norm_u
+                    achieved_pose.hand_landmarks[0][i].y *= 1 / norm_u
+                    achieved_pose.hand_landmarks[0][i].z *= 1 / norm_u
+
+                    desired_pose.hand_landmarks[0][i].x *= 1 / norm_v
+                    desired_pose.hand_landmarks[0][i].y *= 1 / norm_v
+                    desired_pose.hand_landmarks[0][i].z *= 1 / norm_v
 
                     # translate: desired-wrist
                     # achieved_pose.hand_landmarks[0][i].x += desired_pose.hand_landmarks[0][0].x
@@ -533,13 +509,14 @@ class HandImitationEnv(HumanoidEnv):
             obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
         if not self.goal_model_ref:
-            self.goal_model_ref = [obs_achieved, obs_achieved]
+            self.goal_model_ref = [obs_achieved, obs_achieved, obs_achieved]
 
         SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
         if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
             self.buffer_obs_achieved.append(obs_achieved)
 
-        IS_PCA_REDUCE_GOAL = True
+        IS_PCA_REDUCE_GOAL = True # decorrelation
+        PCA_REDUCTION_WEIGHT = 0.5
         if IS_PCA_REDUCE_GOAL:
             # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
             if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
@@ -550,12 +527,46 @@ class HandImitationEnv(HumanoidEnv):
                 self.goal_model_ref[1] = obs_achieved_reduced
 
             if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
-                weight = (0.5, 0.5)
                 obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
-                obs_achieved = weight[0] * obs_achieved + weight[1] * obs_achieved_reduced[0]
+                obs_achieved = (1-PCA_REDUCTION_WEIGHT) * obs_achieved + PCA_REDUCTION_WEIGHT * obs_achieved_reduced[0]
 
                 obs_desired_reduced = self.pca_reducer_goal.transform(obs_desired.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
-                obs_desired = weight[0] * obs_desired + weight[1] * obs_desired_reduced[0]
+                obs_desired = (1-PCA_REDUCTION_WEIGHT) * obs_desired + PCA_REDUCTION_WEIGHT * obs_desired_reduced[0]
+
+        IS_GOAL_AUTOENCODE = False
+        if IS_GOAL_AUTOENCODE:
+            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+                # batch = random.sample(self.ac_buffer_obs_achieved, 1000)
+                batch = self.buffer_obs_achieved
+
+                # Train
+                tensor = torch.tensor(batch, dtype=torch.float32)
+                tensor_batches = tensor.split(64)  # mini-batch training
+                for epoch in range(20):
+                    for batch in tensor_batches:
+                        tensor_recon, z = self.ac_model_encobs(batch)
+                        recon_loss = self.recon_loss(tensor_recon, batch)
+                        decor_loss = decorrelation_loss(z)
+                        loss = recon_loss + 0.1 * decor_loss
+                        self.ac_optimizer.zero_grad()
+                        loss.backward()
+                        self.ac_optimizer.step()
+
+                obs_achieved_tensor = torch.tensor(self.goal_model_ref[0], dtype=torch.float32).unsqueeze(0)
+                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
+                encobs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
+                LOG.info('goal dims: autoencode model fitted. %s', np.linalg.norm(self.goal_model_ref[2] - encobs_achieved))
+                self.goal_model_ref[2] = encobs_achieved
+
+            if self.ac_model_encobs:
+                obs_achieved_tensor = torch.tensor(obs_achieved, dtype=torch.float32).unsqueeze(0)
+                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
+
+                obs_desired_tensor = torch.tensor(obs_desired, dtype=torch.float32).unsqueeze(0)
+                encobs_desired = self.ac_model_encobs.encoder(obs_desired_tensor).detach().numpy().squeeze()
+
+                obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
+                obs_desired = np.resize(encobs_desired, obs_desired.shape)
 
         GOAL_MODEL_MAX_REFITS = np.inf
         if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
@@ -567,6 +578,7 @@ class HandImitationEnv(HumanoidEnv):
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
         # TODO full randomize weighting? (ie. random generalizing)
         self.ep_goalweight = np.full(obs_desired.shape, 1.0)
+        # self.ep_goalweight = np.random.rand(obs_desired.shape[-1])
         # self.ep_goalweight[0] = 1 # base primary dim
         # self.ep_goalweight[1] = 1 # base primary dim
         # goaldims_primary = np.random.randint(2, size=1) # multiple?
@@ -605,6 +617,9 @@ class HandImitationEnv(HumanoidEnv):
             # metaobs.append(record_dist) # may hinder retraining of restored policy (record-reset)
             # obs_meta = np.append(obs_meta, np.float_(is_seeking_goal))
             # obs_meta = np.append(obs_meta, is_converging)
+            steps_diverged = self.ep_num_steps - self.ep_num_steps_conv
+            steps_diverging_left = self.cfg.General.MAX_DIVERGENT_STEPS - steps_diverged
+            obs_meta = np.append(obs_meta, steps_diverging_left)
             obs = np.append(obs, obs_meta)
 
 
@@ -643,10 +658,10 @@ class HandImitationEnv(HumanoidEnv):
         )
 
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_PLOT == 0:
-            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
+#            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
             if self.parallel_plot_queue.empty():
-                self.parallel_plot_queue.put_nowait((achieved_img_annotated, desired_img_annotated, achieved_pose, desired_pose))
+                self.parallel_plot_queue.put_nowait((None, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
     
@@ -671,21 +686,20 @@ class HandImitationEnv(HumanoidEnv):
             return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
         threshold_hold = (0 + cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
-        threshold_seek = (self.tr_goaldist_max - cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
         threshold_escape = self.tr_goaldist_max
 
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
 
-            if np.all(achieved_goal[1:] > 0):
-            # if np.mean(achieved_goal[1:]) > 0:
+            # if np.all(achieved_goal[1:] > 0):
+            if np.mean(achieved_goal[1:]) > 0:
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
-            if np.any(achieved_goal[1:] > 0):
-            # if np.mean(achieved_goal[1:]) > 0:
+            # if np.any(achieved_goal[1:] > 0):
+            if np.mean(achieved_goal[1:]) > 0:
                 reward = -1 # no
 
         else:
@@ -718,9 +732,8 @@ class HandImitationEnv(HumanoidEnv):
             LOG.debug('\n')
 
             if not self.is_eval and self.tr_num_steps > 10:
-                # fep_num_steps_goal_zone = self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone
-                self.outfile_ep_goaldist_mean.write('%s\n' % (np.mean(self.ep_goaldists)))
-                self.outfile_ep_goaldist_mean.flush()
+                self.outfile_ep_rewards_mean.write('%s\n' % (np.mean(self.ep_rewards_mean)))
+                self.outfile_ep_rewards_mean.flush()
 
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.ep_lives -= 1
@@ -863,6 +876,21 @@ class HandImitationEnv(HumanoidEnv):
         if not self.landmarker_achieved:
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
+        
+        # new desired pose
+        # needs denoising? (eg. filter large pose changes?)
+        # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
+        # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])        
+        desired_imgpath = self.desired_imgpaths[np.random.randint(len(self.desired_imgpaths))]
+        LOG.debug('desired_imgpath %s', desired_imgpath)
+        desired_imgdata = image.imread(desired_imgpath)
+        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
+
+        # TODO get desired img from video?            
+        # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
+        # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
+        # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
+        self.desired_pose = self.landmarker_desired.detect(self.desired_img)
 
 
     def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):
@@ -1028,9 +1056,9 @@ def parallel_plot(queue: multiprocessing.Queue):
         extplot.set_xlabel('x')
         extplot.set_ylabel('z')
         extplot.set_zlabel('y')
-        extplot.set_xlim3d(-0.5, 0.5)
-        extplot.set_ylim3d(-0.5, 0.5)
-        extplot.set_zlim3d(0.5, -0.5) # flip z-axis
+        extplot.set_xlim3d(-1, 1)
+        extplot.set_ylim3d(-1, 1)
+        extplot.set_zlim3d(1, -1) # flip z-axis
 
         if achieved_pose.hand_landmarks:
             for group in cfg.General.groups_filtered:

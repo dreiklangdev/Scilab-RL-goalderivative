@@ -37,7 +37,7 @@
             <joint name="ARTz" pos="0 0 0" axis="0 0 1" type="slide" range="-2 2" damping="50" />
             <joint name="ARRx" pos="0 0 0" axis="1 0 0" range="-3.14 3.14" damping="50" />
             <joint name="ARRy" pos="0 0 0" axis="0 1 0" range="-3.14 3.14" damping="50" />
-            <joint name="ARRz" pos="0 0 0" axis="0 0 1" range="-3.14 3.14" damping="50" />
+            <joint name="ARRz" pos="0 0 0" axis="0 0 1" range="-7 7" damping="50" />
             <geom name="V_forearm" class="D_Vizual" pos="0 -.01 .181" euler="0 0 -1.57"  mesh="forearm_simple" />
             <geom name="C_forearm1" class="DC_Hand" size="0.05 0.033" pos="0 0 0.29" type="capsule" rgba="0.4 0.5 0.6 0.1" />
             <!-- ======= Adroit ======= -->
@@ -52,7 +52,7 @@
         <general name="A_ARTz" joint="ARTz" ctrlrange="-2 2" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
         <general name="A_ARRx" joint="ARRx" ctrlrange="-3.14 3.14" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
         <general name="A_ARRy" joint="ARRy" ctrlrange="-3.14 3.14" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
-        <general name="A_ARRz" joint="ARRz" ctrlrange="-3.14 3.14" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
+        <general name="A_ARRz" joint="ARRz" ctrlrange="-7 7" biastype="affine" gainprm="50 0 0" biasprm="0 -100 0" />
     </actuator>
        
     <include file='adroit_assets.xml'/>
