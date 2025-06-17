@@ -337,7 +337,7 @@ class HandImitationEnv(HumanoidEnv):
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
-            MAX_DIVERGENT_STEPS = 100 # 75
+            MAX_DIVERGENT_STEPS = 50 # 75
 
             # if self.ep_rewards_sum < -30:
             #     terminated = True
@@ -533,7 +533,7 @@ class HandImitationEnv(HumanoidEnv):
             obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
         if not self.goal_model_ref:
-            self.goal_model_ref = [obs_achieved, obs_achieved, obs_achieved]
+            self.goal_model_ref = [obs_achieved, obs_achieved]
 
         SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
         if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
@@ -541,63 +541,21 @@ class HandImitationEnv(HumanoidEnv):
 
         IS_PCA_REDUCE_GOAL = True
         if IS_PCA_REDUCE_GOAL:
-            weight = (0.5, 0.5)
             # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
             if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
                 self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
-
-                buffer_obs_achieved_reduced = self.pca_reducer_goal.transform(self.buffer_obs_achieved) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
-                self.buffer_obs_achieved = weight[0] * np.array(self.buffer_obs_achieved) + weight[1] * np.array(buffer_obs_achieved_reduced)
-                self.buffer_obs_achieved = self.buffer_obs_achieved.tolist()
 
                 obs_achieved_reduced = self.pca_reducer_goal.transform(self.goal_model_ref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
                 LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.goal_model_ref[1] - obs_achieved_reduced))
                 self.goal_model_ref[1] = obs_achieved_reduced
 
             if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
+                weight = (0.5, 0.5)
                 obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
                 obs_achieved = weight[0] * obs_achieved + weight[1] * obs_achieved_reduced[0]
 
                 obs_desired_reduced = self.pca_reducer_goal.transform(obs_desired.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
                 obs_desired = weight[0] * obs_desired + weight[1] * obs_desired_reduced[0]
-
-        IS_GOAL_AUTOENCODE = True
-        if IS_GOAL_AUTOENCODE:
-            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
-                # batch = random.sample(self.ac_buffer_obs_achieved, 1000)
-                batch = self.buffer_obs_achieved
-
-                if not self.goal_model_ref:
-                    self.goal_model_ref = [obs_achieved, obs_achieved, obs_achieved]
-
-                # Train
-                tensor = torch.tensor(batch, dtype=torch.float32)
-                tensor_batches = tensor.split(64)  # mini-batch training
-                for epoch in range(20):
-                    for batch in tensor_batches:
-                        tensor_recon, z = self.ac_model_encobs(batch)
-                        recon_loss = self.recon_loss(tensor_recon, batch)
-                        decor_loss = decorrelation_loss(z)
-                        loss = recon_loss # + 0.1 * decor_loss
-                        self.ac_optimizer.zero_grad()
-                        loss.backward()
-                        self.ac_optimizer.step()
-
-                obs_achieved_tensor = torch.tensor(self.goal_model_ref[0], dtype=torch.float32).unsqueeze(0)
-                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
-                encobs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
-                LOG.info('goal dims: autoencode model fitted. %s', np.linalg.norm(self.goal_model_ref[2] - encobs_achieved))
-                self.goal_model_ref[2] = encobs_achieved
-
-            if self.ac_model_encobs:
-                obs_achieved_tensor = torch.tensor(obs_achieved, dtype=torch.float32).unsqueeze(0)
-                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
-
-                obs_desired_tensor = torch.tensor(obs_desired, dtype=torch.float32).unsqueeze(0)
-                encobs_desired = self.ac_model_encobs.encoder(obs_desired_tensor).detach().numpy().squeeze()
-
-                obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
-                obs_desired = np.resize(encobs_desired, obs_desired.shape)
 
         GOAL_MODEL_MAX_REFITS = np.inf
         if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
@@ -607,6 +565,7 @@ class HandImitationEnv(HumanoidEnv):
 
 
         # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
+        # TODO full randomize weighting? (ie. random generalizing)
         self.ep_goalweight = np.full(obs_desired.shape, 1.0)
         # self.ep_goalweight[0] = 1 # base primary dim
         # self.ep_goalweight[1] = 1 # base primary dim
