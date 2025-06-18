@@ -157,9 +157,13 @@ class HandImitationEnv(HumanoidEnv):
 
         obspace_total_dims = 0
 
+        # self.data.cfrc_ext[1:].flatten()
+
         # world obs
-        obspace_total_dims += self.observation_space.shape[0] # super
-        obspace_total_dims += self.data.qpos.shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-diffs
+        # obspace_total_dims += self.observation_space.shape[0] # super
+        obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
+        obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
+        obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-diffs
 
         # achieved obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
@@ -197,17 +201,20 @@ class HandImitationEnv(HumanoidEnv):
 
         # once        
         self.buffer_obs_achieved = []
-        self.buffer_obs = []
+        self.buffer_obs_world = []
 
-        self.zs_scaler_obs = StandardScaler()
+        self.zs_scaler_world = StandardScaler()
         self.zs_scaler_goal = StandardScaler()
+        self.zs_scaler_obs = StandardScaler()
+
+        self.pca_reducer_world = IncrementalPCA(whiten=True)
+        self.pca_world_modelref = []
 
         # self.pca_reducer = PCA(whiten=True)
         # self.pca_reducer = SparsePCA(alpha=1)
         # self.pca_reducer = FactorAnalysis()
         self.pca_reducer_goal = IncrementalPCA(whiten=True)
-        self.goal_model_ref = []
-        self.goalmodel_refit_count: int = 0
+        self.goal_goal_modelref = []
 
         self.ac_model_encobs = autoencoder.Autoencoder(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
         self.recon_loss = nn.MSELoss()
@@ -253,7 +260,6 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ob_desired_pose = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
         # gesture video
-        GESTURE_VIDEO_SLOW_DOWN = 2
         self.gesture_video_frames = []
         vidcap = cv2.VideoCapture(PATH_GIT_WORKING_DIR + '/mediapipe/video/gesture_capture.mp4')
         success, frame = vidcap.read()
@@ -262,7 +268,6 @@ class HandImitationEnv(HumanoidEnv):
             self.gesture_video_frames.append(frame)
             success, frame = vidcap.read()
         vidcap.release()
-        self.gesture_video_frames = np.repeat(np.array(self.gesture_video_frames), GESTURE_VIDEO_SLOW_DOWN)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -407,10 +412,44 @@ class HandImitationEnv(HumanoidEnv):
     def _get_obs(self):
         obs = np.array([])
 
+
         # =========== WORLD OBS
         obs_world = np.array([])
 
-        obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
+        # obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
+        obs_world = np.append(obs_world, self.data.qpos.flatten())
+
+        IS_NORMALIZE_Z_SCORE_WORLD = True
+        if IS_NORMALIZE_Z_SCORE_WORLD:
+            self.zs_scaler_world.partial_fit(obs_world.reshape(1, -1))
+            obs_world = self.zs_scaler_world.transform(obs_world.reshape(1, -1))[0]
+
+        IS_PCA_REDUCE_WORLD = True # decorrelation (proprioception?)
+        PCA_REDUCTION_WEIGHT = 0.5
+        if IS_PCA_REDUCE_WORLD:
+
+            if not self.pca_world_modelref:
+                self.pca_world_modelref = [obs_world, obs_world]
+
+            SIZE_BUFFER_OBS_WORLD = 1000 # may equal 'algo.learning_starts'
+            if len(self.buffer_obs_world) <= SIZE_BUFFER_OBS_WORLD:
+                self.buffer_obs_world.append(obs_world)
+
+            if len(self.buffer_obs_world) == SIZE_BUFFER_OBS_WORLD:
+                self.pca_reducer_world.partial_fit(self.buffer_obs_world)
+
+                obs_world_reduced = self.pca_reducer_world.transform(self.pca_world_modelref[0].reshape(1, -1)) @ self.pca_reducer_world.components_ + self.pca_reducer_world.mean_ # zca
+                LOG.info('world dims: pca model fitted. %s', np.linalg.norm(self.pca_world_modelref[1] - obs_world_reduced))
+                self.pca_world_modelref[1] = obs_world_reduced
+
+            if hasattr(self.pca_reducer_world, 'n_samples_seen_') and self.pca_reducer_world.n_samples_seen_ > 0:
+                obs_world_reduced = self.pca_reducer_world.transform(obs_world.reshape(1, -1)) @ self.pca_reducer_world.components_ + self.pca_reducer_world.mean_
+                obs_world = (1-PCA_REDUCTION_WEIGHT) * obs_world + PCA_REDUCTION_WEIGHT * obs_world_reduced[0]
+
+            if len(self.buffer_obs_world) == SIZE_BUFFER_OBS_WORLD:
+                self.buffer_obs_world.clear()
+
+        obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
         obs = np.append(obs, obs_world)
         
         obs_worldderivs = np.array([])
@@ -533,8 +572,8 @@ class HandImitationEnv(HumanoidEnv):
                 obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
                 obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
-            if not self.goal_model_ref:
-                self.goal_model_ref = [obs_achieved, obs_achieved, obs_achieved]
+            if not self.goal_goal_modelref:
+                self.goal_goal_modelref = [obs_achieved, obs_achieved, obs_achieved]
 
             SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
             if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
@@ -547,9 +586,9 @@ class HandImitationEnv(HumanoidEnv):
                 if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
                     self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
 
-                    obs_achieved_reduced = self.pca_reducer_goal.transform(self.goal_model_ref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
-                    LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.goal_model_ref[1] - obs_achieved_reduced))
-                    self.goal_model_ref[1] = obs_achieved_reduced
+                    obs_achieved_reduced = self.pca_reducer_goal.transform(self.goal_goal_modelref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
+                    LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.goal_goal_modelref[1] - obs_achieved_reduced))
+                    self.goal_goal_modelref[1] = obs_achieved_reduced
 
                 if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
                     obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
@@ -577,11 +616,11 @@ class HandImitationEnv(HumanoidEnv):
                             loss.backward()
                             self.ac_optimizer.step()
 
-                    obs_achieved_tensor = torch.tensor(self.goal_model_ref[0], dtype=torch.float32).unsqueeze(0)
+                    obs_achieved_tensor = torch.tensor(self.goal_goal_modelref[0], dtype=torch.float32).unsqueeze(0)
                     encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
                     encobs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
-                    LOG.info('goal dims: autoencode model fitted. %s', np.linalg.norm(self.goal_model_ref[2] - encobs_achieved))
-                    self.goal_model_ref[2] = encobs_achieved
+                    LOG.info('goal dims: autoencode model fitted. %s', np.linalg.norm(self.goal_goal_modelref[2] - encobs_achieved))
+                    self.goal_goal_modelref[2] = encobs_achieved
 
                 if self.ac_model_encobs:
                     obs_achieved_tensor = torch.tensor(obs_achieved, dtype=torch.float32).unsqueeze(0)
@@ -593,12 +632,8 @@ class HandImitationEnv(HumanoidEnv):
                     obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
                     obs_desired = np.resize(encobs_desired, obs_desired.shape)
 
-            GOAL_MODEL_MAX_REFITS = np.inf
             if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
-                if self.goalmodel_refit_count < GOAL_MODEL_MAX_REFITS:
-                    self.buffer_obs_achieved.clear()
-                    self.goalmodel_refit_count += 1
-
+                self.buffer_obs_achieved.clear()
 
             # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
             # TODO full randomize weighting? (ie. random generalizing)
@@ -626,7 +661,6 @@ class HandImitationEnv(HumanoidEnv):
 
 
         if not desired_pose.hand_landmarks:
-            LOG.debug('no hand gesture detected.')
             obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             obs_desired = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             goaldist = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT + 1
