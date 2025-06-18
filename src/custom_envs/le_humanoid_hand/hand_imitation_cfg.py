@@ -120,7 +120,7 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # more relevant for envs where goal-state is far from the start
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-    MAX_LIVES = 10
+    MAX_LIVES = 3
 
 
 # for better reward signal (single-/low-dim., piece-wise emphasize)

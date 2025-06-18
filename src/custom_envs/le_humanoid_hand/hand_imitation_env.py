@@ -10,6 +10,7 @@ import uuid
 from types import SimpleNamespace
 from . import hand_imitation_cfg as cfg
 from . import autoencoder
+from . import EMAWhitening
 from gymnasium import spaces
 from gymnasium.wrappers.utils import RunningMeanStd
 
@@ -26,6 +27,7 @@ matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 plt.rcParams["figure.raise_window"] = False
 
+import cv2
 from matplotlib import image
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -166,7 +168,8 @@ class HandImitationEnv(HumanoidEnv):
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
 
         # goal obs
-        obspace_total_dims += 1 + self.cfg.General.GOAL_DERIV_ORDERS
+        obspace_total_dims += 1 # goaldist
+        obspace_total_dims += self.cfg.General.GOAL_DERIV_ORDERS # goalderivs
 
         # meta obs
         obspace_total_dims += 1 # steps_diverging_left https://arxiv.org/abs/1712.00378
@@ -198,7 +201,6 @@ class HandImitationEnv(HumanoidEnv):
 
         self.zs_scaler_obs = StandardScaler()
         self.zs_scaler_goal = StandardScaler()
-
 
         # self.pca_reducer = PCA(whiten=True)
         # self.pca_reducer = SparsePCA(alpha=1)
@@ -250,6 +252,17 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
         self.last_ob_desired_pose = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
+        # gesture video
+        GESTURE_VIDEO_SLOW_DOWN = 2
+        self.gesture_video_frames = []
+        vidcap = cv2.VideoCapture(PATH_GIT_WORKING_DIR + '/mediapipe/video/gesture_capture.mp4')
+        success, frame = vidcap.read()
+        while success:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            self.gesture_video_frames.append(frame)
+            success, frame = vidcap.read()
+        vidcap.release()
+        self.gesture_video_frames = np.repeat(np.array(self.gesture_video_frames), GESTURE_VIDEO_SLOW_DOWN)
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -395,7 +408,6 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.array([])
 
         # =========== WORLD OBS
-
         obs_world = np.array([])
 
         obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
@@ -413,16 +425,20 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, obs_worldderivs)
 
 
-        desired_img = self.desired_img
-        desired_pose = self.desired_pose
-
-        # ========= ACHIEVED OBS
-
+        # ========= ACHIEVED OBS (proprioception)
         obs_achieved = np.array([])
 
+        if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
+            # desired_imgdata = self.gesture_video_frames[100]
+            desired_imgdata = self.gesture_video_frames[self.ep_num_steps % (len(self.gesture_video_frames) - 1)]
+            self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
+            self.desired_pose = self.landmarker_desired.detect(self.desired_img)
+
+        desired_img = self.desired_img
+        desired_pose = self.desired_pose
+        achieved_pose = copy.deepcopy(desired_pose)
+
         if desired_pose.hand_landmarks:
-            achieved_pose = copy.deepcopy(desired_pose)
-            
             # if desired_pose.hand_landmarks[0][0].x != 0.0:
             # TODO redo once if new desired pose?
             # center desired origin?
@@ -492,7 +508,6 @@ class HandImitationEnv(HumanoidEnv):
         
 
         # ========= DESIRED OBS
-
         obs_desired = np.array([])
 
         ob_desired_pose = self.last_ob_desired_pose
@@ -507,104 +522,115 @@ class HandImitationEnv(HumanoidEnv):
         
 
         # ========= GOAL (MODEL)
-
-        IS_NORMALIZE_Z_SCORE_GOAL = True
-        if IS_NORMALIZE_Z_SCORE_GOAL:
-            self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
-            obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
-            obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
-
-        if not self.goal_model_ref:
-            self.goal_model_ref = [obs_achieved, obs_achieved, obs_achieved]
-
-        SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
-        if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
-            self.buffer_obs_achieved.append(obs_achieved)
-
-        IS_PCA_REDUCE_GOAL = True # decorrelation
-        PCA_REDUCTION_WEIGHT = 0.5
-        if IS_PCA_REDUCE_GOAL:
-            # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
-            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
-                self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
-
-                obs_achieved_reduced = self.pca_reducer_goal.transform(self.goal_model_ref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
-                LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.goal_model_ref[1] - obs_achieved_reduced))
-                self.goal_model_ref[1] = obs_achieved_reduced
-
-            if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
-                obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
-                obs_achieved = (1-PCA_REDUCTION_WEIGHT) * obs_achieved + PCA_REDUCTION_WEIGHT * obs_achieved_reduced[0]
-
-                obs_desired_reduced = self.pca_reducer_goal.transform(obs_desired.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
-                obs_desired = (1-PCA_REDUCTION_WEIGHT) * obs_desired + PCA_REDUCTION_WEIGHT * obs_desired_reduced[0]
-
-        IS_GOAL_AUTOENCODE = False
-        if IS_GOAL_AUTOENCODE:
-            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
-                # batch = random.sample(self.ac_buffer_obs_achieved, 1000)
-                batch = self.buffer_obs_achieved
-
-                # Train
-                tensor = torch.tensor(batch, dtype=torch.float32)
-                tensor_batches = tensor.split(64)  # mini-batch training
-                for epoch in range(20):
-                    for batch in tensor_batches:
-                        tensor_recon, z = self.ac_model_encobs(batch)
-                        recon_loss = self.recon_loss(tensor_recon, batch)
-                        decor_loss = decorrelation_loss(z)
-                        loss = recon_loss + 0.1 * decor_loss
-                        self.ac_optimizer.zero_grad()
-                        loss.backward()
-                        self.ac_optimizer.step()
-
-                obs_achieved_tensor = torch.tensor(self.goal_model_ref[0], dtype=torch.float32).unsqueeze(0)
-                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
-                encobs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
-                LOG.info('goal dims: autoencode model fitted. %s', np.linalg.norm(self.goal_model_ref[2] - encobs_achieved))
-                self.goal_model_ref[2] = encobs_achieved
-
-            if self.ac_model_encobs:
-                obs_achieved_tensor = torch.tensor(obs_achieved, dtype=torch.float32).unsqueeze(0)
-                encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
-
-                obs_desired_tensor = torch.tensor(obs_desired, dtype=torch.float32).unsqueeze(0)
-                encobs_desired = self.ac_model_encobs.encoder(obs_desired_tensor).detach().numpy().squeeze()
-
-                obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
-                obs_desired = np.resize(encobs_desired, obs_desired.shape)
-
-        GOAL_MODEL_MAX_REFITS = np.inf
-        if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
-            if self.goalmodel_refit_count < GOAL_MODEL_MAX_REFITS:
-                self.buffer_obs_achieved.clear()
-                self.goalmodel_refit_count += 1
-
-
-        # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
-        # TODO full randomize weighting? (ie. random generalizing)
-        self.ep_goalweight = np.full(obs_desired.shape, 1.0)
-        # self.ep_goalweight = np.random.rand(obs_desired.shape[-1])
-        # self.ep_goalweight[0] = 1 # base primary dim
-        # self.ep_goalweight[1] = 1 # base primary dim
-        # goaldims_primary = np.random.randint(2, size=1) # multiple?
-        # self.ep_goalweight[goaldims_primary] = 1
-        # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
-        goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
-
-        # qualitative bottleneck? (0d)
-        goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
-
-        goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
+        goaldist = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT + 1
         goalderivs = np.array([])
-        if goalderiv_orders > 0:
-            goaldists = np.array(self.ep_goaldists)
-            goaldists = np.append(goaldists, goaldist) # most recent
-            goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)
-            goaldists = np.pad(goaldists, (2 ** goalderiv_orders,0)) # pad for more than enough recents
 
-            for i in range(1, goalderiv_orders + 1):
-                goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
+        if desired_pose.hand_landmarks:
+
+            IS_NORMALIZE_Z_SCORE_GOAL = True
+            if IS_NORMALIZE_Z_SCORE_GOAL:
+                self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
+                obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
+                obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
+
+            if not self.goal_model_ref:
+                self.goal_model_ref = [obs_achieved, obs_achieved, obs_achieved]
+
+            SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
+            if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
+                self.buffer_obs_achieved.append(obs_achieved)
+
+            IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
+            PCA_REDUCTION_WEIGHT = 0.5
+            if IS_PCA_REDUCE_GOAL:
+                # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
+                if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+                    self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
+
+                    obs_achieved_reduced = self.pca_reducer_goal.transform(self.goal_model_ref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
+                    LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.goal_model_ref[1] - obs_achieved_reduced))
+                    self.goal_model_ref[1] = obs_achieved_reduced
+
+                if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
+                    obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
+                    obs_achieved = (1-PCA_REDUCTION_WEIGHT) * obs_achieved + PCA_REDUCTION_WEIGHT * obs_achieved_reduced[0]
+
+                    obs_desired_reduced = self.pca_reducer_goal.transform(obs_desired.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
+                    obs_desired = (1-PCA_REDUCTION_WEIGHT) * obs_desired + PCA_REDUCTION_WEIGHT * obs_desired_reduced[0]
+
+            IS_GOAL_AUTOENCODE = False
+            if IS_GOAL_AUTOENCODE:
+                if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+                    # batch = random.sample(self.ac_buffer_obs_achieved, 1000)
+                    batch = self.buffer_obs_achieved
+
+                    # Train
+                    tensor = torch.tensor(batch, dtype=torch.float32)
+                    tensor_batches = tensor.split(64)  # mini-batch training
+                    for epoch in range(20):
+                        for batch in tensor_batches:
+                            tensor_recon, z = self.ac_model_encobs(batch)
+                            recon_loss = self.recon_loss(tensor_recon, batch)
+                            decor_loss = decorrelation_loss(z)
+                            loss = recon_loss + 0.1 * decor_loss
+                            self.ac_optimizer.zero_grad()
+                            loss.backward()
+                            self.ac_optimizer.step()
+
+                    obs_achieved_tensor = torch.tensor(self.goal_model_ref[0], dtype=torch.float32).unsqueeze(0)
+                    encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
+                    encobs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
+                    LOG.info('goal dims: autoencode model fitted. %s', np.linalg.norm(self.goal_model_ref[2] - encobs_achieved))
+                    self.goal_model_ref[2] = encobs_achieved
+
+                if self.ac_model_encobs:
+                    obs_achieved_tensor = torch.tensor(obs_achieved, dtype=torch.float32).unsqueeze(0)
+                    encobs_achieved = self.ac_model_encobs.encoder(obs_achieved_tensor).detach().numpy().squeeze()
+
+                    obs_desired_tensor = torch.tensor(obs_desired, dtype=torch.float32).unsqueeze(0)
+                    encobs_desired = self.ac_model_encobs.encoder(obs_desired_tensor).detach().numpy().squeeze()
+
+                    obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
+                    obs_desired = np.resize(encobs_desired, obs_desired.shape)
+
+            GOAL_MODEL_MAX_REFITS = np.inf
+            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+                if self.goalmodel_refit_count < GOAL_MODEL_MAX_REFITS:
+                    self.buffer_obs_achieved.clear()
+                    self.goalmodel_refit_count += 1
+
+
+            # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
+            # TODO full randomize weighting? (ie. random generalizing)
+            self.ep_goalweight = np.full(obs_desired.shape, 1.0)
+            # self.ep_goalweight = np.random.rand(obs_desired.shape[-1])
+            # self.ep_goalweight[0] = 1 # base primary dim
+            # self.ep_goalweight[1] = 1 # base primary dim
+            # goaldims_primary = np.random.randint(2, size=1) # multiple?
+            # self.ep_goalweight[goaldims_primary] = 1
+            # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
+            goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
+
+            # qualitative bottleneck? (0d)
+            goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
+
+            goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
+            if goalderiv_orders > 0:
+                goaldists = np.array(self.ep_goaldists)
+                goaldists = np.append(goaldists, goaldist) # most recent
+                goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)
+                goaldists = np.pad(goaldists, (2 ** goalderiv_orders,0)) # pad for more than enough recents
+
+                for i in range(1, goalderiv_orders + 1):
+                    goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
+
+
+        if not desired_pose.hand_landmarks:
+            LOG.debug('no hand gesture detected.')
+            obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
+            obs_desired = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
+            goaldist = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT + 1
+            goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
 
         obs = np.append(obs, obs_achieved)
         obs = np.append(obs, obs_desired.ravel()) # goal
@@ -654,6 +680,8 @@ class HandImitationEnv(HumanoidEnv):
         if IS_NORMALIZE_Z_SCORE_OBS:
             self.zs_scaler_obs.partial_fit(obs.reshape(1, -1))
             obs = self.zs_scaler_obs.transform(obs.reshape(1, -1))[0]
+
+        obs = self._add_noise(obs)
 
         achieved_goal = np.array([goaldist] + goalderivs.tolist())
         desired_goal = np.zeros(achieved_goal.shape)  # ignored
@@ -764,10 +792,9 @@ class HandImitationEnv(HumanoidEnv):
         self.fep_goaldist_init = obs_init['achieved_goal'][0]
         self.fep_goaldist_min = obs_init['achieved_goal'][0]
         self.fep_obs_init = obs_init
-        self.fep_goaldims_primary = np.random.randint(2, size=1) # multiple?
+        # self.fep_goaldims_primary = np.random.randint(2, size=1) # multiple?
         # TODO if random, then only secondary interval?
-        self.fep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
-        # self.desired_obs = self._get_desired_obs()
+        # self.fep_goaldims_secondary = np.random.randint(len(self.ep_goalweight), size=1) # multiple?
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
@@ -832,7 +859,6 @@ class HandImitationEnv(HumanoidEnv):
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
             self.ep_lives = self.cfg.TrajectoryHalving.MAX_LIVES
 
-
         qpos, qvel = self.ep_states[idx_halving]
         self.fep_savepoint_steps += idx_halving
         LOG.info('savepoint at step %s (%s)', self.fep_savepoint_steps, self.ep_lives)
@@ -860,6 +886,15 @@ class HandImitationEnv(HumanoidEnv):
         return obs_init
 
 
+    def new_desired_pose(self):
+        desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
+        desired_imgpath = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
+        LOG.debug('desired_imgpath %s', desired_imgpath)
+        desired_imgdata = image.imread(desired_imgpath)
+        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
+        return self.landmarker_desired.detect(self.desired_img)
+
+
     def _reset(self):
         self.ep_rewards_mean: float = 0
         self.ep_rewards_sum = 0
@@ -883,22 +918,6 @@ class HandImitationEnv(HumanoidEnv):
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
         
-        # new desired pose
-        # needs denoising? (eg. filter large pose changes?)
-        # desired_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])
-        # achieved_pose = SimpleNamespace(pose_landmarks=[], pose_world_landmarks=[])        
-        desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
-        desired_imgpath = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
-        LOG.debug('desired_imgpath %s', desired_imgpath)
-        desired_imgdata = image.imread(desired_imgpath)
-        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
-
-        # TODO get desired img from video?            
-        # https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker#detect_for_video
-        # video_timestamp_ms = int(time.process_time_ns() / 1000 + self.ep_num_steps)
-        # achieved_pose = self.landmarker_achieved.detect_for_video(achieved_img, video_timestamp_ms)
-        self.desired_pose = self.landmarker_desired.detect(self.desired_img)
-
 
     def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):
         idx_step = 0
@@ -927,7 +946,7 @@ class HandImitationEnv(HumanoidEnv):
         return idx_step
 
 
-    def _add_noise(self, qpos, qvel):
+    def _add_noise_to_state(self, qpos, qvel):
         noise_low = -self._reset_noise_scale
         noise_high = self._reset_noise_scale
         qpos = qpos + self.np_random.uniform(
@@ -937,6 +956,15 @@ class HandImitationEnv(HumanoidEnv):
             low=noise_low, high=noise_high, size=self.model.nv
         )
         return qpos, qvel
+
+
+    def _add_noise(self, obs):
+        noise_low = -self._reset_noise_scale
+        noise_high = self._reset_noise_scale
+        obs = obs + self.np_random.uniform(
+            low=noise_low, high=noise_high, size=obs.shape[-1]
+        )
+        return obs
 
 
     def _normalize_unit_limit(self, val, min_val, max_val):
