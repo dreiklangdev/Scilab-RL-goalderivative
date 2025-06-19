@@ -213,7 +213,7 @@ def main(cfg: DictConfig) -> (float, int):
         baseline = get_algo_instance(cfg, logger, train_env)
 
         callbacks = create_callbacks(cfg, logger, eval_env)
-        
+
         logger.info("Launching training")
         training_finished = False
         total_steps = cfg.eval_after_n_steps * cfg.n_epochs

@@ -4,13 +4,10 @@ import numpy as np
 
 
 class General(base.General):
-    MAX_STEPS_EPISODE_TRUNCATION = 1500
-    MAX_DIVERGENT_STEPS = 500
-
     OBS_WORLD_DERIV_ORDERS = 4 # finer action selection (possibly better for complex worlds?)
     # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
     # needs heterogeneous rewarding!
-    GOAL_DERIV_ORDERS = 4 # finer rewarding: possibly better for complex goal(s)? (multidim.: order ~ #dims?)
+    GOAL_DERIV_ORDERS = 4 # "strictness"
     OBS_REWARD_HISTORY_LENGTH = 10
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
@@ -21,13 +18,6 @@ class General(base.General):
         [13, 14, 15, 16], # ring
         [17, 18, 19, 20], # pinky
     ]
-    # LANDMARK_GROUPS = [ # wrist and fingerpoints only # body
-    #     [0, 3], # thumb
-    #     [0, 7], # index
-    #     [0, 11], # middle
-    #     [0, 15], # ring
-    #     [0, 19], # pinky
-    # ]
     LANDMARK_GROUPS = [ # wrist and fingerpoints only # geom
         [0, 4], # thumb
         [0, 8], # index
@@ -77,17 +67,11 @@ class General(base.General):
     FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
     STEPSKIP_DETECT = 150 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
-    STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
 
 # vs. single goal proficiency
 class MetaObservation(base.MetaObservation):
     IS_ENABLED = True
-
-
-class DbObservation(base.DbObservation):
-    IS_ACTIONDB_ENABLED = False
-    ACTIONDB_SIMILARITY_THRESHOLD = 0.1 # below
 
 
 # termination shaping (vs. too big search space)
@@ -96,23 +80,16 @@ class PracticeSpace(base.PracticeSpace):
     STEPS_INVINCIBLE_SPAWN = 0 # eg. if instable start (falling)
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
+    MAX_STEPS_EPISODE_TRUNCATION = 1500
+    MAX_DIVERGENT_STEPS = 50 # 500
+
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
         pass
 
 
-class PracticeTime(base.PracticeTime):    
-    IS_TERMINATE_ON_GRACE_STEPS_DIVERGENCE = True # autom. decrease search-/practice-time
-    REWARD_ON_TERMINATE = 0
-
-
 class GoalRewardThreshold(base.GoalRewardThreshold):
     MAX_FRAC_DEFAULT = 0.3
-    # vs. not finding goal (sparse rewards) (no direction/orientation: headless wandering)
-    IS_NUDGING = True
-    IS_ADAPTIVE = False
-
-    IS_SPARSE_MODE_TOGGLE_ENABLED = True
-    MIN_STEPS_FOR_SPARSE_MODE_TOGGLE = 10 # 10 # makes it rather worse if enabled?
+    IS_ADAPTIVE = True
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
@@ -120,7 +97,7 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # more relevant for envs where goal-state is far from the start
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-    MAX_LIVES = 3
+    MAX_LIVES = 999999 # 3
 
 
 # for better reward signal (single-/low-dim., piece-wise emphasize)

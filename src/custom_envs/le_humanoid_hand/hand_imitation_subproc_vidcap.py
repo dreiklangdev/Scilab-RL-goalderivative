@@ -40,7 +40,6 @@ class VidCapSingletonSubprocess:
                     LOG.warning('video camera unavailable.')
                     break
 
-
             if queue.empty():
                 queue.put_nowait((frame))
         vidcap.release()
