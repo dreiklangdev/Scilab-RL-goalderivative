@@ -4,7 +4,6 @@ import numpy as np
 
 
 class General(base.General):
-    VIDEO_CAPTURE_WEBCAM = True
     MAX_STEPS_EPISODE_TRUNCATION = 1500
     MAX_DIVERGENT_STEPS = 500
 
@@ -77,7 +76,7 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 3 # should resemble reality speed for detection
     # vs. "lost in details"
-    STEPSKIP_DETECT = 50 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
+    STEPSKIP_DETECT = 150 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
     STEPSKIP_PLOT = STEPSKIP_DETECT # >= FRAMESKIP_STEP == STEPSKIP_DETECT * k
 
 

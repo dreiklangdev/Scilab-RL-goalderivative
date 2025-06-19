@@ -10,10 +10,14 @@ import gymnasium as gym
 # gym.register_envs()
 import wandb
 import myosuite
+import pickle as pkl
 
 from stable_baselines3.her import HerReplayBuffer
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from stable_baselines3.common.vec_env import DummyVecEnv
+
+from sklearn.decomposition import PCA, IncrementalPCA
+from sklearn.preprocessing import StandardScaler
 
 from custom_envs.register_envs import register_custom_envs
 from utils.util import get_git_label, set_global_seeds, get_train_render_schedule, get_eval_render_schedule, \
@@ -29,18 +33,18 @@ OmegaConf.register_new_resolver("git_label", get_git_label)
 OmegaConf.register_new_resolver("as_tuple", tuple)
 
 
-def get_env_instance(cfg, logger):
+def get_env_instance(cfg, logger, submodels):
     if cfg.render == 'eval':
         cfg.eval_after_n_steps = 1
         # train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
-        eval_env = gym.make(cfg.env, is_eval=True, is_render=True, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=True, submodels=submodels, **cfg.env_kwargs)
         train_env = eval_env
     elif cfg.render == 'train':
-        train_env = gym.make(cfg.env, is_render=True, **cfg.env_kwargs)
-        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, **cfg.env_kwargs)
+        train_env = gym.make(cfg.env, is_render=True, submodels=submodels, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, submodels=submodels, **cfg.env_kwargs)
     else:
-        train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
-        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, **cfg.env_kwargs)
+        train_env = gym.make(cfg.env, is_render=False, submodels=submodels, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, submodels=submodels, **cfg.env_kwargs)
 
     # wrappers for rendering
     train_render_schedule = get_train_render_schedule(cfg.render_freq)
@@ -143,7 +147,7 @@ def  get_algo_instance(cfg, logger, env):
     )
 
     if cfg.restore_policy is not None:
-        baseline = baseline_class.load(cfg.restore_policy, env=env, policy_kwargs=policy_kwargs,**alg_kwargs)
+        baseline = baseline_class.load(cfg.restore_policy, env=env, policy_kwargs=policy_kwargs, **alg_kwargs)
     else:
         baseline = baseline_class(env=env, policy_kwargs=policy_kwargs, **alg_kwargs)
     baseline.set_logger(logger)
@@ -151,20 +155,20 @@ def  get_algo_instance(cfg, logger, env):
 
 
 def create_callbacks(cfg, logger, eval_env):
-    callback = []
+    callbacks = []
 
     if cfg.save_model_freq > 0:
         checkpoint_callback = CheckpointCallback(save_freq=cfg.save_model_freq, save_path=logger.get_dir(), verbose=1)
-        callback.append(checkpoint_callback)
+        callbacks.append(checkpoint_callback)
 
     eval_callback = EvalCallback(eval_env, n_eval_episodes=cfg.n_test_rollouts, eval_freq=cfg.eval_after_n_steps,
                                  log_path=logger.get_dir(), best_model_save_path=logger.get_dir(), render=False, warn=False)
-    callback.append(eval_callback)
+    callbacks.append(eval_callback)
     early_stop_callback = EarlyStopCallback(metric=cfg.early_stop_data_column, eval_freq=cfg.eval_after_n_steps,
                                             threshold=cfg.early_stop_threshold, n_episodes=cfg.early_stop_last_n)
-    callback.append(early_stop_callback)
-    callback = CallbackList(callback)
-    return callback
+    callbacks.append(early_stop_callback)
+    # callback = CallbackList(callback)
+    return callbacks
 
 
 # config_path is relative to the location of the Python script
@@ -190,23 +194,31 @@ def main(cfg: DictConfig) -> (float, int):
             cfg['seed'] = int(time.time_ns() % 2**32)
         set_global_seeds(cfg.seed)
 
-        train_env, eval_env = get_env_instance(cfg, logger)
+        submodels = None
+        if cfg.restore_policy:
+            with open(f'{cfg.restore_policy}_submodels.pkl', 'rb') as submodels_infile:
+                submodels = pkl.load(submodels_infile)
+
+        train_env, eval_env = get_env_instance(cfg, logger, submodels)
 
         baseline = get_algo_instance(cfg, logger, train_env)
 
-        callback = create_callbacks(cfg, logger, eval_env)
-
+        callbacks = create_callbacks(cfg, logger, eval_env)
+        
         logger.info("Launching training")
         training_finished = False
         total_steps = cfg.eval_after_n_steps * cfg.n_epochs
         try:
-            baseline.learn(total_timesteps=total_steps, callback=callback, log_interval=None, progress_bar=True)
+            baseline.learn(total_timesteps=total_steps, callback=callbacks, log_interval=None, progress_bar=True)
             training_finished = True
             logger.info("Training finished!")
             # Save model when training is finished
             p = logger.get_dir() + "/rl_model_finished"
             logger.info(f"Saving policy to {p}")
             baseline.save(path=p)
+            with open(f'{p}_submodels.pkl', 'wb') as submodels_outfile:
+                pkl.dump(submodels, submodels_outfile, protocol=5)
+
         except ValueError as e:
             if e.args[0].startswith("Expected parameter loc"):
                 logger.error(f"The experiment failed with error {e}")

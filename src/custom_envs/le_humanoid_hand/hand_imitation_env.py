@@ -1,6 +1,5 @@
 
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 import time
 import random
 import copy
@@ -10,10 +9,13 @@ import uuid
 from types import SimpleNamespace
 from . import hand_imitation_cfg as cfg
 from . import autoencoder
-from . import EMAWhitening
+from .hand_imitation_subproc_vidcap import VidCapSingletonSubprocess
+
 from gymnasium import spaces
 from gymnasium.wrappers.utils import RunningMeanStd
+from stable_baselines3.common.callbacks import BaseCallback
 
+from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA, IncrementalPCA
 from sklearn.preprocessing import StandardScaler
 import torch
@@ -45,6 +47,7 @@ LOG.propagate = False
 consoleHandler = logging.StreamHandler()
 consoleHandler.setFormatter(logging.Formatter(fmt='%(message)s'))
 LOG.addHandler(consoleHandler)
+multiprocessing.log_to_stderr(logging.DEBUG)
 
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
@@ -111,7 +114,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 class HandImitationEnv(HumanoidEnv):
 
 
-    def __init__(self, is_eval=False, is_render=True, is_plot=True, log_level=logging.INFO):
+    def __init__(self, is_eval=False, is_render=True, is_plot=True, submodels=None, log_level=logging.INFO):
         LOG.setLevel(log_level)
 
         HumanoidEnv.__init__(self,
@@ -119,6 +122,7 @@ class HandImitationEnv(HumanoidEnv):
                              width=cfg.General.RENDER_IMAGE_SIZE,
                              height=cfg.General.RENDER_IMAGE_SIZE,
                              xml_file=PATH_GIT_WORKING_DIR + '/src/custom_envs/le_humanoid_hand/adroit_hand/adroit_relocate.xml')
+        # BaseCallback(HandImitationEnv, self).__init__(verbose=0)
         self.frame_skip: 5 = cfg.General.FRAMESKIP_STEP
 
         assert cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT and cfg.General.STEPSKIP_PLOT >= cfg.General.STEPSKIP_DETECT, 'cannot plot in a step with no pose render (and detection'
@@ -206,17 +210,21 @@ class HandImitationEnv(HumanoidEnv):
         self.buffer_obs_achieved = []
         self.buffer_obs_world = []
 
-        self.zs_scaler_world = StandardScaler()
-        self.zs_scaler_goal = StandardScaler()
-        self.zs_scaler_obs = StandardScaler()
+        if submodels:
+            self.zs_scaler_world = submodels["zs_scaler_world"]
+            self.zs_scaler_goal = submodels["zs_scaler_goal"]
+            self.zs_scaler_obs = submodels["zs_scaler_obs"]
+            self.pca_reducer_world = submodels["pca_reducer_world"]
+            self.pca_reducer_goal = submodels["pca_reducer_goal"]
+        else:
+            self.zs_scaler_world = StandardScaler()
+            self.zs_scaler_goal = StandardScaler()
+            self.zs_scaler_obs = StandardScaler()
+            self.pca_reducer_world = IncrementalPCA(whiten=True)
+            self.pca_reducer_goal = IncrementalPCA(whiten=True)
 
-        self.pca_reducer_world = IncrementalPCA(whiten=True)
         self.pca_world_modelref = []
 
-        # self.pca_reducer = PCA(whiten=True)
-        # self.pca_reducer = SparsePCA(alpha=1)
-        # self.pca_reducer = FactorAnalysis()
-        self.pca_reducer_goal = IncrementalPCA(whiten=True)
         self.goal_goal_modelref = []
 
         self.ac_model_encobs = autoencoder.Autoencoder(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
@@ -263,24 +271,8 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
         self.last_ob_desired_pose = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
-        if self.cfg.General.VIDEO_CAPTURE_WEBCAM:
-            self.parallel_vidcap_queue = multiprocessing.Queue()
-            multiprocessing.log_to_stderr(logging.DEBUG)
-            multiprocessing.Process(target=parallel_vidcap, args=((self.parallel_vidcap_queue,)), daemon=True).start()
-        else:
-            self.gesture_video_frames = []
-            # gesture video
-            vidcap = cv2.VideoCapture(PATH_GIT_WORKING_DIR + '/mediapipe/video/gesture_capture.mp4')
-            success, frame = vidcap.read()
-            while success:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                self.gesture_video_frames.append(frame)
-                success, frame = vidcap.read()
-            vidcap.release()
-
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
-            multiprocessing.log_to_stderr(logging.DEBUG)
             multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
 
         self._reset()
@@ -477,11 +469,7 @@ class HandImitationEnv(HumanoidEnv):
         obs_achieved = np.array([])
 
         if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            if self.cfg.General.VIDEO_CAPTURE_WEBCAM:
-                desired_imgdata = self.parallel_vidcap_queue.get()
-            else:
-                # desired_imgdata = self.gesture_video_frames[100]
-                desired_imgdata = self.gesture_video_frames[(self.ep_rand_videostart + self.ep_num_steps) % (len(self.gesture_video_frames) - 1)]
+            desired_imgdata = VidCapSingletonSubprocess.parallel_vidcap_queue.get()
             self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
             self.desired_pose = self.landmarker_desired.detect(self.desired_img)
 
@@ -570,7 +558,7 @@ class HandImitationEnv(HumanoidEnv):
             self.last_ob_desired_pose = ob_desired_pose
 
         obs_desired = np.append(obs_desired, ob_desired_pose)
-        
+
 
         # ========= GOAL (MODEL)
         goaldist = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT + 1
@@ -929,9 +917,6 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_goalconvs = []
         self.ep_goalacces = []
 
-        if not self.cfg.General.VIDEO_CAPTURE_WEBCAM:
-           self.ep_rand_videostart = np.random.randint(len(self.gesture_video_frames))
-
         obs_init = self._get_obs()
         return obs_init
 
@@ -1116,19 +1101,6 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     text_y = int(min(y_coordinates) * height) - MARGIN
 
   return annotated_image
-
-
-def parallel_vidcap(queue: multiprocessing.Queue):
-    vidcap = cv2.VideoCapture(0)
-    while True:
-        success, frame = vidcap.read()
-        if not success:
-            break
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if queue.empty():
-            queue.put_nowait((frame))
-    vidcap.release()
 
 
 def parallel_plot(queue: multiprocessing.Queue):
