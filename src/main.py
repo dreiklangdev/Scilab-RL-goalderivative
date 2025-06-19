@@ -194,10 +194,19 @@ def main(cfg: DictConfig) -> (float, int):
             cfg['seed'] = int(time.time_ns() % 2**32)
         set_global_seeds(cfg.seed)
 
-        submodels = None
+
         if cfg.restore_policy:
             with open(f'{cfg.restore_policy}_submodels.pkl', 'rb') as submodels_infile:
                 submodels = pkl.load(submodels_infile)
+        else:
+            submodels = {
+                "zs_scaler_world": StandardScaler(),
+                "zs_scaler_goal": StandardScaler(),
+                "zs_scaler_obs": StandardScaler(),
+
+                "pca_reducer_world": IncrementalPCA(whiten=True),
+                "pca_reducer_goal": IncrementalPCA(whiten=True),
+            }
 
         train_env, eval_env = get_env_instance(cfg, logger, submodels)
 

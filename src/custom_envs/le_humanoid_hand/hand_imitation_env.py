@@ -210,19 +210,13 @@ class HandImitationEnv(HumanoidEnv):
         self.buffer_obs_achieved = []
         self.buffer_obs_world = []
 
-        if submodels:
-            self.zs_scaler_world = submodels["zs_scaler_world"]
-            self.zs_scaler_goal = submodels["zs_scaler_goal"]
-            self.zs_scaler_obs = submodels["zs_scaler_obs"]
-            self.pca_reducer_world = submodels["pca_reducer_world"]
-            self.pca_reducer_goal = submodels["pca_reducer_goal"]
-        else:
-            self.zs_scaler_world = StandardScaler()
-            self.zs_scaler_goal = StandardScaler()
-            self.zs_scaler_obs = StandardScaler()
-            self.pca_reducer_world = IncrementalPCA(whiten=True)
-            self.pca_reducer_goal = IncrementalPCA(whiten=True)
-
+        # submodels
+        self.zs_scaler_world = submodels["zs_scaler_world"]
+        self.zs_scaler_goal = submodels["zs_scaler_goal"]
+        self.zs_scaler_obs = submodels["zs_scaler_obs"]
+        self.pca_reducer_world = submodels["pca_reducer_world"]
+        self.pca_reducer_goal = submodels["pca_reducer_goal"]
+    
         self.pca_world_modelref = []
 
         self.goal_goal_modelref = []
