@@ -4,6 +4,7 @@ import numpy as np
 
 
 class General(base.General):
+    VIDEO_CAPTURE_WEBCAM = True
     MAX_STEPS_EPISODE_TRUNCATION = 1500
     MAX_DIVERGENT_STEPS = 500
 

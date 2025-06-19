@@ -104,7 +104,10 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://github.com/hukenovs/hagrid/blob/master/images/gestures.png
 # https://www.qualcomm.com/developer/software/jester-dataset#datasetdetails
 
+# https://scikit-learn.org/stable/model_persistence.html
+
 # TODO obs appender func with limits warning (for normalization(!))
+# TODO persist models (action, pca, zscale?)
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -249,6 +252,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_goaldist_max: float = 0
         self.ep_goalweight = []
         self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
+        self.ep_rand_videostart = 0
         self.lp_num_steps = 0
 
         # constant threshold
@@ -259,15 +263,20 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
         self.last_ob_desired_pose = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
-        # gesture video
-        self.gesture_video_frames = []
-        vidcap = cv2.VideoCapture(PATH_GIT_WORKING_DIR + '/mediapipe/video/gesture_capture.mp4')
-        success, frame = vidcap.read()
-        while success:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            self.gesture_video_frames.append(frame)
+        if self.cfg.General.VIDEO_CAPTURE_WEBCAM:
+            self.parallel_vidcap_queue = multiprocessing.Queue()
+            multiprocessing.log_to_stderr(logging.DEBUG)
+            multiprocessing.Process(target=parallel_vidcap, args=((self.parallel_vidcap_queue,)), daemon=True).start()
+        else:
+            self.gesture_video_frames = []
+            # gesture video
+            vidcap = cv2.VideoCapture(PATH_GIT_WORKING_DIR + '/mediapipe/video/gesture_capture.mp4')
             success, frame = vidcap.read()
-        vidcap.release()
+            while success:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self.gesture_video_frames.append(frame)
+                success, frame = vidcap.read()
+            vidcap.release()
 
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
@@ -446,7 +455,7 @@ class HandImitationEnv(HumanoidEnv):
                 obs_world_reduced = self.pca_reducer_world.transform(obs_world.reshape(1, -1)) @ self.pca_reducer_world.components_ + self.pca_reducer_world.mean_
                 obs_world = (1-PCA_REDUCTION_WEIGHT) * obs_world + PCA_REDUCTION_WEIGHT * obs_world_reduced[0]
 
-            if len(self.buffer_obs_world) == SIZE_BUFFER_OBS_WORLD:
+            if len(self.buffer_obs_world) >= SIZE_BUFFER_OBS_WORLD:
                 self.buffer_obs_world.clear()
 
         obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
@@ -468,8 +477,11 @@ class HandImitationEnv(HumanoidEnv):
         obs_achieved = np.array([])
 
         if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            # desired_imgdata = self.gesture_video_frames[100]
-            desired_imgdata = self.gesture_video_frames[self.ep_num_steps % (len(self.gesture_video_frames) - 1)]
+            if self.cfg.General.VIDEO_CAPTURE_WEBCAM:
+                desired_imgdata = self.parallel_vidcap_queue.get()
+            else:
+                # desired_imgdata = self.gesture_video_frames[100]
+                desired_imgdata = self.gesture_video_frames[(self.ep_rand_videostart + self.ep_num_steps) % (len(self.gesture_video_frames) - 1)]
             self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
             self.desired_pose = self.landmarker_desired.detect(self.desired_img)
 
@@ -632,7 +644,7 @@ class HandImitationEnv(HumanoidEnv):
                     obs_achieved = np.resize(encobs_achieved, obs_achieved.shape)
                     obs_desired = np.resize(encobs_desired, obs_desired.shape)
 
-            if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+            if len(self.buffer_obs_achieved) >= SIZE_BUFFER_OBS_ACHIEVED:
                 self.buffer_obs_achieved.clear()
 
             # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
@@ -732,7 +744,7 @@ class HandImitationEnv(HumanoidEnv):
                 self.parallel_plot_queue.put_nowait((None, desired_img_annotated, achieved_pose, desired_pose))
 
         return dictobs
-    
+
 
     # class Record:
     #     def __init__(self):
@@ -748,10 +760,11 @@ class HandImitationEnv(HumanoidEnv):
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
         if achieved_goal.ndim > 1:
+            # LOG.debug('hindsight experience replay. (HER)')
             # raise NotImplementedError('HER proved not viable (yet) in this dense training env.')
             # recursive for replay buffer
-            # return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
-            return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
+            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
+            # return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
         threshold_hold = (0 + cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
         threshold_escape = self.tr_goaldist_max
@@ -916,6 +929,9 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_goalconvs = []
         self.ep_goalacces = []
 
+        if not self.cfg.General.VIDEO_CAPTURE_WEBCAM:
+           self.ep_rand_videostart = np.random.randint(len(self.gesture_video_frames))
+
         obs_init = self._get_obs()
         return obs_init
 
@@ -947,7 +963,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_actions = []
         self.ep_num_steps_goal_zone = 0
         self.ep_count_fails_pose_detection = 0
-
+       
         if not self.landmarker_achieved:
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
@@ -1100,6 +1116,19 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     text_y = int(min(y_coordinates) * height) - MARGIN
 
   return annotated_image
+
+
+def parallel_vidcap(queue: multiprocessing.Queue):
+    vidcap = cv2.VideoCapture(0)
+    while True:
+        success, frame = vidcap.read()
+        if not success:
+            break
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if queue.empty():
+            queue.put_nowait((frame))
+    vidcap.release()
 
 
 def parallel_plot(queue: multiprocessing.Queue):

@@ -32,8 +32,9 @@ OmegaConf.register_new_resolver("as_tuple", tuple)
 def get_env_instance(cfg, logger):
     if cfg.render == 'eval':
         cfg.eval_after_n_steps = 1
-        train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
+        # train_env = gym.make(cfg.env, is_render=False, **cfg.env_kwargs)
         eval_env = gym.make(cfg.env, is_eval=True, is_render=True, **cfg.env_kwargs)
+        train_env = eval_env
     elif cfg.render == 'train':
         train_env = gym.make(cfg.env, is_render=True, **cfg.env_kwargs)
         eval_env = gym.make(cfg.env, is_eval=True, is_render=False, **cfg.env_kwargs)
@@ -130,9 +131,9 @@ def  get_algo_instance(cfg, logger, env):
 
         # https://datascience.stackexchange.com/questions/26021/negative-rewards-and-activation-functions
         # outputs smoother action [-1,1]
-        activation_fn=nn.Tanh,
+        # activation_fn=nn.Tanh,
         # not for many negative inputs? (clips off!) [0,1]
-        # activation_fn=nn.ReLU,
+        activation_fn=nn.ReLU,
         # activation_fn=nn.LeakyReLU,
 
         # net_arch=[64, 64],
