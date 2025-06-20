@@ -271,7 +271,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('le-walker-2d initialized.')
 
 
-    def step_passive(self, action):
+    def step(self, action):
         info = {}
         info['success'] = False
 
@@ -400,35 +400,6 @@ class HandImitationEnv(HumanoidEnv):
         return result
 
 
-    def step(self, action):
-        num_steps_passive = 0
-        num_steps_passive_max = 1 # adaptive? (eg. dont scout anymore at goal(-keeping))
-        total_reward = 0
-        last_reward = None
-        term = False
-        trunc = False
-        # retro-future rewarding ("drone/scout send+collect")
-        # TODO add action noise?
-        # neg. passive steps should also been cumulated (and learned)
-        # while num_steps_passive < num_steps_passive_max and not (term or trunc):
-        while num_steps_passive < num_steps_passive_max and (not term or not trunc):
-            obs, reward, term, trunc, info = self.step_passive(action)
-            num_steps_passive += 1
-            total_reward += reward
-
-            if reward != 0:
-                # retake control
-                break
-
-        # step-back? (revert/undo bad passive steps, but less exploration)
-        # if total_reward < 0 and len(self.ep_states) > num_steps_passive:
-        #     qpos, qvel = self.ep_states[-(num_steps_passive + 1)]
-        #     self.set_state(qpos, qvel)
-
-        # TODO pos. passive steps are not (actively) learned/seen by NN (yet)? (only passively by retro/future is enough? maybe no need to active step in?)
-        return obs, total_reward, term, trunc, info
-
-
     # obs = achieved_obs + metaobs
     # TODO keep obs keys/indices mapping (eg. dict, vs. "counting")
     def _get_obs(self):
@@ -512,37 +483,15 @@ class HandImitationEnv(HumanoidEnv):
                 landmark.z -= translation_z
 
             norm_v = np.linalg.norm([
-                desired_pose.hand_landmarks[0][0].x - desired_pose.hand_landmarks[0][9].x
-                + desired_pose.hand_landmarks[0][9].x - desired_pose.hand_landmarks[0][10].x
-                + desired_pose.hand_landmarks[0][10].x - desired_pose.hand_landmarks[0][11].x
-                + desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][12].x,
-                
-                desired_pose.hand_landmarks[0][0].y - desired_pose.hand_landmarks[0][9].y
-                + desired_pose.hand_landmarks[0][9].y - desired_pose.hand_landmarks[0][10].y
-                + desired_pose.hand_landmarks[0][10].y - desired_pose.hand_landmarks[0][11].y
-                + desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][12].y,
-
-                desired_pose.hand_landmarks[0][0].z - desired_pose.hand_landmarks[0][9].z
-                + desired_pose.hand_landmarks[0][9].z - desired_pose.hand_landmarks[0][10].z
-                + desired_pose.hand_landmarks[0][10].z - desired_pose.hand_landmarks[0][11].z
-                + desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][12].z,
+                desired_pose.hand_landmarks[0][0].x - desired_pose.hand_landmarks[0][9].x,
+                desired_pose.hand_landmarks[0][0].y - desired_pose.hand_landmarks[0][9].y,
+                desired_pose.hand_landmarks[0][0].z - desired_pose.hand_landmarks[0][9].z,
                 ])
 
             norm_u = np.linalg.norm([
-                self.data.geom('V_wrist').xpos[0] - self.data.geom('V_mfknuckle').xpos[0]
-                + self.data.geom('V_mfknuckle').xpos[0] - self.data.geom('V_mfproximal').xpos[0]
-                + self.data.geom('V_mfproximal').xpos[0] - self.data.geom('V_mfmiddle').xpos[0]
-                + self.data.geom('V_mfmiddle').xpos[0] - self.data.geom('V_mfdistal').xpos[0],
-
-                self.data.geom('V_wrist').xpos[1] - self.data.geom('V_mfknuckle').xpos[1]
-                + self.data.geom('V_mfknuckle').xpos[1] - self.data.geom('V_mfproximal').xpos[1]
-                + self.data.geom('V_mfproximal').xpos[1] - self.data.geom('V_mfmiddle').xpos[1]
-                + self.data.geom('V_mfmiddle').xpos[1] - self.data.geom('V_mfdistal').xpos[1],
-                
-                self.data.geom('V_wrist').xpos[2] - self.data.geom('V_mfknuckle').xpos[2]
-                + self.data.geom('V_mfknuckle').xpos[2] - self.data.geom('V_mfproximal').xpos[2]
-                + self.data.geom('V_mfproximal').xpos[2] - self.data.geom('V_mfmiddle').xpos[2]
-                + self.data.geom('V_mfmiddle').xpos[2] - self.data.geom('V_mfdistal').xpos[2],
+                self.data.geom('V_wrist').xpos[0] - self.data.geom('V_mfknuckle').xpos[0],
+                self.data.geom('V_wrist').xpos[1] - self.data.geom('V_mfknuckle').xpos[1],
+                self.data.geom('V_wrist').xpos[2] - self.data.geom('V_mfknuckle').xpos[2],
                 ])
 
 
