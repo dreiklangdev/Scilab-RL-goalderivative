@@ -253,7 +253,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = 0
         self.ep_goalweight = []
-        self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
+        self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
         self.ep_rand_videostart = 0
         self.lp_num_steps = 0
 
@@ -301,27 +301,28 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_rewards.append(reward)
 
 
-        # records                    
+        # records      
+        if goaldist < self.ep_reward_threshold:
+            self.ep_num_steps_goal_zone += 1
+
         if goaldist < self.tr_goaldist_min:
-            LOG.debug(f"TR IMPROVED: {goaldist} < {self.tr_goaldist_min}")
             self.tr_goaldist_min = goaldist
 
         if goaldist > self.tr_goaldist_max:
-            LOG.debug(f"TR DEPROVED: {goaldist} > {self.tr_goaldist_max}")
             self.tr_goaldist_max = goaldist        
 
         if goaldist < self.ep_goaldist_min:
             self.ep_goaldist_min = goaldist
-            if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-                self.ep_reward_threshold = goaldist
-            self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
 
         if goaldist > self.ep_goaldist_max:
             self.ep_goaldist_max = goaldist
 
         if goaldist < self.fep_goaldist_min:
             self.fep_goaldist_min = goaldist
-
+            self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
+            if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
+                self.ep_reward_threshold = goaldist
+        
         if goaldist > self.fep_goaldist_max:
             self.fep_goaldist_max = goaldist
 
@@ -331,6 +332,9 @@ class HandImitationEnv(HumanoidEnv):
         if goalconv > self.tr_goalconv_max:
             self.tr_goalconv_max = goalconv
 
+        if goalconv > 0:
+            self.ep_num_steps_conv += 1
+
         if reward < self.tr_reward_min:
             self.tr_reward_min = reward
 
@@ -339,12 +343,6 @@ class HandImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
-
-        if goaldist < self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT:
-            self.ep_num_steps_goal_zone += 1
-
-        if goalconv > 0:
-            self.ep_num_steps_conv += 1
 
 
         terminated = False
@@ -470,6 +468,7 @@ class HandImitationEnv(HumanoidEnv):
 
         desired_img = self.desired_img
         desired_pose = self.desired_pose
+        desired_pose_orig = copy.deepcopy(desired_pose)
         achieved_pose = copy.deepcopy(desired_pose)
 
         if desired_pose.hand_landmarks:
@@ -485,20 +484,39 @@ class HandImitationEnv(HumanoidEnv):
                 landmark.z -= translation_z
 
             norm_v = np.linalg.norm([
-                desired_pose.hand_landmarks[0][9].x - desired_pose.hand_landmarks[0][0].x,
-                desired_pose.hand_landmarks[0][9].y - desired_pose.hand_landmarks[0][0].y,
-                desired_pose.hand_landmarks[0][9].z - desired_pose.hand_landmarks[0][0].z])
+                desired_pose.hand_landmarks[0][0].x - desired_pose.hand_landmarks[0][9].x
+                + desired_pose.hand_landmarks[0][9].x - desired_pose.hand_landmarks[0][10].x
+                + desired_pose.hand_landmarks[0][10].x - desired_pose.hand_landmarks[0][11].x
+                + desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][12].x,
+                
+                desired_pose.hand_landmarks[0][0].y - desired_pose.hand_landmarks[0][9].y
+                + desired_pose.hand_landmarks[0][9].y - desired_pose.hand_landmarks[0][10].y
+                + desired_pose.hand_landmarks[0][10].y - desired_pose.hand_landmarks[0][11].y
+                + desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][12].y,
 
-            # norm_u = np.linalg.norm([self.data.body('mfproximal').xpos[0] - self.data.body('wrist').xpos[0],
-            #                             self.data.body('mfproximal').xpos[1] - self.data.body('wrist').xpos[1],
-            #                             self.data.body('mfproximal').xpos[2] - self.data.body('wrist').xpos[2]])
+                desired_pose.hand_landmarks[0][0].z - desired_pose.hand_landmarks[0][9].z
+                + desired_pose.hand_landmarks[0][9].z - desired_pose.hand_landmarks[0][10].z
+                + desired_pose.hand_landmarks[0][10].z - desired_pose.hand_landmarks[0][11].z
+                + desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][12].z,
+                ])
+
             norm_u = np.linalg.norm([
-                self.data.geom('V_mfproximal').xpos[0] - self.data.geom('V_wrist').xpos[0],
-                self.data.geom('V_mfproximal').xpos[1] - self.data.geom('V_wrist').xpos[1],
-                self.data.geom('V_mfproximal').xpos[2] - self.data.geom('V_wrist').xpos[2]])
+                self.data.geom('V_wrist').xpos[0] - self.data.geom('V_mfknuckle').xpos[0]
+                + self.data.geom('V_mfknuckle').xpos[0] - self.data.geom('V_mfproximal').xpos[0]
+                + self.data.geom('V_mfproximal').xpos[0] - self.data.geom('V_mfmiddle').xpos[0]
+                + self.data.geom('V_mfmiddle').xpos[0] - self.data.geom('V_mfdistal').xpos[0],
 
-                # self.pose_scale_ratio = norm_v / norm_u
-                # LOG.debug('pose_scale_ratio %s', self.pose_scale_ratio)
+                self.data.geom('V_wrist').xpos[1] - self.data.geom('V_mfknuckle').xpos[1]
+                + self.data.geom('V_mfknuckle').xpos[1] - self.data.geom('V_mfproximal').xpos[1]
+                + self.data.geom('V_mfproximal').xpos[1] - self.data.geom('V_mfmiddle').xpos[1]
+                + self.data.geom('V_mfmiddle').xpos[1] - self.data.geom('V_mfdistal').xpos[1],
+                
+                self.data.geom('V_wrist').xpos[2] - self.data.geom('V_mfknuckle').xpos[2]
+                + self.data.geom('V_mfknuckle').xpos[2] - self.data.geom('V_mfproximal').xpos[2]
+                + self.data.geom('V_mfproximal').xpos[2] - self.data.geom('V_mfmiddle').xpos[2]
+                + self.data.geom('V_mfmiddle').xpos[2] - self.data.geom('V_mfdistal').xpos[2],
+                ])
+
 
             for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
                 if body_id:
@@ -558,7 +576,7 @@ class HandImitationEnv(HumanoidEnv):
 
 
         # ========= GOAL (MODEL)
-        goaldist = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT + 1
+        goaldist = self.ep_reward_threshold + 1
         goalderivs = np.array([])
 
         if desired_pose.hand_landmarks:
@@ -659,11 +677,11 @@ class HandImitationEnv(HumanoidEnv):
 
         if not desired_pose.hand_landmarks:
             ob_desired_pose = ob_achieved_pose = obs_desired = obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION) 
-            goaldist = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT + 1
+            goaldist = self.ep_reward_threshold + 1
             goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
 
-        obs = np.append(obs, ob_achieved_pose)
-        obs = np.append(obs, ob_desired_pose) # goal
+        obs = np.append(obs, obs_achieved)
+        obs = np.append(obs, obs_desired) # goal
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goalderivs)
 
@@ -706,12 +724,14 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, reward_history)
         obs = np.append(obs, rewardderivs)
 
+
+        # may lead to faster and more general training
+        obs = self._add_noise(obs, -0.1, 0.1)
+
         IS_NORMALIZE_Z_SCORE_OBS = True
         if IS_NORMALIZE_Z_SCORE_OBS:
             self.zs_scaler_obs.partial_fit(obs.reshape(1, -1))
             obs = self.zs_scaler_obs.transform(obs.reshape(1, -1))[0]
-
-        obs = self._add_noise(obs)
 
         achieved_goal = np.array([goaldist] + goalderivs.tolist())
         desired_goal = np.zeros(achieved_goal.shape)  # ignored
@@ -723,7 +743,7 @@ class HandImitationEnv(HumanoidEnv):
 
         if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
 #            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
-            desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose)
+            desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose_orig)
             if self.parallel_plot_queue.empty():
                 self.parallel_plot_queue.put_nowait((None, desired_img_annotated, achieved_pose, desired_pose))
 
@@ -750,7 +770,7 @@ class HandImitationEnv(HumanoidEnv):
             return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             # return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
-        threshold_hold = (0 + cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
+        threshold_hold = (0 + self.ep_reward_threshold)
         threshold_escape = self.tr_goaldist_max
 
         if achieved_goal[0] <= threshold_hold:
@@ -778,7 +798,7 @@ class HandImitationEnv(HumanoidEnv):
         if self.ep_current_obs and len(self.ep_goaldists) > 0:
             ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
             # episode report
-            LOG.debug('ep_lives %s', self.ep_lives)
+            LOG.debug('fep_lives %s', self.fep_lives)
             LOG.debug('ep_num_steps %s', self.ep_num_steps)
             LOG.debug('ep_num_steps_goal_zone %s', self.ep_num_steps_goal_zone)
             LOG.debug('ep_first_reward_step %s', self.ep_first_reward_step)
@@ -801,9 +821,10 @@ class HandImitationEnv(HumanoidEnv):
                 self.outfile_ep_rewards_mean.flush()
 
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
-            self.ep_lives -= 1
-            if self.ep_lives > 0 and len(self.ep_states) > 2:
+            self.fep_lives -= 1
+            if self.fep_lives > 0 and len(self.ep_states) > 2:
                 SAVEPOINT_MIN_STEPS_BEFORE_TERMINATION = 100
+                # SAVEPOINT_MIN_STEPS_BEFORE_TERMINATION = 0
                 return self._reset_half_episode(SAVEPOINT_MIN_STEPS_BEFORE_TERMINATION, 0)
 
         return self._reset_full_episode()
@@ -829,7 +850,7 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ep_goaldist_min = np.inf
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
-        self.ep_lives = cfg.TrajectoryHalving.MAX_LIVES
+        self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
@@ -870,9 +891,6 @@ class HandImitationEnv(HumanoidEnv):
 
         self.fep_rewards_sum = 0
 
-        self.ep_goaldist_min = obs_init['achieved_goal'][0]
-        self.ep_goaldist_max = obs_init['achieved_goal'][0]
-
         return obs_init
 
 
@@ -888,11 +906,11 @@ class HandImitationEnv(HumanoidEnv):
 
         if idx_halving > 0: # improved
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
-            self.ep_lives = self.cfg.TrajectoryHalving.MAX_LIVES
+            self.fep_lives = self.cfg.TrajectoryHalving.MAX_LIVES
 
         qpos, qvel = self.ep_states[idx_halving]
         self.fep_savepoint_steps += idx_halving
-        LOG.info('savepoint at step %s (%s)', self.fep_savepoint_steps, self.ep_lives)
+        LOG.info('savepoint at step %s (%s) (%s) %s', self.fep_savepoint_steps, self.fep_lives, np.round(self.ep_goaldist_min, 2), strat)
 
         # TODO remove or add noise?
         # qpos, qvel = self._add_noise(qpos, qvel)
@@ -905,15 +923,26 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
 
-        self.ep_states = [(qpos, qvel)]
-        self.ep_actions = []
-        self.ep_rewards = []
-        self.ep_dictobs = []
-        self.ep_goaldists = []
-        self.ep_goalconvs = []
-        self.ep_goalacces = []
+        assert (len(self.ep_states)
+                == len(self.ep_actions)
+                == len(self.ep_rewards)
+                == len(self.ep_dictobs)
+                == len(self.ep_goaldists)
+                == len(self.ep_goalconvs)
+                == len(self.ep_goalacces)), 'check state integrity'
+
+        self.ep_states = [self.ep_states[idx_halving]]
+        self.ep_actions = [self.ep_actions[idx_halving]]
+        self.ep_rewards = [self.ep_rewards[idx_halving]]
+        self.ep_dictobs = [self.ep_dictobs[idx_halving]]
+        self.ep_goaldists = [self.ep_goaldists[idx_halving]]
+        self.ep_goalconvs = [self.ep_goalconvs[idx_halving]]
+        self.ep_goalacces = [self.ep_goalacces[idx_halving]]
 
         obs_init = self._get_obs()
+        self.ep_goaldist_min = obs_init['achieved_goal'][0]
+        self.ep_goaldist_max = obs_init['achieved_goal'][0]
+
         return obs_init
 
 
@@ -948,7 +977,8 @@ class HandImitationEnv(HumanoidEnv):
         if not self.landmarker_achieved:
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
-        
+
+        VidCapSingletonSubprocess.reset_img_ev.set()
 
     def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):
         idx_step = 0
@@ -962,7 +992,7 @@ class HandImitationEnv(HumanoidEnv):
             case self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE:
                 idx_step = np.argmin(self.ep_goaldists)
             case self.cfg.TrajectoryHalving.Strat.LAST_STEP_GOAL_ZONE:
-                idx_step = len(self.ep_goaldists) - np.argmax(np.array(self.ep_goaldists[::-1]) < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT)
+                idx_step = len(self.ep_goaldists) - np.argmax(np.array(self.ep_goaldists[::-1]) < self.ep_reward_threshold)
             case self.cfg.TrajectoryHalving.Strat.HIGHEST_REWARD:
                 idx_step = np.argmax(self.ep_rewards)
             case self.cfg.TrajectoryHalving.Strat.LAST_POSITIVE_REWARD:
@@ -989,10 +1019,8 @@ class HandImitationEnv(HumanoidEnv):
         return qpos, qvel
 
 
-    def _add_noise(self, obs):
-        noise_low = -self._reset_noise_scale
-        noise_high = self._reset_noise_scale
-        obs = obs + self.np_random.uniform(
+    def _add_noise(self, obs, noise_low=-1e-2, noise_high=1e-2):
+        obs = obs + np.random.uniform(
             low=noise_low, high=noise_high, size=obs.shape[-1]
         )
         return obs
@@ -1089,13 +1117,6 @@ def draw_landmarks_on_image(rgb_image, detection_result):
       solutions.drawing_styles.get_default_hand_landmarks_style(),
       solutions.drawing_styles.get_default_hand_connections_style())
 
-    # Get the top left corner of the detected hand's bounding box.
-    height, width, _ = annotated_image.shape
-    x_coordinates = [landmark.x for landmark in hand_landmarks]
-    y_coordinates = [landmark.y for landmark in hand_landmarks]
-    text_x = int(min(x_coordinates) * width)
-    text_y = int(min(y_coordinates) * height) - MARGIN
-
   return annotated_image
 
 
@@ -1116,7 +1137,7 @@ def parallel_plot(queue: multiprocessing.Queue):
         # plot_achieved.set_data(achieved_img)
         # plot_achieved.draw(plot_achieved.get_figure().canvas.get_renderer())
 
-        # plot topology connections
+        # plot topology connection
         # https://github.com/stebusse/mediapipe-plot-pose-live/blob/main/plot_pose_live.py
         extplot.clear()
         extplot.set_xlabel('x')
@@ -1145,8 +1166,7 @@ def parallel_plot(queue: multiprocessing.Queue):
                     extplot.plot(plotX, plotZ, plotY, color='green')
                 else:
                     extplot.plot(plotX, plotZ, plotY, color='green', marker='.', linestyle = 'dashed')
-        
-        
+
         extplot.draw(extplot.get_figure().canvas.get_renderer())
         plt.pause(0.00001)
 

@@ -7,8 +7,8 @@ class General(base.General):
     OBS_WORLD_DERIV_ORDERS = 4 # finer action selection (possibly better for complex worlds?)
     # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
     # needs heterogeneous rewarding!
-    GOAL_DERIV_ORDERS = 4 # "strictness"
-    OBS_REWARD_HISTORY_LENGTH = 10
+    GOAL_DERIV_ORDERS = 3 # "strictness"
+    OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
     LANDMARK_GROUPS = [
@@ -64,7 +64,7 @@ class General(base.General):
 
     NUM_OBSERVATION_DIMS_VISUAL_DETECTION = IDS_LANDMARKS_FILTERED.size * 3 if LANDMARK_GROUPS else 0
     RENDER_IMAGE_SIZE = 1000
-    FRAMESKIP_STEP = 3 # should resemble reality speed for detection
+    FRAMESKIP_STEP = 5 # action frequency
     # vs. "lost in details"
     STEPSKIP_DETECT = 150 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
 
@@ -81,7 +81,7 @@ class PracticeSpace(base.PracticeSpace):
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
     MAX_STEPS_EPISODE_TRUNCATION = 1500
-    MAX_DIVERGENT_STEPS = 50 # 500
+    MAX_DIVERGENT_STEPS = 500 # 500
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
         pass
@@ -97,7 +97,7 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # more relevant for envs where goal-state is far from the start
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-    MAX_LIVES = 999999 # 3
+    MAX_LIVES = 3 # 3
 
 
 # for better reward signal (single-/low-dim., piece-wise emphasize)

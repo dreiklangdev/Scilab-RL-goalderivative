@@ -1,3 +1,4 @@
+import multiprocessing.synchronize
 import numpy as np
 import multiprocessing
 import glob
@@ -19,15 +20,23 @@ multiprocessing.log_to_stderr(logging.DEBUG)
 class VidCapSingletonSubprocess:
 
     parallel_vidcap_queue = multiprocessing.Queue()
-
+    reset_img_ev = multiprocessing.Event()
+    reset_img_ev.set()
 
     @staticmethod
-    def parallel_vidcap(queue: multiprocessing.Queue):
+    def parallel_vidcap(queue: multiprocessing.Queue, reset_img_ev: multiprocessing.synchronize.Event):
         vidcap = cv2.VideoCapture(0)
+        imgpath_current = None
+
         while True:
             desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
             if desired_imgpaths:
-                desired_imgpath = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
+                if reset_img_ev.is_set():
+                    desired_imgpath = imgpath_current = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
+                    reset_img_ev.clear()
+                else:
+                    desired_imgpath = imgpath_current
+
                 try:
                     frame = image.imread(desired_imgpath)
                 except FileNotFoundError:
@@ -45,5 +54,5 @@ class VidCapSingletonSubprocess:
         vidcap.release()
 
 
-
-multiprocessing.Process(target=VidCapSingletonSubprocess.parallel_vidcap, args=((VidCapSingletonSubprocess.parallel_vidcap_queue,)), daemon=True).start()
+multiprocessing.Process(target=VidCapSingletonSubprocess.parallel_vidcap,
+                        args=((VidCapSingletonSubprocess.parallel_vidcap_queue, VidCapSingletonSubprocess.reset_img_ev)), daemon=True).start()
