@@ -163,6 +163,27 @@ class DisplayWrapper(gym.Wrapper):
         self.displaying = False
 
 
+class NormalizeBoxActionWrapper(gym.ActionWrapper):
+  """Rescale the action space of the environment."""
+
+  def __init__(self, env):
+    if not isinstance(env.action_space, spaces.Box):
+      raise ValueError('env %s does not use spaces.Box.' % str(env))
+    super(NormalizeBoxActionWrapper, self).__init__(env)
+
+  def action(self, action):
+    # rescale the action
+    low, high = self.env.action_space.low, self.env.action_space.high
+    scaled_action = low + (action + 1.0) * (high - low) / 2.0
+    scaled_action = np.clip(scaled_action, low, high)
+    return scaled_action
+
+  def reverse_action(self, scaled_action):
+    low, high = self.env.action_space.low, self.env.action_space.high
+    action = (scaled_action - low) * 2.0 / (high - low) - 1.0
+    return action
+
+
 class RecordVideo(gym.Wrapper):
     def __init__(
         self,

@@ -38,9 +38,11 @@ class VidCapSingletonSubprocess:
                     desired_imgpath = imgpath_current
 
                 try:
-                    frame = image.imread(desired_imgpath)
+                    frame = image.imread(desired_imgpath)                    
                 except FileNotFoundError:
                     LOG.warning('gesture image not found.')
+                    imgpath_current = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
+
             else:
                 success, frame = vidcap.read()
                 if success:

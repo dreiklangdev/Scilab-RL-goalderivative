@@ -275,6 +275,8 @@ class HandImitationEnv(HumanoidEnv):
         info = {}
         info['success'] = False
 
+
+
         # reduce action space?
         # action = np.clip(action, -np.pi/2, np.pi/2)
         self.do_simulation(action, self.frame_skip)
@@ -300,7 +302,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_rewards.append(reward)
 
 
-        # records      
+        # records
         if goaldist < self.ep_reward_threshold:
             self.ep_num_steps_goal_zone += 1
 
@@ -342,7 +344,6 @@ class HandImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
-
 
         terminated = False
         truncated = False
@@ -483,17 +484,38 @@ class HandImitationEnv(HumanoidEnv):
                 landmark.z -= translation_z
 
             norm_v = np.linalg.norm([
-                desired_pose.hand_landmarks[0][0].x - desired_pose.hand_landmarks[0][9].x,
-                desired_pose.hand_landmarks[0][0].y - desired_pose.hand_landmarks[0][9].y,
-                desired_pose.hand_landmarks[0][0].z - desired_pose.hand_landmarks[0][9].z,
+                desired_pose.hand_landmarks[0][0].x - desired_pose.hand_landmarks[0][9].x
+                + desired_pose.hand_landmarks[0][9].x - desired_pose.hand_landmarks[0][10].x
+                + desired_pose.hand_landmarks[0][10].x - desired_pose.hand_landmarks[0][11].x
+                + desired_pose.hand_landmarks[0][11].x - desired_pose.hand_landmarks[0][12].x,
+                
+                desired_pose.hand_landmarks[0][0].y - desired_pose.hand_landmarks[0][9].y
+                + desired_pose.hand_landmarks[0][9].y - desired_pose.hand_landmarks[0][10].y
+                + desired_pose.hand_landmarks[0][10].y - desired_pose.hand_landmarks[0][11].y
+                + desired_pose.hand_landmarks[0][11].y - desired_pose.hand_landmarks[0][12].y,
+
+                desired_pose.hand_landmarks[0][0].z - desired_pose.hand_landmarks[0][9].z
+                + desired_pose.hand_landmarks[0][9].z - desired_pose.hand_landmarks[0][10].z
+                + desired_pose.hand_landmarks[0][10].z - desired_pose.hand_landmarks[0][11].z
+                + desired_pose.hand_landmarks[0][11].z - desired_pose.hand_landmarks[0][12].z,
                 ])
 
             norm_u = np.linalg.norm([
-                self.data.geom('V_wrist').xpos[0] - self.data.geom('V_mfknuckle').xpos[0],
-                self.data.geom('V_wrist').xpos[1] - self.data.geom('V_mfknuckle').xpos[1],
-                self.data.geom('V_wrist').xpos[2] - self.data.geom('V_mfknuckle').xpos[2],
-                ])
+                self.data.geom('V_wrist').xpos[0] - self.data.geom('V_mfknuckle').xpos[0]
+                + self.data.geom('V_mfknuckle').xpos[0] - self.data.geom('V_mfproximal').xpos[0]
+                + self.data.geom('V_mfproximal').xpos[0] - self.data.geom('V_mfmiddle').xpos[0]
+                + self.data.geom('V_mfmiddle').xpos[0] - self.data.geom('V_mfdistal').xpos[0],
 
+                self.data.geom('V_wrist').xpos[1] - self.data.geom('V_mfknuckle').xpos[1]
+                + self.data.geom('V_mfknuckle').xpos[1] - self.data.geom('V_mfproximal').xpos[1]
+                + self.data.geom('V_mfproximal').xpos[1] - self.data.geom('V_mfmiddle').xpos[1]
+                + self.data.geom('V_mfmiddle').xpos[1] - self.data.geom('V_mfdistal').xpos[1],
+                
+                self.data.geom('V_wrist').xpos[2] - self.data.geom('V_mfknuckle').xpos[2]
+                + self.data.geom('V_mfknuckle').xpos[2] - self.data.geom('V_mfproximal').xpos[2]
+                + self.data.geom('V_mfproximal').xpos[2] - self.data.geom('V_mfmiddle').xpos[2]
+                + self.data.geom('V_mfmiddle').xpos[2] - self.data.geom('V_mfdistal').xpos[2],
+                ])
 
             for i, body_id in enumerate(cfg.General.MJBODY_TO_MPPOSE):
                 if body_id:
@@ -758,14 +780,14 @@ class HandImitationEnv(HumanoidEnv):
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
-            reward = 0
+            reward = 0 
 
             # if np.any(achieved_goal[1:] > 0):
             if np.mean(achieved_goal[1:]) > 0:
                 reward = -1 # no
 
         else:
-            reward = -1
+            reward = 0 # -1
             LOG.warning('unhandled reward case.')
 
         return np.array([reward])
