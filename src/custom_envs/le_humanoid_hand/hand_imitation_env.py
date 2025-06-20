@@ -402,21 +402,28 @@ class HandImitationEnv(HumanoidEnv):
 
     def step(self, action):
         num_steps_passive = 0
-        num_steps_passive_max = 5
+        num_steps_passive_max = 1 # adaptive? (eg. dont scout anymore at goal(-keeping))
         total_reward = 0
+        last_reward = None
         term = False
         trunc = False
+        # retro-future rewarding ("drone/scout send+collect")
+        # TODO add action noise?
+        # neg. passive steps should also been cumulated (and learned)
         # while num_steps_passive < num_steps_passive_max and not (term or trunc):
         while num_steps_passive < num_steps_passive_max and (not term or not trunc):
             obs, reward, term, trunc, info = self.step_passive(action)
             num_steps_passive += 1
             total_reward += reward
 
+            if reward != 0:
+                # retake control
+                break
 
-        if total_reward <= 0 and len(self.ep_states) > num_steps_passive:
-            # step-back? (revert bad passive steps)
-            qpos, qvel = self.ep_states[-num_steps_passive]
-            self.set_state(qpos, qvel)
+        # step-back? (revert/undo bad passive steps, but less exploration)
+        # if total_reward < 0 and len(self.ep_states) > num_steps_passive:
+        #     qpos, qvel = self.ep_states[-(num_steps_passive + 1)]
+        #     self.set_state(qpos, qvel)
 
         # TODO pos. passive steps are not (actively) learned/seen by NN (yet)? (only passively by retro/future is enough? maybe no need to active step in?)
         return obs, total_reward, term, trunc, info
