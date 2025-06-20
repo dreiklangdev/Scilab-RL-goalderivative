@@ -411,9 +411,12 @@ class HandImitationEnv(HumanoidEnv):
             obs, reward, term, trunc, info = self.step_passive(action)
             num_steps_passive += 1
             total_reward += reward
-            # if reward <= 0:
-            #     # step-back?
-            #     self.set_state(self.ep)
+
+
+        if total_reward <= 0 and len(self.ep_states) > num_steps_passive:
+            # step-back? (revert bad passive steps)
+            qpos, qvel = self.ep_states[-num_steps_passive]
+            self.set_state(qpos, qvel)
 
         # TODO pos. passive steps are not (actively) learned/seen by NN (yet)? (only passively by retro/future is enough? maybe no need to active step in?)
         return obs, total_reward, term, trunc, info
