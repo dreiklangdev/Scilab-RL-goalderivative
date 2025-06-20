@@ -165,12 +165,11 @@ class HandImitationEnv(HumanoidEnv):
 
         obspace_total_dims = 0
 
-        # self.data.cfrc_ext[1:].flatten()
-
         # world obs
         # obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
-        obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
+        # no contact forces available https://github.com/openai/gym/issues/1541
+        # obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
         obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-diffs
 
         # achieved obs
@@ -272,7 +271,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('le-walker-2d initialized.')
 
 
-    def step(self, action):
+    def step_passive(self, action):
         info = {}
         info['success'] = False
 
@@ -401,6 +400,25 @@ class HandImitationEnv(HumanoidEnv):
         return result
 
 
+    def step(self, action):
+        num_steps_passive = 0
+        num_steps_passive_max = 5
+        total_reward = 0
+        term = False
+        trunc = False
+        # while num_steps_passive < num_steps_passive_max and not (term or trunc):
+        while num_steps_passive < num_steps_passive_max and (not term or not trunc):
+            obs, reward, term, trunc, info = self.step_passive(action)
+            num_steps_passive += 1
+            total_reward += reward
+            # if reward <= 0:
+            #     # step-back?
+            #     self.set_state(self.ep)
+
+        # TODO pos. passive steps are not (actively) learned/seen by NN (yet)? (only passively by retro/future is enough? maybe no need to active step in?)
+        return obs, total_reward, term, trunc, info
+
+
     # obs = achieved_obs + metaobs
     # TODO keep obs keys/indices mapping (eg. dict, vs. "counting")
     def _get_obs(self):
@@ -443,7 +461,7 @@ class HandImitationEnv(HumanoidEnv):
             if len(self.buffer_obs_world) >= SIZE_BUFFER_OBS_WORLD:
                 self.buffer_obs_world.clear()
 
-        obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
+        # obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
         obs = np.append(obs, obs_world)
         
         obs_worldderivs = np.array([])

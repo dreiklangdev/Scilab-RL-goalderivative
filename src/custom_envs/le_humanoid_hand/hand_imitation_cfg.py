@@ -64,7 +64,7 @@ class General(base.General):
 
     NUM_OBSERVATION_DIMS_VISUAL_DETECTION = IDS_LANDMARKS_FILTERED.size * 3 if LANDMARK_GROUPS else 0
     RENDER_IMAGE_SIZE = 1000
-    FRAMESKIP_STEP = 5 # action frequency
+    FRAMESKIP_STEP = 3 # action frequency
     # vs. "lost in details"
     STEPSKIP_DETECT = 150 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
 
