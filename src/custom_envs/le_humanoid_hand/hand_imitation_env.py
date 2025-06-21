@@ -271,7 +271,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('le-walker-2d initialized.')
 
 
-    def step(self, action):
+    def step_passive(self, action):
         info = {}
         info['success'] = False
 
@@ -399,6 +399,32 @@ class HandImitationEnv(HumanoidEnv):
 
         result = obs, reward, terminated, truncated, info
         return result
+
+
+    def step(self, action):
+        num_steps_passive = 0
+        num_steps_passive_max = 1 # adaptive? (eg. dont scout anymore at goal(-keeping))
+        total_reward = 0
+        last_reward = None
+        term = False
+        trunc = False
+        # retro-future rewarding ("drone/scout send+collect")
+        # TODO add action noise?
+        # neg. passive steps should also been cumulated (and learned)
+        # while num_steps_passive < num_steps_passive_max and not (term or trunc):
+        while num_steps_passive < num_steps_passive_max and (not term or not trunc):
+            obs, reward, term, trunc, info = self.step_passive(action)
+            num_steps_passive += 1
+            total_reward += reward
+
+            if last_reward:
+                if reward != last_reward:
+                    # change: needs control
+                    break
+            last_reward = reward
+
+        # TODO pos. passive steps are not (actively) learned/seen by NN (yet)? (only passively by retro/future is enough? maybe no need to active step in?)
+        return obs, total_reward, term, trunc, info
 
 
     # obs = achieved_obs + metaobs
