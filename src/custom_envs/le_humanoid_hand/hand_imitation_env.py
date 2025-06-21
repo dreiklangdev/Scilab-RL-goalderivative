@@ -187,6 +187,7 @@ class HandImitationEnv(HumanoidEnv):
 
         # meta obs
         obspace_total_dims += 1 # steps_diverging_left https://arxiv.org/abs/1712.00378
+        obspace_total_dims += 1 # goal-hash
 
         # reward obs
         obspace_total_dims += 1 + self.cfg.General.OBS_REWARD_HISTORY_LENGTH
@@ -708,8 +709,8 @@ class HandImitationEnv(HumanoidEnv):
             goaldist = self.ep_reward_threshold + 1
             goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
 
-        obs = np.append(obs, obs_achieved)
-        obs = np.append(obs, obs_desired) # goal
+        obs = np.append(obs, ob_achieved_pose)
+        obs = np.append(obs, ob_desired_pose) # goal
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goalderivs)
 
@@ -728,6 +729,7 @@ class HandImitationEnv(HumanoidEnv):
             steps_diverged = self.ep_num_steps - self.ep_num_steps_conv
             steps_diverging_left = self.cfg.PracticeSpace.MAX_DIVERGENT_STEPS - steps_diverged
             obs_meta = np.append(obs_meta, steps_diverging_left)
+            obs_meta = np.append(obs_meta, vector_to_uniform_scalar(ob_desired_pose.flatten())) # goal-hash
             obs = np.append(obs, obs_meta)
 
 
