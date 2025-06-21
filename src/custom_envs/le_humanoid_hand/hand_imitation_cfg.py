@@ -19,6 +19,7 @@ class General(base.General):
         [17, 18, 19, 20], # pinky
     ]
     LANDMARK_GROUPS = [ # wrist and fingerpoints only # geom
+        [0, 5, 17], # palm (for orientation)
         [0, 4], # thumb
         [0, 8], # index
         [0, 12], # middle
@@ -97,7 +98,7 @@ class TrajectoryHalving(base.TrajectoryHalving):
     # more relevant for envs where goal-state is far from the start
     IS_ENABLED = True
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-    MAX_LIVES = 3 # 3
+    MAX_LIVES = 5 # 3
 
 
 # for better reward signal (single-/low-dim., piece-wise emphasize)

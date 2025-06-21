@@ -99,6 +99,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # https://mujoco.readthedocs.io/en/stable/models.html
 # https://github.com/clvrai/awesome-rl-envs?tab=readme-ov-file#humanoid
 # https://github.com/google-deepmind/mujoco/blob/main/include/mujoco/mjdata.h
+# https://github.com/atabakd/MuJoCo-Tutorials/blob/master/include/mjdata.h
 
 # https://cookbook.chromadb.dev/running/performance-tips/#__tabbed_1_1
 
@@ -174,9 +175,11 @@ class HandImitationEnv(HumanoidEnv):
 
         # achieved obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
+        # obspace_total_dims += 1 # achieved: cam
 
         # desired obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+        # obspace_total_dims += 1 # desired: cam
 
         # goal obs
         obspace_total_dims += 1 # goaldist
@@ -806,7 +809,7 @@ class HandImitationEnv(HumanoidEnv):
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
-            reward = 0 
+            reward = 0
 
             # if np.any(achieved_goal[1:] > 0):
             if np.mean(achieved_goal[1:]) > 0:
@@ -1168,9 +1171,9 @@ def parallel_plot(queue: multiprocessing.Queue):
         extplot.set_xlabel('x')
         extplot.set_ylabel('z')
         extplot.set_zlabel('y')
-        extplot.set_xlim3d(-1, 1)
-        extplot.set_ylim3d(-1, 1)
-        extplot.set_zlim3d(1, -1) # flip z-axis
+        extplot.set_xlim3d(-0.5, 0.5)
+        extplot.set_ylim3d(-0.5, 0.5)
+        extplot.set_zlim3d(0.5, -0.5) # flip z-axis
 
         if achieved_pose.hand_landmarks:
             for group in cfg.General.groups_filtered:
@@ -1203,7 +1206,7 @@ def vector_to_uniform_scalar(vector, base=256):
     for i, val in enumerate(reversed(vector)):
         scalar += val * (base ** i)
 
-    # Normalize scalar to [0, 1] with uniform steps
+    # Normalize scalar to [0, 1] with uniform step
     max_val = base ** len(vector) - 1
     if max_val == 0:
         return 1

@@ -140,7 +140,7 @@ def  get_algo_instance(cfg, logger, env):
         # activation_fn=nn.ReLU,
         # activation_fn=nn.LeakyReLU,
 
-        # net_arch=[64, 64],
+        # net_arch=[256, 256],
         # outputs more diverse action (complex input spaces)
         net_arch=[256, 256, 128],
         use_sde=False,
