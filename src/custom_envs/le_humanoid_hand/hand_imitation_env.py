@@ -806,15 +806,17 @@ class HandImitationEnv(HumanoidEnv):
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
 
-            # if np.all(achieved_goal[1:] > 0):
-            if np.mean(achieved_goal[1:]) > 0:
+            if np.all(achieved_goal[1:] > 0):
+                reward = -1
+            elif np.mean(achieved_goal[1:]) > 0:
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
-            # if np.any(achieved_goal[1:] > 0):
-            if np.mean(achieved_goal[1:]) > 0:
+            if np.all(achieved_goal[1:] < 0):
+                reward = 1
+            elif np.mean(achieved_goal[1:]) > 0:
                 reward = -1 # no
 
         else:

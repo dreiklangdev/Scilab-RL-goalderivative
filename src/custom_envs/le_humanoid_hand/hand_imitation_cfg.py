@@ -89,8 +89,8 @@ class PracticeSpace(base.PracticeSpace):
 
 
 class GoalRewardThreshold(base.GoalRewardThreshold):
-    MAX_FRAC_DEFAULT = 999999
-    IS_ADAPTIVE = True
+    MAX_FRAC_DEFAULT = 0.3
+    IS_ADAPTIVE = False
 
 
 class TrajectoryHalving(base.TrajectoryHalving):
