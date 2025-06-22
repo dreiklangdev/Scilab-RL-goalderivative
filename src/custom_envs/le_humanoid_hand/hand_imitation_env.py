@@ -253,6 +253,7 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
+        self.ep_goalhash: float = -1
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = 0
         self.ep_goalweight = []
@@ -302,6 +303,11 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_dictobs.append(obs)
         self.ep_current_obs = obs
 
+
+        if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
+            self.ep_reward_threshold = np.random.normal(0, np.mean(self.ep_goaldists))
+
+
         reward = self.compute_reward(obs['achieved_goal'], obs['desired_goal'], info).item()
         self.ep_rewards.append(reward)
 
@@ -325,8 +331,8 @@ class HandImitationEnv(HumanoidEnv):
         if goaldist < self.fep_goaldist_min:
             self.fep_goaldist_min = goaldist
             self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
-            if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
-                self.ep_reward_threshold = goaldist
+            # if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
+            #     self.ep_reward_threshold = goaldist
         
         if goaldist > self.fep_goaldist_max:
             self.fep_goaldist_max = goaldist
@@ -366,7 +372,7 @@ class HandImitationEnv(HumanoidEnv):
             # if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
             if (self.ep_num_steps - self.ep_num_steps_conv) > self.cfg.PracticeSpace.MAX_DIVERGENT_STEPS:
                 terminated = True
-                reward = -1
+                # reward = -1
                 LOG.info('TOO MANY DIVERGENT STEPS.')
 
             # min. convergence terminate? ("flaming wall")
@@ -392,7 +398,9 @@ class HandImitationEnv(HumanoidEnv):
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goal_hash', str(np.round(self.ep_goalhash, 5)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalseek', str(goaldist > self.ep_reward_threshold))
             ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_goalzone_per_step', str(ep_goalzone_per_step))
             human_viewer.render()
@@ -463,7 +471,7 @@ class HandImitationEnv(HumanoidEnv):
                 self.pca_reducer_world.partial_fit(self.buffer_obs_world)
 
                 obs_world_reduced = self.pca_reducer_world.transform(self.pca_world_modelref[0].reshape(1, -1)) @ self.pca_reducer_world.components_ + self.pca_reducer_world.mean_ # zca
-                LOG.info('world dims: pca model fitted. %s', np.linalg.norm(self.pca_world_modelref[1] - obs_world_reduced))
+                LOG.debug('world dims: pca model fitted. %s', np.linalg.norm(self.pca_world_modelref[1] - obs_world_reduced))
                 self.pca_world_modelref[1] = obs_world_reduced
 
             if hasattr(self.pca_reducer_world, 'n_samples_seen_') and self.pca_reducer_world.n_samples_seen_ > 0:
@@ -605,6 +613,9 @@ class HandImitationEnv(HumanoidEnv):
 
 
         # ========= GOAL (MODEL)
+        goalhash = vector_to_uniform_scalar(ob_desired_pose.flatten(), base=ob_desired_pose.size)
+        # obs = obs + goalhash
+
         goaldist = self.ep_reward_threshold + 1
         goalderivs = np.array([])
 
@@ -626,12 +637,17 @@ class HandImitationEnv(HumanoidEnv):
             IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
             PCA_REDUCTION_WEIGHT = 0.5
             if IS_PCA_REDUCE_GOAL:
+                
+                # if goalhash != self.ep_goalhash:
+                    # new goal
+                    # self.pca_reducer_goal.
+
                 # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
                 if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
                     self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
 
                     obs_achieved_reduced = self.pca_reducer_goal.transform(self.pca_goal_modelref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
-                    LOG.info('goal dims: pca model fitted. %s', np.linalg.norm(self.pca_goal_modelref[1] - obs_achieved_reduced))
+                    LOG.debug('goal dims: pca model fitted. %s', np.linalg.norm(self.pca_goal_modelref[1] - obs_achieved_reduced))
                     self.pca_goal_modelref[1] = obs_achieved_reduced
 
                 if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
@@ -729,7 +745,8 @@ class HandImitationEnv(HumanoidEnv):
             steps_diverged = self.ep_num_steps - self.ep_num_steps_conv
             steps_diverging_left = self.cfg.PracticeSpace.MAX_DIVERGENT_STEPS - steps_diverged
             obs_meta = np.append(obs_meta, steps_diverging_left)
-            obs_meta = np.append(obs_meta, vector_to_uniform_scalar(ob_desired_pose.flatten())) # goal-hash
+            self.ep_goalhash = goalhash
+            obs_meta = np.append(obs_meta, self.ep_goalhash) # goal-hash
             obs = np.append(obs, obs_meta)
 
 
@@ -755,8 +772,10 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, rewardderivs)
 
 
-        # may lead to faster and more general training
+        # may lead to faster and more general training (and prevent overfitting ("always challenging" vs. "too comfortable/stale" training)
+        # obs = self._add_noise(obs, -0.1, 0.1)
         obs = self._add_noise(obs, -0.1, 0.1)
+        # obs = obs + np.random.normal(0, 0.1, size=obs.shape)
 
         IS_NORMALIZE_Z_SCORE_OBS = True
         if IS_NORMALIZE_Z_SCORE_OBS:
@@ -806,18 +825,20 @@ class HandImitationEnv(HumanoidEnv):
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
 
-            if np.all(achieved_goal[1:] > 0):
-                reward = -1
-            elif np.mean(achieved_goal[1:]) > 0:
+            # if np.all(achieved_goal[1:] > 0): # optional: sub-narrowness
+            #     reward = -1
+            if np.mean(achieved_goal[1:]) > 0:
                 reward = 0
 
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
-            if np.all(achieved_goal[1:] < 0):
-                reward = 1
-            elif np.mean(achieved_goal[1:]) > 0:
-                reward = -1 # no
+            # if np.all(achieved_goal[1:] < 0): # optional: sub-narrowness
+            #     # reward = 1
+            #     reward = achieved_goal[0] / self.ep_goaldist_max
+            if np.mean(achieved_goal[1:]) > 0:
+                # reward = -1 # no
+                reward = -achieved_goal[0] / self.ep_goaldist_max # no
 
         else:
             reward = 0 # -1
@@ -865,7 +886,7 @@ class HandImitationEnv(HumanoidEnv):
     def _reset_full_episode(self):
         LOG.info('\nNEW GAME.')
         (init_qpos, init_qvel) = self.init_qpos, self.init_qvel
-        # (init_qpos, init_qvel) = self._add_noise(init_qpos, init_qvel)
+        # (init_qpos, init_qvel) = self._add_noise_to_state(init_qpos, init_qvel)
         self.set_state(init_qpos, init_qvel)
         self.ep_states.append((init_qpos, init_qvel))
         obs_init = self._get_obs()
@@ -929,10 +950,7 @@ class HandImitationEnv(HumanoidEnv):
     def _reset_half_episode(self, steps_before_term, steps_offset):
         idx_halving = 0
 
-        if self.ep_num_steps_goal_zone == 0:
-            strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
-        else:
-            strat = self.cfg.TrajectoryHalving.Strat.LAST_STEP_GOAL_ZONE
+        strat = self.cfg.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
 
         idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)
 
@@ -945,7 +963,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.info('savepoint at step %s (%s) (%s) %s', self.fep_savepoint_steps, self.fep_lives, np.round(self.ep_goaldist_min, 2), strat)
 
         # TODO remove or add noise?
-        # qpos, qvel = self._add_noise(qpos, qvel)
+        # qpos, qvel = self._add_noise_to_state(qpos, qvel)
         self.set_state(qpos, qvel)
         self.ep_traj_is_halved = True
         self.ep_rewards_sum = 0
@@ -1203,8 +1221,11 @@ def parallel_plot(queue: multiprocessing.Queue):
         plt.pause(0.00001)
 
 
-# index-based "hash"
 def vector_to_uniform_scalar(vector, base=256):
+    """
+    index-based "hash" (positional encoding)
+    base >= vector_length
+    """
     # Convert vector to unique scalar using base conversion
     scalar = 0
     for i, val in enumerate(reversed(vector)):
