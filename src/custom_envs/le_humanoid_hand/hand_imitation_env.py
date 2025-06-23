@@ -858,8 +858,11 @@ class HandImitationEnv(HumanoidEnv):
             #     reward = 1
                 # reward = achieved_goal[0] / self.ep_goaldist_max
 
-            if np.mean(achieved_goal[1:]) > 0:
+            if np.all(achieved_goal[1:] > 0): # optional: sub-narrowness
                 reward = -1
+
+            # if np.mean(achieved_goal[1:]) > 0:
+            #     reward = -1
                 # reward = -achieved_goal[0] / self.ep_goaldist_max # no
 
         else:
@@ -1068,8 +1071,6 @@ class HandImitationEnv(HumanoidEnv):
                 self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_subtracted)
         elif IS_GOAL_SAMPLING_LAST:
             self.fep_goalid = np.argmax(self.tr_multigoal_lastmeans)
-
-        print(self.fep_goalid)
 
         desired_imgpath = self.tr_multigoal_paths[self.fep_goalid]
         self.desired_imgdata = image.imread(desired_imgpath)
