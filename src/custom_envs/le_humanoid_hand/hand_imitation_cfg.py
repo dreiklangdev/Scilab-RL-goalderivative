@@ -81,7 +81,7 @@ class PracticeSpace(base.PracticeSpace):
     STEPS_INVINCIBLE_SPAWN = 0 # eg. if instable start (falling)
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
-    MAX_STEPS_EPISODE_TRUNCATION = 1500
+    MAX_STEPS_EPISODE_TRUNCATION = 9999999
     MAX_DIVERGENT_STEPS = 500 # 500
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):
@@ -96,7 +96,7 @@ class GoalRewardThreshold(base.GoalRewardThreshold):
 class TrajectoryHalving(base.TrajectoryHalving):
     # vs. too much repetitions for same start (few reps. for later difficults)
     # more relevant for envs where goal-state is far from the start
-    IS_ENABLED = True
+    IS_ENABLED = False
     STRAT = base.TrajectoryHalving.Strat.LOWEST_GOAL_DISTANCE
     MAX_LIVES = 5 # 3
 

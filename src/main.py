@@ -143,6 +143,7 @@ def  get_algo_instance(cfg, logger, env):
         # net_arch=[256, 256],
         # outputs more diverse action (complex input spaces)
         net_arch=[256, 256, 128],
+        # optimizer_kwargs=dict(weight_decay=1e-4),
         use_sde=False,
     )
 

@@ -56,5 +56,5 @@ class VidCapSingletonSubprocess:
         vidcap.release()
 
 
-multiprocessing.Process(target=VidCapSingletonSubprocess.parallel_vidcap,
-                        args=((VidCapSingletonSubprocess.parallel_vidcap_queue, VidCapSingletonSubprocess.reset_img_ev)), daemon=True).start()
+# multiprocessing.Process(target=VidCapSingletonSubprocess.parallel_vidcap,
+#                         args=((VidCapSingletonSubprocess.parallel_vidcap_queue, VidCapSingletonSubprocess.reset_img_ev)), daemon=True).start()

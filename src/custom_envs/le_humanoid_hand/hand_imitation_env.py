@@ -133,7 +133,7 @@ class HandImitationEnv(HumanoidEnv):
         self.is_render = is_render
         self.is_eval = is_eval
         self.is_plot = is_plot
-        self.outfile_ep_rewards_mean = open('ep_rewards_mean.dat', 'a')
+        self.outfile_tr_multigoal_lastmeans = open('tr_multigoal_lastmeans.dat', 'a')
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = HandLandmarkerOptions(
@@ -171,7 +171,7 @@ class HandImitationEnv(HumanoidEnv):
         obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
         # no contact forces available https://github.com/openai/gym/issues/1541
         # obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
-        obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-diffs
+        obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs
 
         # achieved obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
@@ -211,6 +211,11 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('goal_space %s', goal_space)
 
         # once        
+        self.tr_multigoal_paths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
+        self.tr_multigoal_lastmeans = [99999.0] * len(self.tr_multigoal_paths)
+        self.fep_goalid = -1
+
+        
         self.buffer_obs_achieved = []
         self.buffer_obs_world = []
 
@@ -253,7 +258,7 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ep_rewards_mean: float = 0
         self.last_ep_goaldist_min: float = np.inf
         self.ep_num_steps: int = 0
-        self.ep_goalhash: float = -1
+        self.fep_goalhash: float = -1
         self.ep_goaldist_min: float = np.inf
         self.ep_goaldist_max: float = 0
         self.ep_goalweight = []
@@ -324,13 +329,15 @@ class HandImitationEnv(HumanoidEnv):
 
         if goaldist < self.ep_goaldist_min:
             self.ep_goaldist_min = goaldist
-
+           
         if goaldist > self.ep_goaldist_max:
             self.ep_goaldist_max = goaldist
 
         if goaldist < self.fep_goaldist_min:
             self.fep_goaldist_min = goaldist
             self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
+            self.ep_last_step_improved = self.ep_num_steps
+
             # if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
             #     self.ep_reward_threshold = goaldist
         
@@ -358,6 +365,12 @@ class HandImitationEnv(HumanoidEnv):
         terminated = False
         truncated = False
 
+        # if goaldist < self.tr_goals_records[self.fep_goals_current_id]:
+        #     print('goal record')
+        #     # self.tr_goals_records[self.fep_goals_current_id] = goaldist
+        #     # terminated = True
+        #     reward = 1
+
         # space constraint
         # reckless training (no penalties, fast respawn)
         if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
@@ -368,12 +381,23 @@ class HandImitationEnv(HumanoidEnv):
             # if reward <= 0:
             #     terminated = True
 
+
+            if np.abs(self.ep_rewards_sum) > 500:
+                terminated = True
+                LOG.info('NO REWARDS LEFT.')
+
+
             # # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
             # if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
-            if (self.ep_num_steps - self.ep_num_steps_conv) > self.cfg.PracticeSpace.MAX_DIVERGENT_STEPS:
+            # if (self.ep_num_steps - self.ep_num_steps_conv) > self.cfg.PracticeSpace.MAX_DIVERGENT_STEPS:
+            #     terminated = True
+            #     # reward = -1
+            #     LOG.info('TOO MANY DIVERGENT STEPS.')
+
+            if (self.ep_num_steps - self.ep_last_step_improved) > 1000:
                 terminated = True
                 # reward = -1
-                LOG.info('TOO MANY DIVERGENT STEPS.')
+                LOG.info('NO IMPROVING STEPS. %s', 1000)
 
             # min. convergence terminate? ("flaming wall")
             
@@ -384,7 +408,10 @@ class HandImitationEnv(HumanoidEnv):
             #     reward = 0
 
 
+        self.ep_goaldist_mean = (((self.ep_num_steps - 1) * self.ep_goaldist_mean) + goaldist) / (self.ep_num_steps)
+        self.tr_multigoal_lastmeans[self.fep_goalid] = self.ep_goaldist_mean
         self.ep_rewards_mean = (((self.ep_num_steps - 1) * self.ep_rewards_mean) + reward) / (self.ep_num_steps)
+
 
         # also skip first buggy render
         if self.tr_feps_total == 1 or self.ep_num_steps > self.cfg.PracticeSpace.MAX_STEPS_EPISODE_TRUNCATION:
@@ -398,7 +425,7 @@ class HandImitationEnv(HumanoidEnv):
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goal_hash', str(np.round(self.ep_goalhash, 5)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalid', str(self.fep_goalid))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalseek', str(goaldist > self.ep_reward_threshold))
             ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
@@ -451,12 +478,12 @@ class HandImitationEnv(HumanoidEnv):
         # obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
         obs_world = np.append(obs_world, self.data.qpos.flatten())
 
-        IS_NORMALIZE_Z_SCORE_WORLD = True
+        IS_NORMALIZE_Z_SCORE_WORLD = False
         if IS_NORMALIZE_Z_SCORE_WORLD:
             self.zs_scaler_world.partial_fit(obs_world.reshape(1, -1))
             obs_world = self.zs_scaler_world.transform(obs_world.reshape(1, -1))[0]
 
-        IS_PCA_REDUCE_WORLD = True # decorrelation (proprioception?)
+        IS_PCA_REDUCE_WORLD = False # decorrelation (proprioception?)
         PCA_REDUCTION_WEIGHT = 0.5
         if IS_PCA_REDUCE_WORLD:
 
@@ -482,8 +509,9 @@ class HandImitationEnv(HumanoidEnv):
                 self.buffer_obs_world.clear()
 
         # obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
+
         obs = np.append(obs, obs_world)
-        
+
         obs_worldderivs = np.array([])
         worldderiv_orders = self.cfg.General.OBS_WORLD_DERIV_ORDERS
         if worldderiv_orders > 0:
@@ -499,9 +527,9 @@ class HandImitationEnv(HumanoidEnv):
         # ========= ACHIEVED OBS (proprioception)
         obs_achieved = np.array([])
 
-        if self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            desired_imgdata = VidCapSingletonSubprocess.parallel_vidcap_queue.get()
-            self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
+        if self.ep_num_steps == 1 or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
+            # desired_imgdata = VidCapSingletonSubprocess.parallel_vidcap_queue.get()
+            self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_imgdata.copy())
             self.desired_pose = self.landmarker_desired.detect(self.desired_img)
 
         desired_img = self.desired_img
@@ -614,8 +642,7 @@ class HandImitationEnv(HumanoidEnv):
 
         # ========= GOAL (MODEL)
         goalhash = vector_to_uniform_scalar(ob_desired_pose.flatten(), base=ob_desired_pose.size)
-        # obs = obs + goalhash
-
+        self.fep_goalhash = goalhash
         goaldist = self.ep_reward_threshold + 1
         goalderivs = np.array([])
 
@@ -637,15 +664,9 @@ class HandImitationEnv(HumanoidEnv):
             IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
             PCA_REDUCTION_WEIGHT = 0.5
             if IS_PCA_REDUCE_GOAL:
-                
-                # if goalhash != self.ep_goalhash:
-                    # new goal
-                    # self.pca_reducer_goal.
 
-                # if self.pca_fit_count < PCA_MODEL_MAX_FIT_COUNT:
                 if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
                     self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
-
                     obs_achieved_reduced = self.pca_reducer_goal.transform(self.pca_goal_modelref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
                     LOG.debug('goal dims: pca model fitted. %s', np.linalg.norm(self.pca_goal_modelref[1] - obs_achieved_reduced))
                     self.pca_goal_modelref[1] = obs_achieved_reduced
@@ -661,7 +682,7 @@ class HandImitationEnv(HumanoidEnv):
             if IS_GOAL_AUTOENCODE:
                 if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
                     # batch = random.sample(self.ac_buffer_obs_achieved, 1000)
-                    batch = self.buffer_obs_achieved
+                    batch = [self.buffer_obs_achieved, [obs_desired] * SIZE_BUFFER_OBS_ACHIEVED]
 
                     # Train
                     tensor = torch.tensor(batch, dtype=torch.float32)
@@ -707,8 +728,7 @@ class HandImitationEnv(HumanoidEnv):
             goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
 
             # qualitative bottleneck? (0d)
-            goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)
-
+            goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)            
             goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
             if goalderiv_orders > 0:
                 goaldists = np.array(self.ep_goaldists)
@@ -725,8 +745,11 @@ class HandImitationEnv(HumanoidEnv):
             goaldist = self.ep_reward_threshold + 1
             goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
 
-        obs = np.append(obs, ob_achieved_pose)
-        obs = np.append(obs, ob_desired_pose) # goal
+        # obs = np.append(obs, ob_achieved_pose)
+        # obs = np.append(obs, ob_desired_pose) # goal
+        obs = np.append(obs, obs_achieved)
+        obs = np.append(obs, obs_desired) # goal
+
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goalderivs)
 
@@ -745,8 +768,7 @@ class HandImitationEnv(HumanoidEnv):
             steps_diverged = self.ep_num_steps - self.ep_num_steps_conv
             steps_diverging_left = self.cfg.PracticeSpace.MAX_DIVERGENT_STEPS - steps_diverged
             obs_meta = np.append(obs_meta, steps_diverging_left)
-            self.ep_goalhash = goalhash
-            obs_meta = np.append(obs_meta, self.ep_goalhash) # goal-hash
+            obs_meta = np.append(obs_meta, goalhash) # goal-hash
             obs = np.append(obs, obs_meta)
 
 
@@ -774,7 +796,6 @@ class HandImitationEnv(HumanoidEnv):
 
         # may lead to faster and more general training (and prevent overfitting ("always challenging" vs. "too comfortable/stale" training)
         # obs = self._add_noise(obs, -0.1, 0.1)
-        obs = self._add_noise(obs, -0.1, 0.1)
         # obs = obs + np.random.normal(0, 0.1, size=obs.shape)
 
         IS_NORMALIZE_Z_SCORE_OBS = True
@@ -819,7 +840,7 @@ class HandImitationEnv(HumanoidEnv):
             return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
             # return achieved_goal[:,0] < cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT
 
-        threshold_hold = (0 + self.ep_reward_threshold)
+        threshold_hold = self.ep_reward_threshold
         threshold_escape = self.tr_goaldist_max
 
         if achieved_goal[0] <= threshold_hold:
@@ -834,11 +855,12 @@ class HandImitationEnv(HumanoidEnv):
             reward = 0
 
             # if np.all(achieved_goal[1:] < 0): # optional: sub-narrowness
-            #     # reward = 1
-            #     reward = achieved_goal[0] / self.ep_goaldist_max
+            #     reward = 1
+                # reward = achieved_goal[0] / self.ep_goaldist_max
+
             if np.mean(achieved_goal[1:]) > 0:
-                # reward = -1 # no
-                reward = -achieved_goal[0] / self.ep_goaldist_max # no
+                reward = -1
+                # reward = -achieved_goal[0] / self.ep_goaldist_max # no
 
         else:
             reward = 0 # -1
@@ -870,8 +892,10 @@ class HandImitationEnv(HumanoidEnv):
             LOG.debug('\n')
 
             if not self.is_eval and self.tr_num_steps > 10:
-                self.outfile_ep_rewards_mean.write('%s\n' % (np.mean(self.ep_rewards_mean)))
-                self.outfile_ep_rewards_mean.flush()
+                performance = np.mean(self.tr_multigoal_lastmeans)
+                if performance < 100:
+                    self.outfile_tr_multigoal_lastmeans.write('%s\n' % (performance))
+                    self.outfile_tr_multigoal_lastmeans.flush()
 
         if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.fep_lives -= 1
@@ -930,6 +954,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('tr_goalconv_max %s', self.tr_goalconv_max)
         LOG.debug('tr_reward_min %s', self.tr_reward_min)
         LOG.debug('tr_reward_max %s', self.tr_reward_max)
+        LOG.debug('tr_multigoal_lastmeans %s', self.tr_multigoal_lastmeans)
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
@@ -940,6 +965,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
+        LOG.debug('fep_goalhash %s', self.fep_goalhash)
         self._reset()
 
         self.fep_rewards_sum = 0
@@ -970,6 +996,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_num_steps = 0
         self.ep_num_steps_goal_zone = 0
         self.ep_num_steps_conv = 0
+        self.ep_last_step_improved = 0
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
 
@@ -996,20 +1023,13 @@ class HandImitationEnv(HumanoidEnv):
         return obs_init
 
 
-    def new_desired_pose(self):
-        desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
-        desired_imgpath = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
-        LOG.debug('desired_imgpath %s', desired_imgpath)
-        desired_imgdata = image.imread(desired_imgpath)
-        self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=desired_imgdata.copy())
-        return self.landmarker_desired.detect(self.desired_img)
-
-
     def _reset(self):
+        self.ep_goaldist_mean: float = 0
         self.ep_rewards_mean: float = 0
         self.ep_rewards_sum = 0
         self.ep_num_steps: int = 0
         self.ep_num_steps_conv: int = 0
+        self.ep_last_step_improved: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_last_reward_step: int = -1
         self.ep_dictobs = []
@@ -1028,7 +1048,32 @@ class HandImitationEnv(HumanoidEnv):
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
-        VidCapSingletonSubprocess.reset_img_ev.set()
+        # VidCapSingletonSubprocess.reset_img_ev.set()
+
+
+        IS_GOAL_SAMPLING_MEAN = True
+        IS_GOAL_SAMPLING_BAD = False
+        IS_GOAL_SAMPLING_LAST = False
+        if IS_GOAL_SAMPLING_MEAN:
+            lastmeans_sq = np.array(self.tr_multigoal_lastmeans) ** 2
+            multigoal_means_normed = lastmeans_sq / np.sum(lastmeans_sq)
+            self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_normed)
+        elif IS_GOAL_SAMPLING_BAD:
+            multigoal_means_subtracted = np.array(self.tr_multigoal_lastmeans)
+            multigoal_means_subtracted -= np.min(self.tr_multigoal_lastmeans)
+            multigoal_means_subtracted /= np.sum(self.tr_multigoal_lastmeans)
+            if np.sum(multigoal_means_subtracted) == 0:
+                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)))
+            else:
+                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_subtracted)
+        elif IS_GOAL_SAMPLING_LAST:
+            self.fep_goalid = np.argmax(self.tr_multigoal_lastmeans)
+
+        print(self.fep_goalid)
+
+        desired_imgpath = self.tr_multigoal_paths[self.fep_goalid]
+        self.desired_imgdata = image.imread(desired_imgpath)
+
 
     def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):
         idx_step = 0

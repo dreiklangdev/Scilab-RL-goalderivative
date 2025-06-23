@@ -177,7 +177,7 @@ def register_custom_envs():
     register(
         id="le-hand-imitation-v1",
         entry_point='custom_envs.le_humanoid_hand.hand_imitation_env:HandImitationEnv',
-        max_episode_steps=1500,
+        max_episode_steps=99999999,
     )
 
 

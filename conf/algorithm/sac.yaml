@@ -42,6 +42,11 @@ train_freq: 1
 gradient_steps: 1
 
 # policy_kwargs:
+#   optimizer_kwargs:
+#     weight_decay:
+#       1e-4
+
+# policy_kwargs:
 #   net_arch:
 #     - 256
 #     - 256
