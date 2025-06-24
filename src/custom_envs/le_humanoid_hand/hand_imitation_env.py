@@ -174,12 +174,10 @@ class HandImitationEnv(HumanoidEnv):
         obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs
 
         # achieved obs
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
-        # obspace_total_dims += 1 # achieved: cam
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         # desired obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
-        # obspace_total_dims += 1 # desired: cam
 
         # goal obs
         obspace_total_dims += 1 # goaldist
@@ -212,8 +210,11 @@ class HandImitationEnv(HumanoidEnv):
 
         # once        
         self.tr_multigoal_paths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
+        self.tr_multigoal_distrecords = [99999.0] * len(self.tr_multigoal_paths)
         self.tr_multigoal_lastmeans = [99999.0] * len(self.tr_multigoal_paths)
         self.fep_goalid = -1
+        self.fep_is_dense = True
+        self.tr_learning_started = False
 
         
         self.buffer_obs_achieved = []
@@ -235,7 +236,7 @@ class HandImitationEnv(HumanoidEnv):
 
         self.init_qpos[6] = -1.4 # face towards camera
         self.pose_scale_ratio = 1
-        self.tr_feps_total = 0
+        self.tr_n_feps: int = 0
         self.tr_goaldist_min: float = 1
         self.tr_goaldist_max: float = 0
         self.tr_goaldist_mins_mean: float = 0
@@ -365,11 +366,12 @@ class HandImitationEnv(HumanoidEnv):
         terminated = False
         truncated = False
 
-        # if goaldist < self.tr_goals_records[self.fep_goals_current_id]:
-        #     print('goal record')
-        #     # self.tr_goals_records[self.fep_goals_current_id] = goaldist
-        #     # terminated = True
-        #     reward = 1
+
+        if self.tr_learning_started and goaldist < self.tr_multigoal_distrecords[self.fep_goalid]:
+            print('goal record.')
+            self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
+            # may hinder compass (follow) learning
+            # reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
@@ -414,7 +416,7 @@ class HandImitationEnv(HumanoidEnv):
 
 
         # also skip first buggy render
-        if self.tr_feps_total == 1 or self.ep_num_steps > self.cfg.PracticeSpace.MAX_STEPS_EPISODE_TRUNCATION:
+        if self.tr_n_feps == 1 or self.ep_num_steps > self.cfg.PracticeSpace.MAX_STEPS_EPISODE_TRUNCATION:
             LOG.info('TRUNCATED.')
             truncated = True
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
@@ -424,12 +426,13 @@ class HandImitationEnv(HumanoidEnv):
             self.render_mode = 'human'
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalid', str(self.fep_goalid))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalseek', str(goaldist > self.ep_reward_threshold))
-            ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_goalzone_per_step', str(ep_goalzone_per_step))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
+            # ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
+            # human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_goalzone_per_step', str(ep_goalzone_per_step))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_goalid', str(self.fep_goalid))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_is_dense', str(self.fep_is_dense))
             human_viewer.render()
 
         self.ep_current_reward = reward
@@ -655,7 +658,7 @@ class HandImitationEnv(HumanoidEnv):
                 obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
             if not self.pca_goal_modelref:
-                self.pca_goal_modelref = [obs_achieved, obs_achieved, obs_achieved]
+                self.pca_goal_modelref = [np.inf, obs_achieved, obs_achieved]
 
             SIZE_BUFFER_OBS_ACHIEVED = 1000 # may equal 'algo.learning_starts'
             if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
@@ -667,9 +670,12 @@ class HandImitationEnv(HumanoidEnv):
 
                 if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
                     self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
-                    obs_achieved_reduced = self.pca_reducer_goal.transform(self.pca_goal_modelref[0].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
-                    LOG.debug('goal dims: pca model fitted. %s', np.linalg.norm(self.pca_goal_modelref[1] - obs_achieved_reduced))
-                    self.pca_goal_modelref[1] = obs_achieved_reduced
+                    obs_achieved_reduced = self.pca_reducer_goal.transform(self.pca_goal_modelref[1].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
+                    modelconv = np.linalg.norm(self.pca_goal_modelref[2] - obs_achieved_reduced)
+                    LOG.debug('goal dims: pca model fitted. %s', modelconv)
+                    self.pca_goal_modelref[0] = modelconv
+                    self.pca_goal_modelref[2] = obs_achieved_reduced
+                    self.tr_learning_started = True
 
                 if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
                     obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
@@ -747,7 +753,7 @@ class HandImitationEnv(HumanoidEnv):
 
         # obs = np.append(obs, ob_achieved_pose)
         # obs = np.append(obs, ob_desired_pose) # goal
-        obs = np.append(obs, obs_achieved)
+        # obs = np.append(obs, obs_achieved)
         obs = np.append(obs, obs_desired) # goal
 
         obs = np.append(obs, goaldist)
@@ -843,6 +849,12 @@ class HandImitationEnv(HumanoidEnv):
         threshold_hold = self.ep_reward_threshold
         threshold_escape = self.tr_goaldist_max
 
+
+        distrecord = self.tr_multigoal_distrecords[self.fep_goalid]
+        distmultiplier = self._normalize_unit_limit(achieved_goal[0], distrecord, self.fep_goaldist_init)
+        distmultiplier = np.clip(distmultiplier, 0, 1)
+        distmultiplier_inv = 1 - distmultiplier
+
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
 
@@ -853,16 +865,15 @@ class HandImitationEnv(HumanoidEnv):
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
-            # if np.all(achieved_goal[1:] < 0):
-            #     reward = 1
-                # reward = achieved_goal[0] / self.ep_goaldist_max
-
-            if np.all(achieved_goal[1:] > 0):
-                reward = -1
-
-            # if np.mean(achieved_goal[1:]) > 0:
-            #     reward = -1
-                # reward = -achieved_goal[0] / self.ep_goaldist_max # no
+            # dont always look on the compass (else dependency/overfit) - only every k episode? less and less? (decaying)
+            # even krasser: NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
+            if self.fep_is_dense: # compass, else sparse
+                if np.all(achieved_goal[1:] < 0):
+                    reward = 1 * distmultiplier_inv
+                
+                if np.all(achieved_goal[1:] > 0):
+                # if np.mean(achieved_goal[1:]) > 0:
+                    reward = -1 * distmultiplier_inv
 
         else:
             reward = 0 # -1
@@ -930,6 +941,8 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ep_rewards_mean = 0
         self.ep_traj_is_halved = False
         self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
+        # self.fep_is_dense = self.tr_n_feps % 2 == 0
+
         # TODO redo noise?
         # noisy relative threshold (varies by initial state noise)
         # self.ep_reward_threshold = self.cfg.GoalRewardThreshold.MAX_FRAC_DEFAULT * obs_init['achieved_goal']
@@ -938,11 +951,11 @@ class HandImitationEnv(HumanoidEnv):
         # self.ep_goaldist_min = obs_init['achieved_goal']
         # self.ep_goaldist_max = obs_init['achieved_goal']
 
-        self.tr_goaldist_mins_mean = ((self.tr_feps_total * self.tr_goaldist_mins_mean) + self.fep_goaldist_min) / (self.tr_feps_total + 1)
-        self.tr_goaldist_maxs_mean = ((self.tr_feps_total * self.tr_goaldist_maxs_mean) + self.fep_goaldist_max) / (self.tr_feps_total + 1)
-        self.tr_feps_total += 1
+        self.tr_goaldist_mins_mean = ((self.tr_n_feps * self.tr_goaldist_mins_mean) + self.fep_goaldist_min) / (self.tr_n_feps + 1)
+        self.tr_goaldist_maxs_mean = ((self.tr_n_feps * self.tr_goaldist_maxs_mean) + self.fep_goaldist_max) / (self.tr_n_feps + 1)
+        self.tr_n_feps += 1
 
-        LOG.debug('tr_feps_total %s', self.tr_feps_total)
+        LOG.debug('tr_n_feps %s', self.tr_n_feps)
         LOG.debug('tr_obsdims %s', obs_init['observation'].shape[-1])
         LOG.debug('tr_obs_min %s %s', np.min(obs_init['observation']), np.argmin(obs_init['observation']))
         LOG.debug('tr_obs_mean %s', np.mean(obs_init['observation']))
@@ -957,6 +970,8 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('tr_reward_min %s', self.tr_reward_min)
         LOG.debug('tr_reward_max %s', self.tr_reward_max)
         LOG.debug('tr_multigoal_lastmeans %s', self.tr_multigoal_lastmeans)
+        LOG.debug('tr_multigoal_distrecords %s', self.tr_multigoal_distrecords)
+        LOG.debug('tr_training_started %s', self.tr_learning_started) 
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
@@ -968,6 +983,7 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
         LOG.debug('fep_goalhash %s', self.fep_goalhash)
+        LOG.debug('fep_is_dense %s', self.fep_is_dense)
         self._reset()
 
         self.fep_rewards_sum = 0
