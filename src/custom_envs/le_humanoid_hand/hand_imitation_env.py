@@ -131,7 +131,7 @@ class HandImitationEnv(HumanoidEnv):
 
         self.cfg = cfg
         self.is_render = is_render
-        self.is_eval = is_eval
+        self.tr_is_eval = is_eval
         self.is_plot = is_plot
         self.outfile_tr_multigoal_lastmeans = open('tr_multigoal_lastmeans.dat', 'a')
 
@@ -210,6 +210,8 @@ class HandImitationEnv(HumanoidEnv):
 
         # once        
         self.tr_multigoal_paths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
+        if self.tr_is_eval: 
+            self.tr_multigoal_paths = ['cam'] + self.tr_multigoal_paths
         self.tr_multigoal_distrecords = [99999.0] * len(self.tr_multigoal_paths)
         self.tr_multigoal_lastmeans = [99999.0] * len(self.tr_multigoal_paths)
         self.fep_goalid = -1
@@ -221,13 +223,10 @@ class HandImitationEnv(HumanoidEnv):
         self.buffer_obs_world = []
 
         # submodels
-        self.zs_scaler_world = submodels["zs_scaler_world"]
         self.zs_scaler_goal = submodels["zs_scaler_goal"]
         self.zs_scaler_obs = submodels["zs_scaler_obs"]
-        self.pca_reducer_world = submodels["pca_reducer_world"]
         self.pca_reducer_goal = submodels["pca_reducer_goal"]
-    
-        self.pca_world_modelref = []
+
         self.pca_goal_modelref = []
 
         self.ac_model_encobs = autoencoder.Autoencoder(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
@@ -481,37 +480,6 @@ class HandImitationEnv(HumanoidEnv):
 
         # obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
         obs_world = np.append(obs_world, self.data.qpos.flatten())
-
-        IS_NORMALIZE_Z_SCORE_WORLD = False
-        if IS_NORMALIZE_Z_SCORE_WORLD:
-            self.zs_scaler_world.partial_fit(obs_world.reshape(1, -1))
-            obs_world = self.zs_scaler_world.transform(obs_world.reshape(1, -1))[0]
-
-        IS_PCA_REDUCE_WORLD = False # decorrelation (proprioception?)
-        PCA_REDUCTION_WEIGHT = 0.5
-        if IS_PCA_REDUCE_WORLD:
-
-            if not self.pca_world_modelref:
-                self.pca_world_modelref = [obs_world, obs_world]
-
-            SIZE_BUFFER_OBS_WORLD = 1000 # may equal 'algo.learning_starts'
-            if len(self.buffer_obs_world) <= SIZE_BUFFER_OBS_WORLD:
-                self.buffer_obs_world.append(obs_world)
-
-            if len(self.buffer_obs_world) == SIZE_BUFFER_OBS_WORLD:
-                self.pca_reducer_world.partial_fit(self.buffer_obs_world)
-
-                obs_world_reduced = self.pca_reducer_world.transform(self.pca_world_modelref[0].reshape(1, -1)) @ self.pca_reducer_world.components_ + self.pca_reducer_world.mean_ # zca
-                LOG.debug('world dims: pca model fitted. %s', np.linalg.norm(self.pca_world_modelref[1] - obs_world_reduced))
-                self.pca_world_modelref[1] = obs_world_reduced
-
-            if hasattr(self.pca_reducer_world, 'n_samples_seen_') and self.pca_reducer_world.n_samples_seen_ > 0:
-                obs_world_reduced = self.pca_reducer_world.transform(obs_world.reshape(1, -1)) @ self.pca_reducer_world.components_ + self.pca_reducer_world.mean_
-                obs_world = (1-PCA_REDUCTION_WEIGHT) * obs_world + PCA_REDUCTION_WEIGHT * obs_world_reduced[0]
-
-            if len(self.buffer_obs_world) >= SIZE_BUFFER_OBS_WORLD:
-                self.buffer_obs_world.clear()
-
         # obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
 
         obs = np.append(obs, obs_world)
@@ -532,7 +500,8 @@ class HandImitationEnv(HumanoidEnv):
         obs_achieved = np.array([])
 
         if self.ep_num_steps == 1 or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            # desired_imgdata = VidCapSingletonSubprocess.parallel_vidcap_queue.get()
+            if self.tr_is_eval and self.fep_goalid == 0:
+                self.desired_imgdata = VidCapSingletonSubprocess.parallel_vidcap_queue.get()
             self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_imgdata.copy())
             self.desired_pose = self.landmarker_desired.detect(self.desired_img)
 
@@ -851,7 +820,7 @@ class HandImitationEnv(HumanoidEnv):
         threshold_escape = self.tr_goaldist_max
 
         distrecord = self.tr_multigoal_distrecords[self.fep_goalid]
-        meandist = achieved_goal[0] / self.ep_goaldist_mean
+        meandist = achieved_goal[0] / self.ep_goaldist_mean if self.ep_goaldist_mean > 0 else 0
         meandist = np.clip(meandist, -1, 2)
         meandist_inv = 1 - meandist
 
@@ -907,13 +876,13 @@ class HandImitationEnv(HumanoidEnv):
             LOG.debug('ep_goalconv_mean %s', np.mean(np.diff(self.ep_goaldists)))
             LOG.debug('\n')
 
-            if not self.is_eval and self.tr_num_steps > 10:
+            if not self.tr_is_eval and self.tr_num_steps > 10:
                 performance = np.mean(self.tr_multigoal_lastmeans)
                 if performance < 100:
                     self.outfile_tr_multigoal_lastmeans.write('%s\n' % (performance))
                     self.outfile_tr_multigoal_lastmeans.flush()
 
-        if not self.is_eval and cfg.TrajectoryHalving.IS_ENABLED:
+        if not self.tr_is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.fep_lives -= 1
             if self.fep_lives > 0 and len(self.ep_states) > 2:
                 SAVEPOINT_MIN_STEPS_BEFORE_TERMINATION = 100
@@ -1072,26 +1041,31 @@ class HandImitationEnv(HumanoidEnv):
         # VidCapSingletonSubprocess.reset_img_ev.set()
 
 
-        IS_GOAL_SAMPLING_MEAN = True
-        IS_GOAL_SAMPLING_BAD = False
-        IS_GOAL_SAMPLING_LAST = False
-        if IS_GOAL_SAMPLING_MEAN:
-            lastmeans_sq = np.array(self.tr_multigoal_lastmeans) ** 2
-            multigoal_means_normed = lastmeans_sq / np.sum(lastmeans_sq)
-            self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_normed)
-        elif IS_GOAL_SAMPLING_BAD:
-            multigoal_means_subtracted = np.array(self.tr_multigoal_lastmeans)
-            multigoal_means_subtracted -= np.min(self.tr_multigoal_lastmeans)
-            multigoal_means_subtracted /= np.sum(self.tr_multigoal_lastmeans)
-            if np.sum(multigoal_means_subtracted) == 0:
-                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)))
-            else:
-                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_subtracted)
-        elif IS_GOAL_SAMPLING_LAST:
-            self.fep_goalid = np.argmax(self.tr_multigoal_lastmeans)
 
-        desired_imgpath = self.tr_multigoal_paths[self.fep_goalid]
-        self.desired_imgdata = image.imread(desired_imgpath)
+        
+        if self.tr_is_eval:
+            self.fep_goalid = 0
+        else:
+            IS_GOAL_SAMPLING_MEAN = True
+            IS_GOAL_SAMPLING_BAD = False
+            IS_GOAL_SAMPLING_LAST = False
+            if IS_GOAL_SAMPLING_MEAN:
+                lastmeans_sq = np.array(self.tr_multigoal_lastmeans) ** 2
+                multigoal_means_normed = lastmeans_sq / np.sum(lastmeans_sq)
+                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_normed)
+            elif IS_GOAL_SAMPLING_BAD:
+                multigoal_means_subtracted = np.array(self.tr_multigoal_lastmeans)
+                multigoal_means_subtracted -= np.min(self.tr_multigoal_lastmeans)
+                multigoal_means_subtracted /= np.sum(self.tr_multigoal_lastmeans)
+                if np.sum(multigoal_means_subtracted) == 0:
+                    self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)))
+                else:
+                    self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_subtracted)
+            elif IS_GOAL_SAMPLING_LAST:
+                self.fep_goalid = np.argmax(self.tr_multigoal_lastmeans)
+
+            desired_imgpath = self.tr_multigoal_paths[self.fep_goalid]
+            self.desired_imgdata = image.imread(desired_imgpath)
 
 
     def _get_idx_for_trajectory_halving(self, strat, steps_before_term = 10, steps_offset = -10):

@@ -205,7 +205,6 @@ def main(cfg: DictConfig) -> (float, int):
                 "zs_scaler_goal": StandardScaler(),
                 "zs_scaler_obs": StandardScaler(),
 
-                "pca_reducer_world": IncrementalPCA(whiten=True),
                 "pca_reducer_goal": IncrementalPCA(whiten=True),
             }
 
