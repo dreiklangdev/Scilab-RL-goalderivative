@@ -428,6 +428,7 @@ class HandImitationEnv(HumanoidEnv):
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalseek', str(goaldist > self.ep_reward_threshold))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'meandist_r', str(np.round(goaldist / self.ep_goaldist_mean, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
             # ep_goalzone_per_step = np.round(self.ep_num_steps_goal_zone /  self.ep_num_steps, 2)
             # human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_goalzone_per_step', str(ep_goalzone_per_step))
@@ -849,11 +850,10 @@ class HandImitationEnv(HumanoidEnv):
         threshold_hold = self.ep_reward_threshold
         threshold_escape = self.tr_goaldist_max
 
-
         distrecord = self.tr_multigoal_distrecords[self.fep_goalid]
-        distmultiplier = self._normalize_unit_limit(achieved_goal[0], distrecord, self.fep_goaldist_init)
-        distmultiplier = np.clip(distmultiplier, 0, 1)
-        distmultiplier_inv = 1 - distmultiplier
+        meandist = achieved_goal[0] / self.ep_goaldist_mean
+        meandist = np.clip(meandist, -1, 2)
+        meandist_inv = 1 - meandist
 
         if achieved_goal[0] <= threshold_hold:
             reward = 1 # yes
@@ -868,12 +868,15 @@ class HandImitationEnv(HumanoidEnv):
             # dont always look on the compass (else dependency/overfit) - only every k episode? less and less? (decaying)
             # even krasser: NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
             if self.fep_is_dense: # compass, else sparse
-                if np.all(achieved_goal[1:] < 0):
-                    reward = 1 * distmultiplier_inv
-                
+                # if np.all(achieved_goal[1:] < 0):
+                #     reward = (1 + meandist_inv) # closer -> larger
+
                 if np.all(achieved_goal[1:] > 0):
                 # if np.mean(achieved_goal[1:]) > 0:
-                    reward = -1 * distmultiplier_inv
+                    # reward = (-(1 + meandist)) # farer -> larger
+                    reward = -1
+
+                # reward /= 2 # normalize to 0,1
 
         else:
             reward = 0 # -1
