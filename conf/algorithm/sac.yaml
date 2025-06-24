@@ -26,7 +26,8 @@ buffer_size: 1000000
 ent_coef: '0.01' # reach-exploration
 
 batch_size: 256
-gamma: 0.5 # 0.5 (reactive)
+# gamma: 0.5 # 0.5 (reactive)
+gamma: 0.25 # 0.5 (reactive)
 # gamma: 0.95
 # gamma: 0.995
 # learning_rate: 0.001 # reach

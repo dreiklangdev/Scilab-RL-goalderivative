@@ -7,7 +7,7 @@ class General(base.General):
     OBS_WORLD_DERIV_ORDERS = 4 # finer action selection (possibly better for complex worlds?)
     # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
     # needs heterogeneous rewarding!
-    GOAL_DERIV_ORDERS = 3 # "strictness/narrowness"
+    GOAL_DERIV_ORDERS = 4 # "strictness/narrowness"
     OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
