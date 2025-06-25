@@ -186,8 +186,9 @@ class HandImitationEnv(HumanoidEnv):
         obspace_total_dims += self.cfg.General.GOAL_DERIV_ORDERS # goalderivs
 
         # meta obs
-        obspace_total_dims += 1 # steps_diverging_left https://arxiv.org/abs/1712.00378
-        obspace_total_dims += 1 # goal-hash
+        if self.cfg.MetaObservation.IS_ENABLED:
+            obspace_total_dims += 1 # steps_diverging_left https://arxiv.org/abs/1712.00378
+            obspace_total_dims += 1 # goal-hash
 
         # reward obs
         obspace_total_dims += 1 + self.cfg.General.OBS_REWARD_HISTORY_LENGTH
@@ -372,12 +373,12 @@ class HandImitationEnv(HumanoidEnv):
             # if goaldist - self.tr_multigoal_distrecords[self.fep_goalid] <= 0.0:
             #     LOG.debug('goal distrecord reached.')
             #     self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
-            #     # may hinder compass (follow) learning?
+            #     # may hinder compass (follow) learning? at least hinders initial exploration?
             #     reward = 1
             if goaldist <= self.tr_multigoal_distrecords[self.fep_goalid]:
                 LOG.debug('goal distrecord reached or improved %s', goaldist)
                 self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
-                reward = 1
+                # reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
@@ -643,7 +644,7 @@ class HandImitationEnv(HumanoidEnv):
                 self.buffer_obs_achieved.append(obs_achieved)
 
             IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
-            PCA_REDUCTION_WEIGHT = 0.5 # generality factor
+            PCA_REDUCTION_WEIGHT = 0.5
             if IS_PCA_REDUCE_GOAL:
 
                 if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED and not self.tr_is_eval:
@@ -734,7 +735,7 @@ class HandImitationEnv(HumanoidEnv):
         # obs = np.append(obs, ob_desired_pose) # goal
 
         obs = np.append(obs, obs_achieved)
-        obs = np.append(obs, obs_desired) # goal
+        obs = np.append(obs, obs_achieved - obs_desired) # goal
 
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goalderivs)

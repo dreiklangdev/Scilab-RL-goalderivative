@@ -73,7 +73,7 @@ class General(base.General):
 
 # vs. single goal proficiency
 class MetaObservation(base.MetaObservation):
-    IS_ENABLED = True
+    IS_ENABLED = False
 
 
 # termination shaping (vs. too big search space)
