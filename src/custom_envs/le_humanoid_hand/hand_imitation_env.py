@@ -115,6 +115,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # 0.5M pcaObsGoal, gamma0   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8c4bd85/le-hand-imitation-v1/17-03-29_restored/rl_model_finished
 # 0.5M bothsidedAllCompass, noRecordRewarding, meanSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3839639/le-hand-imitation-v1/12-56-20/rl_model_finished
 # 0.5M bothsidedAllCompass, RecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
+# 0.5M relativeGoalObs, bothsidedAllCompass, noRecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -183,7 +184,9 @@ class HandImitationEnv(HumanoidEnv):
 
         # goal obs
         obspace_total_dims += 1 # goaldist
+        obspace_total_dims += 2 ** self.cfg.General.GOAL_DERIV_ORDERS # goaldists
         obspace_total_dims += self.cfg.General.GOAL_DERIV_ORDERS # goalderivs
+        # obspace_total_dims += 1 # goalangle
 
         # meta obs
         if self.cfg.MetaObservation.IS_ENABLED:
@@ -304,10 +307,8 @@ class HandImitationEnv(HumanoidEnv):
         obs = self._get_obs()
         goaldist = obs['achieved_goal'][0]
         goalconv = obs['achieved_goal'][1]
-        goalacce = obs['achieved_goal'][2]
         self.ep_goaldists.append(goaldist)
         self.ep_goalconvs.append(goalconv)
-        self.ep_goalacces.append(goalacce)
         self.ep_dictobs.append(obs)
         self.ep_current_obs = obs
 
@@ -378,7 +379,7 @@ class HandImitationEnv(HumanoidEnv):
             if goaldist <= self.tr_multigoal_distrecords[self.fep_goalid]:
                 LOG.debug('goal distrecord reached or improved %s', goaldist)
                 self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
-                # reward = 1
+                reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
@@ -403,7 +404,7 @@ class HandImitationEnv(HumanoidEnv):
             #     # reward = -1
             #     LOG.info('TOO MANY DIVERGENT STEPS.')
 
-            if not self.tr_is_eval and (self.ep_num_steps - self.ep_last_step_approached) > 1000:
+            if (self.ep_num_steps - self.ep_last_step_approached) > 1000:
                 terminated = True
                 # reward = -1
                 LOG.info('NO APPROACHING STEPS. %s', 1000)
@@ -643,7 +644,7 @@ class HandImitationEnv(HumanoidEnv):
             if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
                 self.buffer_obs_achieved.append(obs_achieved)
 
-            IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
+            IS_PCA_REDUCE_GOAL = False # decorrelation (proprioception?)
             PCA_REDUCTION_WEIGHT = 0.5
             if IS_PCA_REDUCE_GOAL:
 
@@ -654,7 +655,6 @@ class HandImitationEnv(HumanoidEnv):
                     LOG.debug('goal dims: pca model fitted. %s', modelconv)
                     self.pca_goal_modelref[0] = modelconv
                     self.pca_goal_modelref[2] = obs_achieved_reduced
-                    self.tr_learning_started = True
 
                 if hasattr(self.pca_reducer_goal, 'n_samples_seen_') and self.pca_reducer_goal.n_samples_seen_ > 0:
                     obs_achieved_reduced = self.pca_reducer_goal.transform(obs_achieved.reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_
@@ -700,6 +700,7 @@ class HandImitationEnv(HumanoidEnv):
 
             if len(self.buffer_obs_achieved) >= SIZE_BUFFER_OBS_ACHIEVED:
                 self.buffer_obs_achieved.clear()
+                self.tr_learning_started = True
 
             # combing? (stepwise-combing not working with goalconv-rewards(prev. step goal differs))
             # TODO full randomize weighting? (ie. random generalizing)
@@ -710,20 +711,22 @@ class HandImitationEnv(HumanoidEnv):
             # goaldims_primary = np.random.randint(2, size=1) # multiple?
             # self.ep_goalweight[goaldims_primary] = 1
             # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
-            goaldiff_weighted = self.ep_goalweight * (obs_achieved - obs_desired)
+            goaldiff = self.ep_goalweight * (obs_achieved - obs_desired)
 
             # qualitative bottleneck? (0d)
-            goaldist = np.linalg.norm(goaldiff_weighted, axis=-1)            
+            goaldist = np.linalg.norm(goaldiff, axis=-1)            
             goalderiv_orders = self.cfg.General.GOAL_DERIV_ORDERS
             if goalderiv_orders > 0:
                 goaldists = np.array(self.ep_goaldists)
                 goaldists = np.append(goaldists, goaldist) # most recent
-                goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)
-                goaldists = np.pad(goaldists, (2 ** goalderiv_orders,0)) # pad for more than enough recents
+                goaldists = np.array(goaldists[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)                
+                goaldists = np.pad(goaldists, (max(0, 2 ** goalderiv_orders - len(goaldists)),0)) # fill up with starting 0s if not enough
 
                 for i in range(1, goalderiv_orders + 1):
                     goalderivs = np.append(goalderivs, np.diff(goaldists, n=i, axis=0)[-1])
 
+            # goalangle = normalized_angle(self.ep_last_goaldiff, goaldiff) * np.sign(goalderivs[0])
+            # self.ep_last_goaldiff = goaldiff
 
         if not desired_pose.hand_landmarks:
             ob_desired_pose = ob_achieved_pose = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
@@ -733,12 +736,16 @@ class HandImitationEnv(HumanoidEnv):
 
         # obs = np.append(obs, ob_achieved_pose)
         # obs = np.append(obs, ob_desired_pose) # goal
+        obs = np.append(obs, ob_achieved_pose - ob_desired_pose) # goal
 
-        obs = np.append(obs, obs_achieved)
+        # obs = np.append(obs, obs_achieved)
+        # obs = np.append(obs, obs_desired) # goal
         obs = np.append(obs, obs_achieved - obs_desired) # goal
 
         obs = np.append(obs, goaldist)
+        obs = np.append(obs, goaldists)
         obs = np.append(obs, goalderivs)
+        # obs = np.append(obs, goalangle)
 
 
         # ========= META OBS
@@ -1006,8 +1013,7 @@ class HandImitationEnv(HumanoidEnv):
                 == len(self.ep_rewards)
                 == len(self.ep_dictobs)
                 == len(self.ep_goaldists)
-                == len(self.ep_goalconvs)
-                == len(self.ep_goalacces)), 'check state integrity'
+                == len(self.ep_goalconvs)), 'check state integrity'
 
         self.ep_states = [self.ep_states[idx_halving]]
         self.ep_actions = [self.ep_actions[idx_halving]]
@@ -1015,7 +1021,6 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_dictobs = [self.ep_dictobs[idx_halving]]
         self.ep_goaldists = [self.ep_goaldists[idx_halving]]
         self.ep_goalconvs = [self.ep_goalconvs[idx_halving]]
-        self.ep_goalacces = [self.ep_goalacces[idx_halving]]
 
         obs_init = self._get_obs()
         self.ep_goaldist_min = obs_init['achieved_goal'][0]
@@ -1033,12 +1038,12 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_last_step_approached: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_last_reward_step: int = -1
+        self.ep_last_goaldiff = np.zeros(self.cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
         self.ep_dictobs = []
         self.ep_current_obs = None
         self.ep_current_reward = 0
         self.ep_goaldists = []
         self.ep_goalconvs = []
-        self.ep_goalacces = []
         self.ep_states = []
         self.ep_rewards = []
         self.ep_actions = []
@@ -1049,7 +1054,7 @@ class HandImitationEnv(HumanoidEnv):
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
-        # VidCapSingletonSubprocess.reset_img_ev.set()
+        VidCapSingletonSubprocess.reset_img_ev.set()
         
         if self.tr_is_eval:
             self.fep_goalid = 0
@@ -1302,3 +1307,24 @@ def decorrelation_loss(z):
     diag = torch.diag(cov)
     off_diag = cov - torch.diag_embed(diag)
     return (off_diag**2).sum()  # penalize off-diagonal terms
+
+
+def normalized_angle(a, b):
+    a = np.array(a, dtype=np.float64)
+    b = np.array(b, dtype=np.float64)
+    # Mask to exclude NaNs from both vectors
+    valid_mask = ~np.isnan(a) & ~np.isnan(b)
+    if not np.any(valid_mask):
+        return 0  # No valid data
+
+    a_valid = a[valid_mask]
+    b_valid = b[valid_mask]
+    norm_a = np.linalg.norm(a_valid)
+    norm_b = np.linalg.norm(b_valid)
+    if norm_a == 0 or norm_b == 0:
+        return 0  # Cannot compute angle with zero-length vector
+
+    dot_product = np.dot(a_valid, b_valid)
+    cos_theta = np.clip(dot_product / (norm_a * norm_b), -1.0, 1.0)
+    angle_rad = np.arccos(cos_theta)
+    return angle_rad / np.pi  # Normalized to [0, 1]

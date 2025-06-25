@@ -31,7 +31,7 @@ class VidCapSingletonSubprocess:
         while True:
             desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
             if desired_imgpaths:
-                if True or reset_img_ev.is_set():
+                if reset_img_ev.is_set():
                     desired_imgpath = imgpath_current = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
                     reset_img_ev.clear()
                 else:
