@@ -165,7 +165,7 @@ class HandImitationEnv(HumanoidEnv):
         self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
         obspace_total_dims = 0
-
+        
         # world obs
         # obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
@@ -174,7 +174,7 @@ class HandImitationEnv(HumanoidEnv):
         obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs
 
         # achieved obs
-        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
+        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         # desired obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
@@ -336,7 +336,7 @@ class HandImitationEnv(HumanoidEnv):
         if goaldist < self.fep_goaldist_min:
             self.fep_goaldist_min = goaldist
             self.fep_lives = cfg.TrajectoryHalving.MAX_LIVES
-            self.ep_last_step_improved = self.ep_num_steps
+            self.ep_last_step_approached = self.ep_num_steps
 
             # if self.cfg.GoalRewardThreshold.IS_ADAPTIVE:
             #     self.ep_reward_threshold = goaldist
@@ -362,15 +362,20 @@ class HandImitationEnv(HumanoidEnv):
         if self.ep_num_steps > self.tr_ep_num_steps_max:
             self.tr_ep_num_steps_max = self.ep_num_steps
 
+
         terminated = False
         truncated = False
 
-
-        if self.tr_learning_started and goaldist < self.tr_multigoal_distrecords[self.fep_goalid]:
-            print('goal record.')
-            self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
-            # may hinder compass (follow) learning
-            # reward = 1
+        if self.tr_learning_started:
+            # if goaldist - self.tr_multigoal_distrecords[self.fep_goalid] <= 0.0:
+            #     LOG.debug('goal distrecord reached.')
+            #     self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
+            #     # may hinder compass (follow) learning?
+            #     reward = 1
+            if goaldist <= self.tr_multigoal_distrecords[self.fep_goalid]:
+                LOG.debug('goal distrecord reached or improved %s', goaldist)
+                self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
+                # reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
@@ -395,10 +400,10 @@ class HandImitationEnv(HumanoidEnv):
             #     # reward = -1
             #     LOG.info('TOO MANY DIVERGENT STEPS.')
 
-            if (self.ep_num_steps - self.ep_last_step_improved) > 1000:
+            if not self.tr_is_eval and (self.ep_num_steps - self.ep_last_step_approached) > 1000:
                 terminated = True
                 # reward = -1
-                LOG.info('NO IMPROVING STEPS. %s', 1000)
+                LOG.info('NO APPROACHING STEPS. %s', 1000)
 
             # min. convergence terminate? ("flaming wall")
             
@@ -623,7 +628,8 @@ class HandImitationEnv(HumanoidEnv):
 
             IS_NORMALIZE_Z_SCORE_GOAL = True
             if IS_NORMALIZE_Z_SCORE_GOAL:
-                self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
+                if not self.tr_is_eval:
+                    self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
                 obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
                 obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
@@ -635,10 +641,10 @@ class HandImitationEnv(HumanoidEnv):
                 self.buffer_obs_achieved.append(obs_achieved)
 
             IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
-            PCA_REDUCTION_WEIGHT = 0.5
+            PCA_REDUCTION_WEIGHT = 0.5 # generality factor
             if IS_PCA_REDUCE_GOAL:
 
-                if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED:
+                if len(self.buffer_obs_achieved) == SIZE_BUFFER_OBS_ACHIEVED and not self.tr_is_eval:
                     self.pca_reducer_goal.partial_fit(self.buffer_obs_achieved)
                     obs_achieved_reduced = self.pca_reducer_goal.transform(self.pca_goal_modelref[1].reshape(1, -1)) @ self.pca_reducer_goal.components_ + self.pca_reducer_goal.mean_ # zca
                     modelconv = np.linalg.norm(self.pca_goal_modelref[2] - obs_achieved_reduced)
@@ -717,13 +723,15 @@ class HandImitationEnv(HumanoidEnv):
 
 
         if not desired_pose.hand_landmarks:
-            ob_desired_pose = ob_achieved_pose = obs_desired = obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION) 
+            ob_desired_pose = ob_achieved_pose = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
+            obs_desired = obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             goaldist = self.ep_reward_threshold + 1
             goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
 
         # obs = np.append(obs, ob_achieved_pose)
         # obs = np.append(obs, ob_desired_pose) # goal
-        # obs = np.append(obs, obs_achieved)
+
+        obs = np.append(obs, obs_achieved)
         obs = np.append(obs, obs_desired) # goal
 
         obs = np.append(obs, goaldist)
@@ -806,6 +814,7 @@ class HandImitationEnv(HumanoidEnv):
 
 
     # is also used by HER (multi-dim. args.)
+    # TODO desired goal may be current dist record
     def compute_reward(
         self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info
     ) -> float:
@@ -837,11 +846,12 @@ class HandImitationEnv(HumanoidEnv):
             # dont always look on the compass (else dependency/overfit) - only every k episode? less and less? (decaying)
             # even krasser: NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
             if self.fep_is_dense: # compass, else sparse
-                # if np.all(achieved_goal[1:] < 0):
+                if np.all(achieved_goal[1:] < 0):
+                    reward = 1
                 #     reward = (1 + meandist_inv) # closer -> larger
 
-                if np.all(achieved_goal[1:] > 0):
-                # if np.mean(achieved_goal[1:]) > 0:
+                if np.all(achieved_goal[1:] > 0): # risk of unprecision ('last mile')
+                # if np.mean(achieved_goal[1:]) > 0: # risk of overfit ('good here')
                     # reward = (-(1 + meandist)) # farer -> larger
                     reward = -1
 
@@ -944,6 +954,8 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('tr_multigoal_lastmeans %s', self.tr_multigoal_lastmeans)
         LOG.debug('tr_multigoal_distrecords %s', self.tr_multigoal_distrecords)
         LOG.debug('tr_training_started %s', self.tr_learning_started) 
+        LOG.debug('fep_goalid %s', self.fep_goalid)
+        LOG.debug('fep_goalhash %s', self.fep_goalhash)
         LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
         LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
         LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
@@ -951,10 +963,6 @@ class HandImitationEnv(HumanoidEnv):
         LOG.debug('fep_savepoint_steps %s', self.fep_savepoint_steps)
         LOG.debug('fep_num_steps_goal_zone %s', self.fep_savepoint_steps_goal_zone + self.ep_num_steps_goal_zone)
         LOG.debug('fep_savepoint_goaldist %s', obs_init['achieved_goal'][0])
-        LOG.debug('fep_goaldist_init %s', self.fep_goaldist_init)
-        LOG.debug('fep_goaldist_min %s', self.fep_goaldist_min)
-        LOG.debug('fep_goaldist_max %s', self.fep_goaldist_max)
-        LOG.debug('fep_goalhash %s', self.fep_goalhash)
         LOG.debug('fep_is_dense %s', self.fep_is_dense)
         self._reset()
 
@@ -970,7 +978,7 @@ class HandImitationEnv(HumanoidEnv):
 
         idx_halving = self._get_idx_for_trajectory_halving(strat, steps_before_term, steps_offset)
 
-        if idx_halving > 0: # improved
+        if idx_halving > 0: # approached
             self.fep_savepoint_steps_goal_zone += self.ep_num_steps_goal_zone
             self.fep_lives = self.cfg.TrajectoryHalving.MAX_LIVES
 
@@ -986,7 +994,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_num_steps = 0
         self.ep_num_steps_goal_zone = 0
         self.ep_num_steps_conv = 0
-        self.ep_last_step_improved = 0
+        self.ep_last_step_approached = 0
         self.last_ep_rewards_mean = self.ep_rewards_mean
         self.last_ep_goaldist_min = self.ep_goaldist_min
 
@@ -1019,7 +1027,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_rewards_sum = 0
         self.ep_num_steps: int = 0
         self.ep_num_steps_conv: int = 0
-        self.ep_last_step_improved: int = 0
+        self.ep_last_step_approached: int = 0
         self.ep_first_reward_step: int = -1
         self.ep_last_reward_step: int = -1
         self.ep_dictobs = []
@@ -1046,21 +1054,26 @@ class HandImitationEnv(HumanoidEnv):
         if self.tr_is_eval:
             self.fep_goalid = 0
         else:
+            # bad sampling may lead to favorism? (convergence to only single most difficult goal)
+            IS_GOAL_SAMPLING_UNIFORM = False
             IS_GOAL_SAMPLING_MEAN = True
             IS_GOAL_SAMPLING_BAD = False
             IS_GOAL_SAMPLING_LAST = False
-            if IS_GOAL_SAMPLING_MEAN:
-                lastmeans_sq = np.array(self.tr_multigoal_lastmeans) ** 2
-                multigoal_means_normed = lastmeans_sq / np.sum(lastmeans_sq)
-                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_normed)
+            if IS_GOAL_SAMPLING_UNIFORM:
+                self.fep_goalid = np.random.randint(len(self.tr_multigoal_paths))
+            elif IS_GOAL_SAMPLING_MEAN:
+                lastmeans = np.array(self.tr_multigoal_lastmeans)
+                # lastmeans = np.array(self.tr_multigoal_lastmeans) ** 2
+                lastmeans_normed = lastmeans / np.sum(lastmeans)
+                self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=lastmeans_normed)
             elif IS_GOAL_SAMPLING_BAD:
-                multigoal_means_subtracted = np.array(self.tr_multigoal_lastmeans)
-                multigoal_means_subtracted -= np.min(self.tr_multigoal_lastmeans)
-                multigoal_means_subtracted /= np.sum(self.tr_multigoal_lastmeans)
-                if np.sum(multigoal_means_subtracted) == 0:
+                lastmeans_based = np.array(self.tr_multigoal_lastmeans)
+                lastmeans_based -= np.min(self.tr_multigoal_lastmeans)
+                lastmeans_based /= np.sum(self.tr_multigoal_lastmeans)
+                if np.sum(lastmeans_based) == 0:
                     self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)))
                 else:
-                    self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=multigoal_means_subtracted)
+                    self.fep_goalid = np.random.choice(np.arange(len(self.tr_multigoal_paths)), p=lastmeans_based)
             elif IS_GOAL_SAMPLING_LAST:
                 self.fep_goalid = np.argmax(self.tr_multigoal_lastmeans)
 

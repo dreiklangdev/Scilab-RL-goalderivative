@@ -197,6 +197,7 @@ def main(cfg: DictConfig) -> (float, int):
 
 
         if cfg.restore_policy:
+            print('restoring submodels...')
             with open(f'{cfg.restore_policy}_submodels.pkl', 'rb') as submodels_infile:
                 submodels = pkl.load(submodels_infile)
         else:
@@ -206,6 +207,7 @@ def main(cfg: DictConfig) -> (float, int):
                 "zs_scaler_obs": StandardScaler(),
 
                 "pca_reducer_goal": IncrementalPCA(whiten=True),
+                # "pca_reducer_goal": IncrementalPCA(n_components=5, whiten=True),
             }
 
         train_env, eval_env = get_env_instance(cfg, logger, submodels)
