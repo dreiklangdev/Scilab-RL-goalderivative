@@ -113,6 +113,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # TODO obs appender func with limits warning (for normalization(!))
 # TODO persist models (action, pca, zscale?)
 # 0.5M pcaObsGoal, gamma0   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/8c4bd85/le-hand-imitation-v1/17-03-29_restored/rl_model_finished
+# 0.5M bothsidedAllCompass, noRecordRewarding, meanSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3839639/le-hand-imitation-v1/12-56-20/rl_model_finished
+# 0.5M bothsidedAllCompass, RecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -375,7 +377,7 @@ class HandImitationEnv(HumanoidEnv):
             if goaldist <= self.tr_multigoal_distrecords[self.fep_goalid]:
                 LOG.debug('goal distrecord reached or improved %s', goaldist)
                 self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
-                # reward = 1
+                reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
@@ -1047,16 +1049,13 @@ class HandImitationEnv(HumanoidEnv):
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
         # VidCapSingletonSubprocess.reset_img_ev.set()
-
-
-
         
         if self.tr_is_eval:
             self.fep_goalid = 0
         else:
-            # bad sampling may lead to favorism? (convergence to only single most difficult goal)
-            IS_GOAL_SAMPLING_UNIFORM = False
-            IS_GOAL_SAMPLING_MEAN = True
+            IS_GOAL_SAMPLING_UNIFORM = True
+            # prio sampling may lead to favorism? (convergence to only single most difficult goal)
+            IS_GOAL_SAMPLING_MEAN = False
             IS_GOAL_SAMPLING_BAD = False
             IS_GOAL_SAMPLING_LAST = False
             if IS_GOAL_SAMPLING_UNIFORM:
