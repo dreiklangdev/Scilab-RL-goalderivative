@@ -116,6 +116,7 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # 0.5M bothsidedAllCompass, noRecordRewarding, meanSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/3839639/le-hand-imitation-v1/12-56-20/rl_model_finished
 # 0.5M bothsidedAllCompass, RecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
 # 0.5M relativeGoalObs, bothsidedAllCompass, noRecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
+# 0.5M pcaGoal0.5, goaldistHistory, relativeGoalObs, bothsidedAllCompass, unisampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2dbf116/le-hand-imitation-v1/23-12-40/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -627,6 +628,7 @@ class HandImitationEnv(HumanoidEnv):
         self.fep_goalhash = goalhash
         goaldist = self.ep_reward_threshold + 1
         goalderivs = np.array([])
+        goaldists = np.zeros(2 ** self.cfg.General.GOAL_DERIV_ORDERS)
 
         if desired_pose.hand_landmarks:
 
@@ -644,7 +646,7 @@ class HandImitationEnv(HumanoidEnv):
             if len(self.buffer_obs_achieved) <= SIZE_BUFFER_OBS_ACHIEVED:
                 self.buffer_obs_achieved.append(obs_achieved)
 
-            IS_PCA_REDUCE_GOAL = False # decorrelation (proprioception?)
+            IS_PCA_REDUCE_GOAL = True # decorrelation (proprioception?)
             PCA_REDUCTION_WEIGHT = 0.5
             if IS_PCA_REDUCE_GOAL:
 
