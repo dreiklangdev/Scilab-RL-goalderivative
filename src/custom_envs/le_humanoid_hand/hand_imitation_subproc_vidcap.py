@@ -3,7 +3,9 @@ import numpy as np
 import multiprocessing
 import glob
 import cv2
+import time
 from matplotlib import image
+
 
 import git
 PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tree_dir
@@ -53,6 +55,9 @@ class VidCapSingletonSubprocess:
 
             if queue.empty():
                 queue.put_nowait((frame))
+            
+            # time.sleep(1)
+
         vidcap.release()
 
 

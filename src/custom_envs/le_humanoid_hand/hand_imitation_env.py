@@ -117,6 +117,8 @@ PATH_GIT_WORKING_DIR = git.Repo('.', search_parent_directories=True).working_tre
 # 0.5M bothsidedAllCompass, RecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
 # 0.5M relativeGoalObs, bothsidedAllCompass, noRecordRewarding, uniSampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/96a1b45/le-hand-imitation-v1/14-19-54/rl_model_finished
 # 0.5M pcaGoal0.5, goaldistHistory, relativeGoalObs, bothsidedAllCompass, unisampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2dbf116/le-hand-imitation-v1/23-12-40/rl_model_finished
+# 1.0M /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2dbf116/le-hand-imitation-v1/23-12-40_restored/rl_model_finished
+# 0.5M relativeGoalObsReducedOnly (much better precision, better/closer results) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d820e9e/le-hand-imitation-v1/19-18-05/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -178,7 +180,7 @@ class HandImitationEnv(HumanoidEnv):
         obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs
 
         # achieved obs
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose
 
         # desired obs
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
@@ -380,7 +382,7 @@ class HandImitationEnv(HumanoidEnv):
             if goaldist <= self.tr_multigoal_distrecords[self.fep_goalid]:
                 LOG.debug('goal distrecord reached or improved %s', goaldist)
                 self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
-                reward = 1
+                # reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
@@ -738,11 +740,11 @@ class HandImitationEnv(HumanoidEnv):
 
         # obs = np.append(obs, ob_achieved_pose)
         # obs = np.append(obs, ob_desired_pose) # goal
-        obs = np.append(obs, ob_achieved_pose - ob_desired_pose) # goal
+        # obs = np.append(obs, ob_achieved_pose - ob_desired_pose) # goaldimsdiff
 
         # obs = np.append(obs, obs_achieved)
         # obs = np.append(obs, obs_desired) # goal
-        obs = np.append(obs, obs_achieved - obs_desired) # goal
+        obs = np.append(obs, obs_achieved - obs_desired) # goaldimsdiff_reduced
 
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goaldists)
@@ -1061,9 +1063,9 @@ class HandImitationEnv(HumanoidEnv):
         if self.tr_is_eval:
             self.fep_goalid = 0
         else:
-            IS_GOAL_SAMPLING_UNIFORM = True
-            # prio sampling may lead to favorism? (convergence to only single most difficult goal)
-            IS_GOAL_SAMPLING_MEAN = False
+            IS_GOAL_SAMPLING_UNIFORM = False
+            # prio sampling may lead to favorism? (convergence to only single most difficult goal?)
+            IS_GOAL_SAMPLING_MEAN = True
             IS_GOAL_SAMPLING_BAD = False
             IS_GOAL_SAMPLING_LAST = False
             if IS_GOAL_SAMPLING_UNIFORM:
