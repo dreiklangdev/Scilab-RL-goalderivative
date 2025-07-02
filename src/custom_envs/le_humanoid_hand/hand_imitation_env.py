@@ -187,11 +187,11 @@ class HandImitationEnv(HumanoidEnv):
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # achieved: pose_reduced
 
         # desired obs
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose_reduced
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose_reduced
 
         # goal obs
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff_reduced
         obspace_total_dims += 1 # goaldist
         obspace_total_dims += 2 ** self.cfg.General.GOAL_DERIV_ORDERS # goaldists_recent
@@ -308,8 +308,6 @@ class HandImitationEnv(HumanoidEnv):
     def step_passive(self, action):
         info = {}
         info['success'] = False
-
-
 
         # reduce action space?
         # action = np.clip(action, -np.pi/2, np.pi/2)
@@ -751,12 +749,12 @@ class HandImitationEnv(HumanoidEnv):
             goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
 
         # obs = np.append(obs, ob_achieved_pose)
-        obs = np.append(obs, ob_desired_pose) # goal
-        obs = np.append(obs, ob_achieved_pose - ob_desired_pose) # goaldimsdiff
+        # obs = np.append(obs, ob_desired_pose) # goal
+        # obs = np.append(obs, ob_achieved_pose - ob_desired_pose) # goaldimsdiff
 
         # TODO add  obs_achieved?
         # obs = np.append(obs, obs_achieved)
-        obs = np.append(obs, obs_desired) # goal
+        # obs = np.append(obs, obs_desired) # goal
         obs = np.append(obs, obs_achieved - obs_desired) # goaldimsdiff_reduced
 
         obs = np.append(obs, goaldist)
@@ -1258,7 +1256,7 @@ def parallel_plot(queue: multiprocessing.Queue):
 
     while True:
         achieved_img, desired_img, achieved_pose, desired_pose = queue.get()
-    
+
         plot_desired.set_data(desired_img)
         plot_desired.draw(plot_desired.get_figure().canvas.get_renderer())
 

@@ -10,7 +10,7 @@ class General(base.General):
     # needs heterogeneous rewarding!
 
     # speed/accuracy vs. exploration/globality
-    GOAL_DERIV_ORDERS = 5 # "strictness/narrowness"
+    GOAL_DERIV_ORDERS = 3 # "strictness/narrowness"
     OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
@@ -86,7 +86,7 @@ class PracticeSpace(base.PracticeSpace):
     STEPS_INVINCIBLE_SPAWN = 0 # eg. if instable start (falling)
     REWARD_ON_TERMINATE = 0 # vs. fear, losing confidence
 
-    MAX_STEPS_EPISODE_TRUNCATION = 9999999
+    MAX_STEPS_EPISODE_TRUNCATION = 10000
     MAX_DIVERGENT_STEPS = 500 # 500
 
     class RandomGoalSampling(base.PracticeSpace.RandomGoalSampling):

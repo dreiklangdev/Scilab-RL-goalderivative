@@ -58,8 +58,7 @@ class VidCapSingletonProc:
                     LOG.warning('video camera unavailable.')
                     break
 
-            if queue.empty():
-                queue.put((frame))
+            queue.put((frame))
 
         vidcap.release()
 
