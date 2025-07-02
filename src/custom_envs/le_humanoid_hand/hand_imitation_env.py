@@ -179,7 +179,9 @@ class HandImitationEnv(HumanoidEnv):
         # obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
         # no contact forces available https://github.com/openai/gym/issues/1541
         # obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
-        obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs
+        obspace_total_dims += self.data.qpos.flatten().shape[0] * np.sum(range(self.cfg.General.WORLD_DERIV_ORDERS + 1)) # superpos-derivs
+        # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs[-1]
+
         # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # last superpos-derivs
 
         # achieved obs
@@ -189,14 +191,16 @@ class HandImitationEnv(HumanoidEnv):
         # desired obs
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose_reduced
-
+        
         # goal obs
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff
         obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff_reduced
         obspace_total_dims += 1 # goaldist
-        obspace_total_dims += 2 ** self.cfg.General.GOAL_DERIV_ORDERS # goaldists_recent
-        obspace_total_dims += self.cfg.General.GOAL_DERIV_ORDERS # goalderivs
-        obspace_total_dims += 2 ** self.cfg.General.GOAL_DERIV_ORDERS # goalconvs_recent
+        obspace_total_dims += self.cfg.General.GOAL_DERIV_ORDERS + 1 # goaldists_recent
+        obspace_total_dims += np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS + 1)) # goalderivs
+
+
+        # obspace_total_dims += 2 ** self.cfg.General.GOAL_DERIV_ORDERS # goalconvs_recent
         # obspace_total_dims += 1 # goalangle
 
         # meta obs
@@ -214,7 +218,7 @@ class HandImitationEnv(HumanoidEnv):
             obspace_total_dims = 1 << (obspace_total_dims-1).bit_length()
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
-        goal_space = spaces.Box(-np.inf, np.inf, shape=(1 + self.cfg.General.GOAL_DERIV_ORDERS,), dtype='float64') # goaldist, goalconv
+        goal_space = spaces.Box(-np.inf, np.inf, shape=(1 + np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS + 1)),), dtype='float64') # goaldist, goalconv
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
@@ -489,28 +493,29 @@ class HandImitationEnv(HumanoidEnv):
 
 
         # =========== WORLD OBS
-        obs_world = np.array([])
+        world = np.array([])
 
-        # obs_world = np.append(obs_world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
-        obs_world = np.append(obs_world, self.data.qpos.flatten())
-        # obs_world = np.append(obs_world, self.data.cfrc_ext.flatten())
+        # world = np.append(world, super()._get_obs()) # already includes first order (mujoco-computed, possibly different)
+        world = np.append(world, self.data.qpos.flatten())
+        # world = np.append(world, self.data.cfrc_ext.flatten())
 
-        # obs = np.append(obs, obs_world)
+        # obs = np.append(obs, world)
 
-        obs_worldderivs = np.array([])
-        worldderiv_orders = self.cfg.General.OBS_WORLD_DERIV_ORDERS
+        worldderivs = np.array([])
+        worldderiv_orders = self.cfg.General.WORLD_DERIV_ORDERS
         if worldderiv_orders > 0:
-            jointpos_recent = np.array([q[0] for q in self.ep_states[-(2 ** worldderiv_orders):]]) # only enough recent posis for all orders (2^k)
-            jointpos_recent = np.pad(jointpos_recent, ((2 ** worldderiv_orders,0), (0,0))) # pad for always enough recent posis
-
+            jointpos_recent = np.array([q[0] for q in self.ep_states[-(worldderiv_orders + 1):]]) # only enough recent posis for all orders
+            jointpos_recent = np.pad(jointpos_recent, ((max(0, worldderiv_orders + 1 - jointpos_recent.shape[0]),0),(0,0))) # pad for always enough recent posis
+        
             for i in range(1, worldderiv_orders + 1):
-                obs_worldderivs = np.append(obs_worldderivs, np.diff(jointpos_recent, n=i, axis=0)[-1])
-
+                # worldderivs = np.append(worldderivs, np.diff(jointpos_recent, n=i, axis=0)[-1])
+                worldderivs = np.append(worldderivs, np.diff(jointpos_recent, n=i, axis=0))
+       
         # more important than expected/supposed?
+        obs = np.append(obs, worldderivs)
 
-        obs = np.append(obs, obs_worldderivs)
         # obs = np.append(obs, self.ep_last_obs_worldderivs)
-        self.ep_last_obs_worldderivs = obs_worldderivs
+        self.ep_last_obs_worldderivs = worldderivs
 
 
         # ========= ACHIEVED OBS (proprioception)
@@ -728,16 +733,11 @@ class HandImitationEnv(HumanoidEnv):
             if goalderiv_orders > 0:
                 goaldists_recent = np.array(self.ep_goaldists)
                 goaldists_recent = np.append(goaldists_recent, goaldist) # most recent
-                goaldists_recent = np.array(goaldists_recent[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)                
-                goaldists_recent = np.pad(goaldists_recent, (max(0, 2 ** goalderiv_orders - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
+                goaldists_recent = np.array(goaldists_recent[-(goalderiv_orders + 1):]) # only enough recent goaldists for all orders
+                goaldists_recent = np.pad(goaldists_recent, (max(0, goalderiv_orders + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
 
                 for i in range(1, goalderiv_orders + 1):
-                    goalderivs = np.append(goalderivs, np.diff(goaldists_recent, n=i, axis=0)[-1])
-
-                goalconvs_recent = np.array(self.ep_goalconvs)
-                goalconvs_recent = np.append(goalconvs_recent, goalderivs[0]) # most recent
-                goalconvs_recent = np.array(goalconvs_recent[-(2 ** goalderiv_orders):]) # only enough recent goaldists for all orders (2^k)                
-                goalconvs_recent = np.pad(goalconvs_recent, (max(0, 2 ** goalderiv_orders - len(goalconvs_recent)),0)) # fill up with starting 0s if not enough
+                    goalderivs = np.append(goalderivs, np.diff(goaldists_recent, n=i, axis=0))
 
             # goalangle = normalized_angle(self.ep_last_goaldiff, goaldiff) * np.sign(goalderivs[0])
             # self.ep_last_goaldiff = goaldiff
@@ -746,7 +746,7 @@ class HandImitationEnv(HumanoidEnv):
             ob_desired_pose = ob_achieved_pose = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             obs_desired = obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             goaldist = self.ep_reward_threshold + 1
-            goalderivs = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
+            goalderivs = np.zeros(np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS)))
 
         # obs = np.append(obs, ob_achieved_pose)
         # obs = np.append(obs, ob_desired_pose) # goal
@@ -760,7 +760,8 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goaldists_recent)
         obs = np.append(obs, goalderivs)
-        obs = np.append(obs, goalconvs_recent)
+
+        # obs = np.append(obs, goalconvs_recent)
         # obs = np.append(obs, goalangle)
 
 
@@ -1058,7 +1059,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_first_reward_step: int = -1
         self.ep_last_reward_step: int = -1
         self.ep_last_goaldiff = np.zeros(self.cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
-        self.ep_last_obs_worldderivs = np.zeros(self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS)
+        self.ep_last_obs_worldderivs = np.zeros(self.data.qpos.flatten().shape[0] * self.cfg.General.WORLD_DERIV_ORDERS)
         self.ep_dictobs = []
         self.ep_current_obs = None
         self.ep_current_reward = 0

@@ -4,13 +4,15 @@ import numpy as np
 
 
 class General(base.General):
-    # derivs ~ "curvature" info
-    OBS_WORLD_DERIV_ORDERS = 3 # finer action selection (possibly better for complex worlds?)
     # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
-    # needs heterogeneous rewarding!
 
-    # speed/accuracy vs. exploration/globality
-    GOAL_DERIV_ORDERS = 3 # "strictness/narrowness"
+    # derivs ~ "curvature" info
+
+    # restricting/specializing (slower, "safer")
+    WORLD_DERIV_ORDERS = 2 # "smoothness-factor"
+    # exploring/generalizing (slower, "freer")
+    GOAL_DERIV_ORDERS = 3 # "sparsity-factor"
+
     OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
