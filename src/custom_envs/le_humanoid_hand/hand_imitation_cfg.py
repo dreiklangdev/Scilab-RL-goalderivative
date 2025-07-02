@@ -4,11 +4,13 @@ import numpy as np
 
 
 class General(base.General):
-    # derivs ~ "smoothness" info
-    OBS_WORLD_DERIV_ORDERS = 4 # finer action selection (possibly better for complex worlds?)
+    # derivs ~ "curvature" info
+    OBS_WORLD_DERIV_ORDERS = 3 # finer action selection (possibly better for complex worlds?)
     # for sample eff.: avoid "every step feel the same" (homogenity) (wasted steps: "zero-steps" (no reward) vs. "indifferent-steps" (too fine rewards, little distinction between))
     # needs heterogeneous rewarding!
-    GOAL_DERIV_ORDERS = 4 # "strictness/narrowness"
+
+    # speed/accuracy vs. exploration/globality
+    GOAL_DERIV_ORDERS = 5 # "strictness/narrowness"
     OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
 
@@ -21,6 +23,7 @@ class General(base.General):
     ]
     LANDMARK_GROUPS = [ # wrist and fingerpoints only # geom
         [0, 5, 17], # palm (for orientation)
+        # [0, 5, 9, 13, 17], # palm (for orientation)
         [0, 4], # thumb
         [0, 8], # index
         [0, 12], # middle

@@ -131,6 +131,8 @@ def  get_algo_instance(cfg, logger, env):
 
     # LE: custom
     from torch import nn
+    from custom_envs.le_humanoid_hand.CustomAttentionPolicy import CustomAttentionPolicy
+
     policy_kwargs = dict(
 
         # https://datascience.stackexchange.com/questions/26021/negative-rewards-and-activation-functions
@@ -150,6 +152,8 @@ def  get_algo_instance(cfg, logger, env):
     if cfg.restore_policy is not None:
         baseline = baseline_class.load(cfg.restore_policy, env=env, policy_kwargs=policy_kwargs, **alg_kwargs)
     else:
+        from stable_baselines3.sac.sac import SAC
+        # baseline = baseline_class(env=env, policy=CustomAttentionPolicy, policy_kwargs=policy_kwargs, **alg_kwargs)
         baseline = baseline_class(env=env, policy_kwargs=policy_kwargs, **alg_kwargs)
     baseline.set_logger(logger)
     return baseline
