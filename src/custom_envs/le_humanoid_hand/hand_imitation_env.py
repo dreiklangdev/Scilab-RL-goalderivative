@@ -9,7 +9,7 @@ import uuid
 from types import SimpleNamespace
 from . import hand_imitation_cfg as cfg
 from . import autoencoder
-from .hand_imitation_subproc_vidcap import VidCapSingletonSubprocess
+from .hand_imitation_subproc_vidcap import VidCapSingletonProc
 
 from gymnasium import spaces
 from gymnasium.wrappers.utils import RunningMeanStd
@@ -171,7 +171,7 @@ class HandImitationEnv(HumanoidEnv):
         self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
         obspace_total_dims = 0
-        
+
         # world obs
         # obspace_total_dims += self.observation_space.shape[0] # super
         obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
@@ -282,6 +282,9 @@ class HandImitationEnv(HumanoidEnv):
         self.last_ob_pose_achieved = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
         self.last_ob_desired_pose = np.full(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION, 1)
 
+        if self.tr_is_eval:
+            VidCapSingletonProc.autochange_ev.set()
+
         if self.is_plot:
             self.parallel_plot_queue = multiprocessing.Queue()
             multiprocessing.Process(target=parallel_plot, args=((self.parallel_plot_queue,)), daemon=True).start()
@@ -380,25 +383,13 @@ class HandImitationEnv(HumanoidEnv):
             #     # may hinder compass (follow) learning? at least hinders initial exploration?
             #     reward = 1
             if goaldist <= self.tr_multigoal_distrecords[self.fep_goalid]:
-                LOG.debug('goal distrecord reached or improved %s', goaldist)
+                # LOG.debug('goal distrecord reached or improved %s', goaldist)
                 self.tr_multigoal_distrecords[self.fep_goalid] = goaldist
                 # reward = 1
 
         # space constraint
         # reckless training (no penalties, fast respawn)
-        if self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
-
-            # if self.ep_rewards_sum < -30:
-            #     terminated = True
-
-            # if reward <= 0:
-            #     terminated = True
-
-
-            if np.abs(self.ep_rewards_sum) > 500:
-                terminated = True
-                LOG.info('NO REWARDS LEFT.')
-
+        if not self.tr_is_eval and self.cfg.PracticeSpace.IS_TERMINATE_ON_OUTSIDE_PRACTICE_SPACE and self.ep_num_steps > self.cfg.PracticeSpace.STEPS_INVINCIBLE_SPAWN:
 
             # # TODO only in goal-hold phase? (goal-reach may need divergent steps...)
             # if len(self.ep_goalconvs) > MAX_DIVERGENT_STEPS and not np.argmax(np.array(self.ep_goalconvs[-MAX_DIVERGENT_STEPS:]) > 0):
@@ -513,7 +504,7 @@ class HandImitationEnv(HumanoidEnv):
 
         if self.ep_num_steps == 1 or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
             if self.tr_is_eval and self.fep_goalid == 0:
-                self.desired_imgdata = VidCapSingletonSubprocess.parallel_vidcap_queue.get()
+                self.desired_imgdata = VidCapSingletonProc.parallel_vidcap_queue.get()
             self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_imgdata.copy())
             self.desired_pose = self.landmarker_desired.detect(self.desired_img)
 
@@ -742,6 +733,7 @@ class HandImitationEnv(HumanoidEnv):
         # obs = np.append(obs, ob_desired_pose) # goal
         # obs = np.append(obs, ob_achieved_pose - ob_desired_pose) # goaldimsdiff
 
+        # TODO add  obs_achieved?
         # obs = np.append(obs, obs_achieved)
         # obs = np.append(obs, obs_desired) # goal
         obs = np.append(obs, obs_achieved - obs_desired) # goaldimsdiff_reduced
@@ -1058,7 +1050,7 @@ class HandImitationEnv(HumanoidEnv):
             self.landmarker_achieved = HandLandmarker.create_from_options(self.landmarker_options_achieved)
             self.landmarker_desired = HandLandmarker.create_from_options(self.landmarker_options_desired)
 
-        VidCapSingletonSubprocess.reset_img_ev.set()
+        VidCapSingletonProc.change_img_ev.set()
         
         if self.tr_is_eval:
             self.fep_goalid = 0

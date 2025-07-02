@@ -19,23 +19,28 @@ LOG.addHandler(consoleHandler)
 multiprocessing.log_to_stderr(logging.DEBUG)
 
 
-class VidCapSingletonSubprocess:
+class VidCapSingletonProc:
 
-    parallel_vidcap_queue = multiprocessing.Queue()
-    reset_img_ev = multiprocessing.Event()
-    reset_img_ev.set()
+    parallel_vidcap_queue = multiprocessing.Queue(maxsize=1)
+    change_img_ev = multiprocessing.Event()
+    change_img_ev.set()
+    autochange_ev = multiprocessing.Event()
+    autochange_interval_sec = 10
 
     @staticmethod
-    def parallel_vidcap(queue: multiprocessing.Queue, reset_img_ev: multiprocessing.synchronize.Event):
+    def parallel_vidcap(queue: multiprocessing.Queue, change_img_ev: multiprocessing.synchronize.Event):
         vidcap = cv2.VideoCapture(0)
         imgpath_current = None
+        last_change_timesec = time.time()
 
         while True:
             desired_imgpaths = glob.glob(PATH_GIT_WORKING_DIR + '/mediapipe/poses/hand/*.jpg')
             if desired_imgpaths:
-                if reset_img_ev.is_set():
+                is_autochange_triggered = (VidCapSingletonProc.autochange_ev.is_set() and (time.time() - last_change_timesec) > VidCapSingletonProc.autochange_interval_sec)
+                if change_img_ev.is_set() or is_autochange_triggered:
                     desired_imgpath = imgpath_current = desired_imgpaths[np.random.randint(len(desired_imgpaths))]
-                    reset_img_ev.clear()
+                    change_img_ev.clear()
+                    last_change_timesec = time.time()
                 else:
                     desired_imgpath = imgpath_current
 
@@ -54,12 +59,10 @@ class VidCapSingletonSubprocess:
                     break
 
             if queue.empty():
-                queue.put_nowait((frame))
-            
-            # time.sleep(1)
+                queue.put((frame))
 
         vidcap.release()
 
 
-multiprocessing.Process(target=VidCapSingletonSubprocess.parallel_vidcap,
-                        args=((VidCapSingletonSubprocess.parallel_vidcap_queue, VidCapSingletonSubprocess.reset_img_ev)), daemon=True).start()
+multiprocessing.Process(target=VidCapSingletonProc.parallel_vidcap,
+                        args=((VidCapSingletonProc.parallel_vidcap_queue, VidCapSingletonProc.change_img_ev)), daemon=True).start()
