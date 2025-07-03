@@ -180,7 +180,7 @@ class HandImitationEnv(HumanoidEnv):
         # obspace_total_dims += self.data.qpos.flatten().shape[0] # super-qpos
         # no contact forces available https://github.com/openai/gym/issues/1541
         # obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
-        obspace_total_dims += self.data.qpos.flatten().shape[0] * np.sum(range(self.cfg.General.WORLD_DERIV_ORDERS + 1)) # superpos-derivs
+        # obspace_total_dims += self.data.qpos.flatten().shape[0] * np.sum(range(self.cfg.General.WORLD_DERIV_ORDERS + 1)) # superpos-derivs
         # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs_front
 
         # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # last superpos-derivs
@@ -194,8 +194,10 @@ class HandImitationEnv(HumanoidEnv):
         # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # desired: pose_reduced
         
         # goal obs
-        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff
-        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldimsdiff_reduced
+        # obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldiff
+        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldiff_reduced
+        obspace_total_dims += 2 * cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldiff_recent
+        obspace_total_dims += cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION # goaldiffs
         obspace_total_dims += 1 # goaldist
         obspace_total_dims += self.cfg.General.GOAL_DERIV_ORDERS + 1 # goaldists_recent
         obspace_total_dims += np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS + 1)) # goalderivs
@@ -513,7 +515,7 @@ class HandImitationEnv(HumanoidEnv):
                 worldderivs = np.append(worldderivs, np.diff(jointpos_recent, n=i, axis=0))
 
         # more important than expected/supposed?
-        obs = np.append(obs, worldderivs)
+        # obs = np.append(obs, worldderivs)
 
         # obs = np.append(obs, self.ep_last_obs_worldderivs)
         self.ep_last_obs_worldderivs = worldderivs
@@ -639,6 +641,9 @@ class HandImitationEnv(HumanoidEnv):
         # ========= GOAL (MODEL)
         goalhash = vector_to_uniform_scalar(ob_desired_pose.flatten(), base=ob_desired_pose.size)
         self.fep_goalhash = goalhash
+        goaldiff = np.array([])
+        goaldiffs_recent = np.array([])
+        goaldiffderivs = np.array([])
         goaldist = self.ep_reward_threshold + 1
         goalderivs = np.array([])
         goalderivs_front = np.array([])
@@ -728,6 +733,8 @@ class HandImitationEnv(HumanoidEnv):
             # self.ep_goalweight[goaldims_primary] = 1
             # self.ep_goalweight[goaldims_secondary] = 0.5 # never abandon primary goal in favor of secondary goals
             goaldiff = self.ep_goalweight * (obs_achieved - obs_desired)
+            goaldiffs_recent = np.vstack((self.ep_last_goaldiff, goaldiff))
+            goaldiffderivs = np.diff(goaldiffs_recent, axis=0)
 
             # qualitative bottleneck? (0d)
             goaldist = np.linalg.norm(goaldiff, axis=-1)            
@@ -743,11 +750,14 @@ class HandImitationEnv(HumanoidEnv):
                     goalderivs_front = np.append(goalderivs_front, goalderivs[-1])
 
             # goalangle = normalized_angle(self.ep_last_goaldiff, goaldiff) * np.sign(goalderivs[0])
-            # self.ep_last_goaldiff = goaldiff
+            self.ep_last_goaldiff = goaldiff
 
         if not desired_pose.hand_landmarks:
             ob_desired_pose = ob_achieved_pose = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             obs_desired = obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
+            goaldiff = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
+            goaldiffs_recent = np.zeros(2 * cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
+            goaldiffderivs = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             goaldist = self.ep_reward_threshold + 1
             goaldists_recent = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS + 1)
             goalderivs = np.zeros(np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS + 1)))
@@ -761,8 +771,9 @@ class HandImitationEnv(HumanoidEnv):
         # TODO add  obs_achieved?
         # obs = np.append(obs, obs_achieved)
         # obs = np.append(obs, obs_desired) # goal
-        obs = np.append(obs, obs_achieved - obs_desired) # goaldimsdiff_reduced
-
+        obs = np.append(obs, goaldiff) # goaldimsdiff_reduced
+        obs = np.append(obs, goaldiffs_recent) # goaldimsdiff_reduced
+        obs = np.append(obs, goaldiffderivs) # goaldimsdiff_reduced
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goaldists_recent)
         obs = np.append(obs, goalderivs)
