@@ -121,6 +121,7 @@ IS_OBSPACE_PAD_TO_NEXT_BASE_2 = False
 # 0.5M pcaGoal0.5, goaldistHistory, relativeGoalObs, bothsidedAllCompass, unisampling /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2dbf116/le-hand-imitation-v1/23-12-40/rl_model_finished
 # 1.0M /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2dbf116/le-hand-imitation-v1/23-12-40_restored/rl_model_finished
 # 0.5M relativeGoalObsReducedOnly (much better precision, better/closer results) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d820e9e/le-hand-imitation-v1/19-18-05/rl_model_finished
+# 0.5M noWorldObs, fullDerivsObs, derivFrontRewarding   restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/4f83e3b/le-hand-imitation-v1/15-12-59/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -180,7 +181,7 @@ class HandImitationEnv(HumanoidEnv):
         # no contact forces available https://github.com/openai/gym/issues/1541
         # obspace_total_dims += self.data.cfrc_ext.flatten().shape[0] # super-actuatorforce
         obspace_total_dims += self.data.qpos.flatten().shape[0] * np.sum(range(self.cfg.General.WORLD_DERIV_ORDERS + 1)) # superpos-derivs
-        # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs[-1]
+        # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # superpos-derivs_front
 
         # obspace_total_dims += self.data.qpos.flatten().shape[0] * self.cfg.General.OBS_WORLD_DERIV_ORDERS # last superpos-derivs
 
@@ -218,7 +219,7 @@ class HandImitationEnv(HumanoidEnv):
             obspace_total_dims = 1 << (obspace_total_dims-1).bit_length()
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(obspace_total_dims,), dtype='float64')
-        goal_space = spaces.Box(-np.inf, np.inf, shape=(1 + np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS + 1)),), dtype='float64') # goaldist, goalconv
+        goal_space = spaces.Box(-np.inf, np.inf, shape=(1 + self.cfg.General.GOAL_DERIV_ORDERS,), dtype='float64') # goaldist, goalconv
         # https://scilab-rl.github.io/Scilab-RL/wiki/Add-environment-to-MakeDictObs-wrapper.html
         self.observation_space = spaces.Dict(
             dict(
@@ -506,11 +507,11 @@ class HandImitationEnv(HumanoidEnv):
         if worldderiv_orders > 0:
             jointpos_recent = np.array([q[0] for q in self.ep_states[-(worldderiv_orders + 1):]]) # only enough recent posis for all orders
             jointpos_recent = np.pad(jointpos_recent, ((max(0, worldderiv_orders + 1 - jointpos_recent.shape[0]),0),(0,0))) # pad for always enough recent posis
-        
+
             for i in range(1, worldderiv_orders + 1):
                 # worldderivs = np.append(worldderivs, np.diff(jointpos_recent, n=i, axis=0)[-1])
                 worldderivs = np.append(worldderivs, np.diff(jointpos_recent, n=i, axis=0))
-       
+
         # more important than expected/supposed?
         obs = np.append(obs, worldderivs)
 
@@ -640,7 +641,8 @@ class HandImitationEnv(HumanoidEnv):
         self.fep_goalhash = goalhash
         goaldist = self.ep_reward_threshold + 1
         goalderivs = np.array([])
-        goaldists_recent = np.zeros(2 ** self.cfg.General.GOAL_DERIV_ORDERS)
+        goalderivs_front = np.array([])
+        goaldists_recent = np.array([])
 
         if desired_pose.hand_landmarks:
 
@@ -738,6 +740,7 @@ class HandImitationEnv(HumanoidEnv):
 
                 for i in range(1, goalderiv_orders + 1):
                     goalderivs = np.append(goalderivs, np.diff(goaldists_recent, n=i, axis=0))
+                    goalderivs_front = np.append(goalderivs_front, goalderivs[-1])
 
             # goalangle = normalized_angle(self.ep_last_goaldiff, goaldiff) * np.sign(goalderivs[0])
             # self.ep_last_goaldiff = goaldiff
@@ -746,7 +749,10 @@ class HandImitationEnv(HumanoidEnv):
             ob_desired_pose = ob_achieved_pose = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             obs_desired = obs_achieved = np.zeros(cfg.General.NUM_OBSERVATION_DIMS_VISUAL_DETECTION)
             goaldist = self.ep_reward_threshold + 1
-            goalderivs = np.zeros(np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS)))
+            goaldists_recent = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS + 1)
+            goalderivs = np.zeros(np.sum(range(self.cfg.General.GOAL_DERIV_ORDERS + 1)))
+            goalderivs_front = np.zeros(self.cfg.General.GOAL_DERIV_ORDERS)
+
 
         # obs = np.append(obs, ob_achieved_pose)
         # obs = np.append(obs, ob_desired_pose) # goal
@@ -817,7 +823,7 @@ class HandImitationEnv(HumanoidEnv):
         if IS_OBSPACE_PAD_TO_NEXT_BASE_2:
             obs = np.pad(obs, (0, self.observation_space['observation'].shape[-1] - obs.shape[-1]))
 
-        achieved_goal = np.array([goaldist] + goalderivs.tolist())
+        achieved_goal = np.array([goaldist] + goalderivs_front.tolist())
         desired_goal = np.zeros(achieved_goal.shape)  # ignored
         dictobs = dict(
             observation=obs,
@@ -874,9 +880,9 @@ class HandImitationEnv(HumanoidEnv):
             reward = 0
 
             # dont always look on the compass (else dependency/overfit) - only every k episode? less and less? (decaying)
-            # even krasser: NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
+            # NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
             if self.fep_is_dense: # compass, else sparse
-                if np.all(achieved_goal[1:] < 0):
+                if np.all(achieved_goal[1:] < 0): 
                     reward = 1
                 #     reward = (1 + meandist_inv) # closer -> larger
 

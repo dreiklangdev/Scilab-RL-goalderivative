@@ -11,7 +11,7 @@ class General(base.General):
     # restricting/specializing (slower, "safer")
     WORLD_DERIV_ORDERS = 2 # "smoothness-factor"
     # exploring/generalizing (slower, "freer")
-    GOAL_DERIV_ORDERS = 3 # "sparsity-factor"
+    GOAL_DERIV_ORDERS = 5 # "sparsity-factor"
 
     OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards
@@ -74,7 +74,7 @@ class General(base.General):
     RENDER_IMAGE_SIZE = 1000
     FRAMESKIP_STEP = 3 # action frequency
     # vs. "lost in details"
-    STEPSKIP_DETECT = 50 # 50 # 1 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
+    STEPSKIP_DETECT = 50 # 50 # 8 # 10 # may need to delay fep_goaldist_init (first detected pose may be unstable/in-the-air)
 
 
 # vs. single goal proficiency
