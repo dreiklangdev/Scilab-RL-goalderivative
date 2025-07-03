@@ -122,7 +122,8 @@ IS_OBSPACE_PAD_TO_NEXT_BASE_2 = False
 # 1.0M /home/t14/Documents/tuhh/dsf/Scilab-RL/data/2dbf116/le-hand-imitation-v1/23-12-40_restored/rl_model_finished
 # 0.5M relativeGoalObsReducedOnly (much better precision, better/closer results) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d820e9e/le-hand-imitation-v1/19-18-05/rl_model_finished
 # 0.5M noWorldPosObs (only worldderivs), fullDerivsObs, derivFrontRewarding   restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/4f83e3b/le-hand-imitation-v1/15-12-59/rl_model_finished
-# 0.5M noWorldObs whatsoever: goalobs only (goaldiffs/-derivs, goaldist/-derivs)    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7ab0a84/le-hand-imitation-v1/22-11-37/rl_model_finished
+# 0.3M noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs)    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7ab0a84/le-hand-imitation-v1/22-11-37/rl_model_finished
+# 0.5M noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/300e824/le-hand-imitation-v1/23-29-18/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -525,8 +526,10 @@ class HandImitationEnv(HumanoidEnv):
         # ========= ACHIEVED OBS (proprioception)
         obs_achieved = np.array([])
 
-        if self.ep_num_steps == 1 or self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
-            if self.tr_is_eval and self.fep_goalid == 0:
+        is_eval_vidcap = self.tr_is_eval and self.fep_goalid == 0
+        stepskip_detect = 8 if is_eval_vidcap else cfg.General.STEPSKIP_DETECT
+        if self.ep_num_steps == 1 or self.ep_num_steps % stepskip_detect == 0:
+            if is_eval_vidcap:
                 self.desired_imgdata = VidCapSingletonProc.parallel_vidcap_queue.get()
             self.desired_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.desired_imgdata.copy())
             self.desired_pose = self.landmarker_desired.detect(self.desired_img)
@@ -843,7 +846,7 @@ class HandImitationEnv(HumanoidEnv):
             desired_goal=desired_goal,
         )
 
-        if self.is_plot and self.ep_num_steps % cfg.General.STEPSKIP_DETECT == 0:
+        if self.is_plot and self.ep_num_steps % stepskip_detect == 0:
 #            achieved_img_annotated = draw_landmarks_on_image(achieved_img.numpy_view(), achieved_pose)
             desired_img_annotated = draw_landmarks_on_image(desired_img.numpy_view(), desired_pose_orig)
             if self.parallel_plot_queue.empty():
