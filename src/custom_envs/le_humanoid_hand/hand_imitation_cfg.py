@@ -11,7 +11,7 @@ class General(base.General):
     # restricting/specializing (slower, "safer")
     WORLD_DERIV_ORDERS = 2 # "smoothness-factor"
     # exploring/generalizing (slower, "freer")
-    GOAL_DERIV_ORDERS = 4 # "sparsity-factor"
+    GOAL_DERIV_ORDERS = 4 # 4 # "sparsity-factor"
 
     OBS_REWARD_HISTORY_LENGTH = 0
     REWARD_DERIV_ORDERS = 0 # only for dense rewards

@@ -123,7 +123,9 @@ IS_OBSPACE_PAD_TO_NEXT_BASE_2 = False
 # 0.5M relativeGoalObsReducedOnly (much better precision, better/closer results) /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d820e9e/le-hand-imitation-v1/19-18-05/rl_model_finished
 # 0.5M noWorldPosObs (only worldderivs), fullDerivsObs, derivFrontRewarding   restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/4f83e3b/le-hand-imitation-v1/15-12-59/rl_model_finished
 # 0.3M noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs)    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7ab0a84/le-hand-imitation-v1/22-11-37/rl_model_finished
-# 0.5M noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/300e824/le-hand-imitation-v1/23-29-18/rl_model_finished
+# 0.5M(!) noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/300e824/le-hand-imitation-v1/23-29-18/rl_model_finished
+# 0.5M no pos. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/13-05-44/rl_model_finished
+# 0.5M goalMom3, no pos. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures, validSet   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/22-59-03/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -455,6 +457,7 @@ class HandImitationEnv(HumanoidEnv):
             # human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_goalzone_per_step', str(ep_goalzone_per_step))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_goalid', str(self.fep_goalid))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_is_dense', str(self.fep_is_dense))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'fep_rewards_sum', str(np.round(self.fep_rewards_sum, 2)))
             human_viewer.render()
 
         self.ep_current_reward = reward
