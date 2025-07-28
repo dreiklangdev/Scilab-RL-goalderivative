@@ -180,6 +180,13 @@ def register_custom_envs():
         max_episode_steps=10000,
     )
 
+    register(
+        id="mom-walker2d-v5",
+        entry_point='custom_envs.mom_walker2d.mom_walker2d_env:MomWalker2dEnv',
+        max_episode_steps=10000,
+    )
+
+
 
 def register_metaworld_envs():
     for env_name, env_class in ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE.items():
