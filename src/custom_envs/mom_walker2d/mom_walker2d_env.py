@@ -10,7 +10,7 @@ from gymnasium import spaces
 # 150k  vanilla     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/695d11a/mom-walker2d-v5/15-00-32/rl_model_finished
 # 150k  goalHeightVelo, goalMomRewardsOnly, goaldiffObsAdded
 
-ORDER_GOALMOMENTUM = 4
+ORDER_GOALMOMENTUM = 3
 
 class MomWalker2dEnv(Walker2dEnv):
 
@@ -61,11 +61,14 @@ class MomWalker2dEnv(Walker2dEnv):
         # obs_achieved = np.array([observation[0], observation[1], observation[9]]) # velocity
 
         x, z, angle = self.data.qpos[0:3]
+        dx, dz = self.data.qvel[0:2]
 
-        ob_x = normalize_unit_limit(x, 0, 10)
-
-        obs_achieved = np.array([ob_x, z]) # velocity
-        obs_desired = np.array([1, 1.1])
+        ob_x = normalize_unit_limit(x, 0, 100)
+        ob_z = normalize_unit_limit(z, 0, 1.2)
+        ob_angle = normalize_unit_limit(angle, -1, 1)
+        
+        obs_achieved = np.array([ob_x, ob_z])
+        obs_desired = np.array([1, 1]) # 2d: x, z coord.
 
 
         goaldiff = obs_achieved - obs_desired
@@ -131,27 +134,19 @@ class MomWalker2dEnv(Walker2dEnv):
         # }
 
         goalmomentum = observation['achieved_goal']
-        
-        reward = 0
 
+
+        # soft vs. hard momentum
         if np.any(goalmomentum < 0):
             reward = 1
-        elif np.any(goalmomentum > 0):
+        else:
             reward = -1
-            print('PENALTY')
-        elif np.mean(np.sign(goalmomentum)) < 0:
-            reward = 1
-        elif np.mean(np.sign(goalmomentum)) > 0:
-            reward = -1
-            print('PENALTY')
 
         self.rewardsum += reward
 
         if terminated:
             print('TERMINATED\n')
-            reward = -1
-            # if self.rewardsum > 0:
-            #     reward = -self.rewardsum 
+            reward = -1 # termination learning
 
 
         if self.is_render:
