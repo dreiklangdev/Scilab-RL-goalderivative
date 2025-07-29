@@ -24,7 +24,7 @@ policy: 'MultiInputPolicy' # use MlpPolicy when not using an environment with Di
 # n_timesteps: !!float 1e7
 batch_size: 256
 n_steps: 512
-gamma: 0.99
+gamma: 0.5
 # learning_rate: 3.56987e-05
 learning_rate: 0.001
 ent_coef: 0.00238306

@@ -781,6 +781,7 @@ class HandImitationEnv(HumanoidEnv):
         obs = np.append(obs, goaldiff) # goaldimsdiff_reduced
         obs = np.append(obs, goaldiffs_recent) # goaldimsdiff_reduced
         obs = np.append(obs, goaldiffderivs) # goaldimsdiff_reduced
+
         obs = np.append(obs, goaldist)
         obs = np.append(obs, goaldists_recent)
         obs = np.append(obs, goalderivs)
