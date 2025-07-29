@@ -3,20 +3,16 @@
 import mujoco
 import numpy as np
 
-from gymnasium.envs.mujoco.walker2d_v5 import Walker2dEnv
+# from gymnasium.envs.mujoco.pusher_v5 import PusherEnv
+from gymnasium_robotics.envs.fetch.push import MujocoFetchPushEnv
 from gymnasium import spaces
-
-
-# 150k  vanilla     /home/t14/Documents/tuhh/dsf/Scilab-RL/data/695d11a/mom-walker2d-v5/15-00-32/rl_model_finished
-# 150k  goalHeightVelo, goalMomRewardsOnly, goaldiffObsAdded
 
 ORDER_GOALMOMENTUM = 3
 
-class MomWalker2dEnv(Walker2dEnv):
+class MomFetchPushEnv(MujocoFetchPushEnv):
 
 
     def __init__(self, is_render=False, is_eval=False, submodels=None):
-        Walker2dEnv.__init__(self)
         self.is_render = is_render
         self.is_eval = is_eval
         self.goaldiffs = []
@@ -24,9 +20,14 @@ class MomWalker2dEnv(Walker2dEnv):
         self.rewardsum = 0
         self.outfile_goaldists = open('goaldists.dat', 'a')
 
-        obspace_total_dims = self.observation_space.shape[0] # super
-        observation_space = spaces.Box(-np.inf, np.inf, shape=(44,), dtype='float64')
+
+        MujocoFetchPushEnv.__init__(self)
+
+
+        observation_space = spaces.Box(-np.inf, np.inf, shape=(84,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(ORDER_GOALMOMENTUM,), dtype='float64')
+
+
 
         self.observation_space = spaces.Dict(
             dict(
@@ -37,8 +38,15 @@ class MomWalker2dEnv(Walker2dEnv):
         )
 
 
+
+
     def _get_obs(self):
-        observation = Walker2dEnv._get_obs(self)
+        observation = MujocoFetchPushEnv._get_obs(self)
+        ob_box_achieved = observation['achieved_goal']
+        ob_box_desired = observation['desired_goal']
+        observation = observation['observation']
+        if ob_box_desired.size == 0:
+            ob_box_desired = np.zeros(3)
 
         goaldiff = np.array([])
         goaldiffs_recent = np.array([])
@@ -50,15 +58,10 @@ class MomWalker2dEnv(Walker2dEnv):
         
         goalmomentum = np.array([])
 
-        x, z, angle = self.data.qpos[0:3]
-        dx, dz = self.data.qvel[0:2]
+        ob_gripper_pos = observation[0:3]
 
-        ob_x = normalize_unit_limit(x, 0, 100)
-        ob_z = normalize_unit_limit(z, 0, 1.2)
-        ob_angle = normalize_unit_limit(angle, -1, 1)
-        
-        obs_achieved = np.array([ob_x, ob_z])
-        obs_desired = np.array([1, 1]) # 2d: x, z coord.
+        obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
+        obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
 
 
         goaldiff = obs_achieved - obs_desired
@@ -105,14 +108,16 @@ class MomWalker2dEnv(Walker2dEnv):
 
 
     def step(self, action):
-        (observation, reward, terminated, truncated, info) = Walker2dEnv.step(self, action)
+        (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
         goalmomentum = observation['achieved_goal']
 
+        reward = 0
 
         # soft vs. hard momentum
-        if np.any(goalmomentum < 0):
+        if np.all(goalmomentum < 0):
             reward = 1
-        else:
+        # else:
+        if np.all(goalmomentum > 0):
             reward = -1
 
         self.rewardsum += reward
@@ -130,9 +135,9 @@ class MomWalker2dEnv(Walker2dEnv):
             human_viewer.render()
 
         return observation, reward, terminated, truncated, info
-    
 
-    def reset_model(self):
+
+    def reset(self, seed, options):
         goaldists_mean = np.mean(self.goaldists)
         print(goaldists_mean)
         print(self.rewardsum)
@@ -142,7 +147,7 @@ class MomWalker2dEnv(Walker2dEnv):
         self.goaldiffs = []
         self.goaldists = []
         self.rewardsum = 0
-        return super().reset_model()
+        return MujocoFetchPushEnv.reset(self)
     
 
 

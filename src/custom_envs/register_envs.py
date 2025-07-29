@@ -186,6 +186,12 @@ def register_custom_envs():
         max_episode_steps=10000,
     )
 
+    register(
+        id="mom-fetchpush-v4",
+        entry_point='custom_envs.mom_fetchpush.mom_fetchpush_env:MomFetchPushEnv',
+        max_episode_steps=1000,
+    )
+
 
 
 def register_metaworld_envs():
