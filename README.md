@@ -1,70 +1,107 @@
-# Scilab-RL
+# (Research) Reward and Observe Higher-Order Goalderivatives (2025)
 
-This is the Scilab-RL repository focusing on goal-conditioned reinforcement learning using the [stable baselines 3](https://stable-baselines3.readthedocs.io/en/master/) methods and [Gymnasium](https://gymnasium.farama.org/) interface.
-> We now have a wiki with many tutorials, [check it out!](https://scilab-rl.github.io/Scilab-RL/)
-
-![](docs/overview.svg)
-
-The framework is tailored towards the rapid prototyping, development and evaluation of new RL algorithms and methods. It has the following unique selling-points compared to others, like spinning up and stable baselines:
-* Built-in data visualization for fast and efficient debugging using MLFLow and Weights & Biases.
-* Support for many state-of-the-art algorithms via stable baselines 3 and extensible to others. 
-* Built-in hyperparameter optimization using Optuna
-* Easy development of new robotic simulation and real robot environments based on MuJoCo.
-* Smoke and performance testing
-* Compatibility between a multitude of state-of-the-art algorithms for quick empirical comparison and evaluation. 
-* A focus on goal-conditioned reinforcement learning with hindsight experience replay to avoid environment-specific reward shaping. 
-
-## Table of Contents
-
-- [Requirements](#requirements)
-- [Getting Started](#getting-started-using-the-setup-script)
-- [Supported Algorithms](#supported-algorithms)
-- [Hyperparameter optimization and management](#hyperparameter-optimization-and-management)
-- [Known Issues](#known-issues)
-
-## Requirements
-The framework is designed to run on Linux, best compatibility with Ubuntu 22. However, it is also reported to run on MacOS and WSL2 (see [this](https://scilab-rl.github.io/Scilab-RL/wiki/Running-on-Windows-with-WSL2.html) tutorial). The preferred Python version is 3.11, but it is likely to run also with less recent versions >= v3.8. A GPU is not required, but it will speed up the training significantly. 
-
-For visualization with matplotlib, it is important to have the GUI-backend tkinter installed (see [this](https://stackoverflow.com/questions/56656777/userwarning-matplotlib-is-currently-using-agg-which-is-a-non-gui-backend-so) for more information).
-
-It is also important to install the following packages, if they are not yet there. On Ubuntu execute the following:
-
-`sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf gcc ffmpeg`
-
-## Getting started using the setup script
-
-1. run `./scripts/setup.sh`. This will automatically install the Conda Python interpreter, along with all required packages. It will also install the robotic simulator MuJoCo.
-2. source your ~/.bashrc: `source ~/.bashrc`
-3. activate the conda python environment: `conda activate scilabrl`
-2. Optional but recommended: Use Weights and Biases (WandB). [Create an account](https://app.wandb.ai/login?signup=true). Run `wandb login` in the console and paste your API key. If you don't want to use WandB, run your experiments with the command line parameter `wandb=0`.
-3. Check your installation with `python3 src/main.py n_epochs=1 wandb=0 env=FetchReach-v2`
-4. Look at the tutorials in the [wiki](https://scilab-rl.github.io/Scilab-RL/wiki/) for more details.
-
-You can also install all dependencies manually, but we do not recommend this. 
+Nhu Huy Le \
+Hamburg University of Technology
 
 
-## Supported Algorithms
+This repository researches into possible improvements to Goal-Oriented Reinforcement Learning by making further use of the **Differential Kinematic State (DKS)** based on the distance to the goal - in the following called *goalderivatives*.
 
-### Stable Baselines3 (SB3)
-We currently support the _Stable Baselines 3_ goal-conditioned off-policy algorithms: DDPG, TD3, SAC and HER.
-We also support PPO.
+The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
 
-### One-file implementations
-We have one-file implementations of SAC (`cleansac`, optionally with HER), PPO (`cleanppo`) and DQN (`cleandqn`).
-These are based on the _Stable Baselines 3_ and _CleanRL_ implementations of the algorithms and have
-comparable performance. They can be good starting points for trying out new ideas.
+---
+
+(explaining gif)
+
+A **goalderivative** $d^{(k)}$ of order $k>1$ is the rate of change in the scalar distance $d$ (specific to e.g. the $L²$-norm) or its derivatives (velocity $d^{(1)}$, acceleration $d^{(2)}$, jerk $d^{(3)}$ etc.) *towards* a numerically defined goal.
+
+In time-discrete environments, the goalderivatives at a time $t_i$ can be recursively estimated with the distance to the goal (*goaldistance*) at $t_i$ by backward difference after a timestep $\Delta t$:
+
+$$
+d^{(0)}(t_i) = d(t_i) := \text{goaldistance at time } t_i
+$$
+
+$$
+d^{(k)}(t_i) \approx \frac{d^{(k-1)}(t_i) - d^{(k-1)}(t_{i-1})}{t_i - t_{i-1}}
+$$
+
+In a vector, multiple goalderivatives of $k > 1$ at $t_i$ form a differential kinematic state vector
+
+$$
+s_{DKS}(t_i) = \begin{pmatrix} d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k)} \end{pmatrix}(t_i)
+$$
+
+The core idea is now to evaluate the vector for either reward engineering, observation augmention, or both. 
+
+> **Summary** 
+>
+> Instead of possibly using only the distance to the goal, its derivatives are also considered - in the reward function or as part of the observation.
 
 
-## Hyperparameter optimization and management
-The framework has a sophisticated hyperparameter management and optimization pipeline, based on 
-_Hydra_, _Optuna_, _MLFlow_ and _Weights & Biases_.
-The tutorials in the [wiki](https://scilab-rl.github.io/Scilab-RL/wiki/) explain how to use it.
+> **Research Claim 1** (Potential-based Shaping)
+> 
+> In goal-oriented RL training towards an optimal policy, by only adding to the existent rewards a shaping term based on negative changes between DKS vectors, the training can be more efficient without changing the original optimal policy.
 
-## Known Issues:
+(Formal Proof)
 
-- Mujoco may fail due to [this error](https://github.com/openai/mujoco-py/issues/544) when debugging. If it happens with PyCharm, you can unset "Attach to subprocess automatically while debugging" in the Python Debugger Settings (File | Settings | Build, Execution, Deployment | Python Debugger) to avoid this error.
+(Experimental Proof)
+(fetchpush)
 
-- Pytorch may complain about a CUDA error, throwing something like this: 
-`NVIDIA GeForce RTX 3050 Ti Laptop GPU with CUDA capability sm_86 is not compatible with the current PyTorch installation.
-The current PyTorch install supports CUDA capabilities sm_37 sm_50 sm_60 sm_70.`
-In that case you need to install the latest nightly build according to the configuration tool on the [website](https://pytorch.org/get-started/locally/).
+
+> **Research Claim 2** (Reward Design)
+> 
+> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DKS vector, the training can be successful (i.e. reach and keep its goal) and efficient.
+
+(Formal Proof)
+
+(Experimental Proof)
+(fetchpush)
+
+
+> **Research Claim 3** (Observation Augmentation)
+> 
+> In goal-oriented RL training towards an optimal policy, by adding the goalderivative entries of the DKS vector to the observation space, the training can be more efficient.
+
+(adding to the markov property)
+
+(Formal Proof?)
+
+(Experimental Proof)
+(fetchpush)
+
+
+> **Research Claim 4** (Observation Reduction)
+> 
+> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DKS vector of a *verbose* goal (e.g. multi-dimensional), the training can be successful, efficient and general.
+
+(Experimental Proof)
+(fetchpush)
+
+
+## Case Study: Visual Imitation of Hand Gestures by a Robotic Hand (Multi-Goal RL with Multi-Dimensional Goals)
+
+(reward function granularity)
+
+(hand gesture imitation)
+
+
+## References
+* HER
+* HER envs.
+* RL bible (barto, sutton)
+* MDP
+* markov property
+* goaldistance
+* potential-based shaping
+* reward engineering
+* observation augmentation
+* observation reduction (for generality)
+* multi-goal
+
+
+## TODO
+* hyperparams
+* overviewing tables
+* different algo(s)
+* different env(s)
+* "proving" graphs
+* "proving" gifs

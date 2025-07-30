@@ -192,6 +192,18 @@ def register_custom_envs():
         max_episode_steps=50,
     )
 
+    register(
+        id="shaped-fetchpush-v4",
+        entry_point='custom_envs.mom_fetchpush.shaped_fetchpush_env:ShapedFetchPushEnv',
+        max_episode_steps=50,
+    )
+
+    register(
+        id="fetchpush-v4",
+        entry_point='gymnasium_robotics.envs.fetch.push:MujocoFetchPushEnv',
+        max_episode_steps=50,
+    )
+
 
 
 def register_metaworld_envs():
