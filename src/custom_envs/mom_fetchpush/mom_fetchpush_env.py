@@ -64,7 +64,7 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
 
 
-        IS_NORMALIZE_Z_SCORE_GOAL = True
+        IS_NORMALIZE_Z_SCORE_GOAL = False
         if IS_NORMALIZE_Z_SCORE_GOAL:
             if not self.is_eval:
                 self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
