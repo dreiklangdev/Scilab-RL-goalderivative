@@ -4,7 +4,7 @@ Nhu Huy Le \
 Hamburg University of Technology
 
 
-This repository researches into possible improvements to Goal-Oriented Reinforcement Learning by making further use of the **Differential Kinematic State (DKS)** based on the distance to the goal - in the following called *goalderivatives*.
+This repository researches into possible improvements to Goal-Oriented Reinforcement Learning (RL) by evaluating the **Differential Kinematic State (DKS)**, whose components are based on the distance to the goal - in the following called *goalderivatives*.
 
 The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
 
@@ -14,7 +14,7 @@ The probed improvements include sample-efficiency during training and generality
 
 A **goalderivative** $d^{(k)}$ of order $k>1$ is the rate of change in the scalar distance $d$ (specific to e.g. the $L²$-norm) or its derivatives (velocity $d^{(1)}$, acceleration $d^{(2)}$, jerk $d^{(3)}$ etc.) *towards* a numerically defined goal.
 
-In time-discrete environments, the goalderivatives at a time $t_i$ can be recursively estimated with the distance to the goal (*goaldistance*) at $t_i$ by backward difference after a timestep $\Delta t$:
+In time-discrete environments, the goalderivatives at a time $t_i$ can be recursively estimated with the distance to the goal (*goaldistance*) at $t_i$ by backward difference:
 
 $$
 d^{(0)}(t_i) = d(t_i) := \text{goaldistance at time } t_i
@@ -30,7 +30,7 @@ $$
 s_{DKS}(t_i) = \begin{pmatrix} d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k)} \end{pmatrix}(t_i)
 $$
 
-The core idea is now to evaluate the vector for either reward engineering, observation augmention, or both. 
+The idea is now to evaluate the vector for either reward engineering, observation augmention, or both. 
 
 > **Summary** 
 >
@@ -49,7 +49,7 @@ The core idea is now to evaluate the vector for either reward engineering, obser
 
 > **Research Claim 2** (Reward Design)
 > 
-> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DKS vector, the training can be successful (i.e. reach and keep its goal) and efficient.
+> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DKS vector, the training can be successful (i.e. reach and keep its goal) and more efficient.
 
 (Formal Proof)
 
@@ -71,7 +71,7 @@ The core idea is now to evaluate the vector for either reward engineering, obser
 
 > **Research Claim 4** (Observation Reduction)
 > 
-> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DKS vector of a *verbose* goal (e.g. multi-dimensional), the training can be successful, efficient and general.
+> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DKS vector of a *verbose* goal (e.g. multi-dimensional), the training can be successful, more efficient and more general.
 
 (Experimental Proof)
 (fetchpush)
