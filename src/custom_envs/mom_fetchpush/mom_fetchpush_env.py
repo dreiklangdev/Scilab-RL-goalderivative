@@ -7,6 +7,9 @@ import numpy as np
 from gymnasium_robotics.envs.fetch.push import MujocoFetchPushEnv
 from gymnasium import spaces
 
+
+# TODO order vs. hardness vs. goaldiffObs vs. zscore
+
 ORDER_GOALMOMENTUM = 3
 
 class MomFetchPushEnv(MujocoFetchPushEnv):
@@ -18,16 +21,15 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         self.goaldiffs = []
         self.goaldists = []
         self.rewardsum = 0
+        self.step_goalmomentum = []
         self.outfile_goaldists = open('goaldists.dat', 'a')
 
+        self.zs_scaler_goal = submodels['zs_scaler_goal']
 
         MujocoFetchPushEnv.__init__(self)
 
-
-        observation_space = spaces.Box(-np.inf, np.inf, shape=(84,), dtype='float64')
-        goal_space = spaces.Box(-np.inf, np.inf, shape=(ORDER_GOALMOMENTUM,), dtype='float64')
-
-
+        observation_space = spaces.Box(-np.inf, np.inf, shape=(59,), dtype='float64')
+        goal_space = spaces.Box(-np.inf, np.inf, shape=(3,), dtype='float64')
 
         self.observation_space = spaces.Dict(
             dict(
@@ -38,13 +40,11 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         )
 
 
-
-
     def _get_obs(self):
         observation = MujocoFetchPushEnv._get_obs(self)
         ob_box_achieved = observation['achieved_goal']
         ob_box_desired = observation['desired_goal']
-        observation = observation['observation']
+        obs = observation['observation']
         if ob_box_desired.size == 0:
             ob_box_desired = np.zeros(3)
 
@@ -58,10 +58,18 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         
         goalmomentum = np.array([])
 
-        ob_gripper_pos = observation[0:3]
+        ob_gripper_pos = obs[0:3]
 
         obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
         obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
+
+
+        IS_NORMALIZE_Z_SCORE_GOAL = True
+        if IS_NORMALIZE_Z_SCORE_GOAL:
+            if not self.is_eval:
+                self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
+            obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
+            obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
 
 
         goaldiff = obs_achieved - obs_desired
@@ -85,31 +93,26 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
 
 
         # obs. combination vs. diff. obs. only? (requires mom. based rewards?)
-        # observation = np.array([])
+        obs = np.array([])
 
-        observation = np.append(observation, goaldiff)
-        observation = np.append(observation, goaldiffs_recent)
-        observation = np.append(observation, goaldiffderivs)
+        obs = np.append(obs, goaldiff)
+        obs = np.append(obs, goaldiffs_recent)
+        obs = np.append(obs, goaldiffderivs)
 
-        observation = np.append(observation, goaldist)
-        observation = np.append(observation, goaldists_recent)
-        observation = np.append(observation, goaldistderivs)
+        obs = np.append(obs, goaldist)
+        obs = np.append(obs, goaldists_recent)
+        obs = np.append(obs, goaldistderivs)
+        observation['observation'] = obs
 
-        achieved_goal = np.array(goalmomentum)
-        desired_goal = np.zeros(achieved_goal.shape)  # ignored
 
-        dictobs = dict(
-                observation=observation,
-                achieved_goal=achieved_goal,
-                desired_goal=desired_goal
-            )
-
-        return dictobs
+        self.step_goalmomentum = np.array(goalmomentum)
+        
+        return observation
 
 
     def step(self, action):
         (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
-        goalmomentum = observation['achieved_goal']
+        goalmomentum = self.step_goalmomentum
 
         reward = 0
 
@@ -120,10 +123,14 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         if np.all(goalmomentum > 0):
             reward = -1
 
-        self.rewardsum += reward
-
         if terminated:
             reward = -1 # termination learning
+
+        if info['is_success']:
+            print('SUCCESS')
+            reward = 1 # success learning
+
+        self.rewardsum += reward
 
 
         if self.is_render:

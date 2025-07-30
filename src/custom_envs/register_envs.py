@@ -189,7 +189,7 @@ def register_custom_envs():
     register(
         id="mom-fetchpush-v4",
         entry_point='custom_envs.mom_fetchpush.mom_fetchpush_env:MomFetchPushEnv',
-        max_episode_steps=1000,
+        max_episode_steps=50,
     )
 
 
