@@ -4,13 +4,13 @@ Nhu Huy Le \
 Hamburg University of Technology
 
 
-This repository researches into possible improvements to Goal-Oriented Reinforcement Learning (RL) by evaluating the **Differential Kinematic State (DKS)**, whose components are based on the distance to the goal - in the following called *goalderivatives*.
+This repository researches into possible improvements to Goal-Oriented Reinforcement Learning (RL) by evaluating the **Differential Goalkinematic State (DGS)**, whose components are based on the distance to the goal - in the following called goal-directed derivatives or simply *goalderivatives*.
 
 The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
 
 ---
 
-(explaining gif)
+![goalderivs](res/goalderivs.gif)
 
 A **goalderivative** $d^{(k)}$ of order $k>1$ is the rate of change in the scalar distance $d$ (specific to e.g. the $L²$-norm) or its derivatives (velocity $d^{(1)}$, acceleration $d^{(2)}$, jerk $d^{(3)}$ etc.) *towards* a numerically defined goal.
 
@@ -27,19 +27,88 @@ $$
 In a vector, multiple goalderivatives of $k > 1$ at $t_i$ form a differential kinematic state vector
 
 $$
-s_{DKS}(t_i) = \begin{pmatrix} d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k)} \end{pmatrix}(t_i)
+s_{DGS}(t_i) = \begin{pmatrix} d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k)} \end{pmatrix}(t_i)
 $$
 
-The idea is now to evaluate the vector for either reward engineering, observation augmention, or both. 
+The idea is now to evaluate the vector for either reward design, observation augmentation, or both.
 
 > **Summary** 
 >
-> Instead of possibly using only the distance to the goal, its derivatives are also considered - in the reward function or as part of the observation.
+> Instead of using only the distance to the goal, its derivatives are also considered - in the reward function or as part of the observation in RL.
 
+RL algorithms are applied to a formal **Markov Decision Process (MDP)** 
 
-> **Research Claim 1** (Potential-based Shaping)
+$$
+\begin{split}
+M &= (\text{states, actions, transition probabilities, discount factor, rewards}) \\
+&= (S, A, T, \gamma, R)
+\end{split}
+$$
+
+to find, for each **state** $s_k \in S$, the optimal **action** $a^*_{k} \in A$ that maximizes the expected $\gamma$ - discounted return 
+
+$$
+G = \mathbb{E} [\sum^{\infty}_{t=0} \gamma^t r_t]
+$$
+
+of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states $\{s', s'',\dots\} \subseteq S$, which are reached with probabilities in $T$. However with RL, $T$ and $R$ are initially unknown and must be gradually discovered by exploration similar to *trial and error*.
+
+The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state its optimal action. Note that a higher-level goal is not formalized in the MDP - its optimality does not ensure the objective success in reaching (or keeping) an indirect goal. Careful and effective design of the underlying MDP is therefore crucial for the correct and efficient convergence of RL.
+
+> **Research Claim 1** (Goalkinematic Reward Shaping)
 > 
-> In goal-oriented RL training towards an optimal policy, by only adding to the existent rewards a shaping term based on negative changes between DKS vectors, the training can be more efficient without changing the original optimal policy.
+> In goal-oriented RL training towards an optimal policy, by adding to the existent rewards a shaping term based on the DGS vector, the training can be more efficient without changing the original optimal policy.
+
+In this work, rewards are deterministic, i.e. they are assigned to states by the real **reward function** $R:S\times A \to \R$, meaning at state $s_t$ the algorithm receives a reward $r_t = R(s_t, a_t)$. It is proven that by adding a strictly **shaping function** $F(s_t, a_t) = \gamma\Phi(s') - \Phi(s)$ with state-dependent potentials $\Phi$, the reward function can be modified to
+
+$$
+R' = R + F
+$$
+
+ without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$.
+
+With a goalkinematic potential
+
+$$
+\Phi_{goal}(s) =
+-
+\left\lVert 
+\begin{pmatrix}
+d \\ s_{DGS}
+\end{pmatrix}
+\right\rVert_2
+=
+-
+\left\lVert 
+\begin{pmatrix}
+d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
+\end{pmatrix}
+\right\rVert_2
+$$
+
+achieve
+
+In finite-horizon environments and with a discount factor close to 1, $R'$ can be approximated by
+
+$$
+R' \approx
+R -
+\left\lVert
+s_{DGS}
+\right\rVert_2
+$$
+
+
+(Formal Proof)
+
+(Experimental Proof)
+(fetchpush)
+
+Note: With $\Phi_{goal}(s)$, this claim assumes that the goaldistance and the DGS are part of the observable state space, which is also a separate focus in this research. In the experiments, the efficiency gains are substantial enough even with non-observable DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
+
+> **Research Claim 2** (Goalkinematic Reward Design)
+> 
+> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DGS vector, the training can be successful (i.e. the policy reaches and keeps the goal) and more efficient.
 
 (Formal Proof)
 
@@ -47,19 +116,9 @@ The idea is now to evaluate the vector for either reward engineering, observatio
 (fetchpush)
 
 
-> **Research Claim 2** (Reward Design)
+> **Research Claim 3** (Goalkinematic Observation Augmentation)
 > 
-> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DKS vector, the training can be successful (i.e. reach and keep its goal) and more efficient.
-
-(Formal Proof)
-
-(Experimental Proof)
-(fetchpush)
-
-
-> **Research Claim 3** (Observation Augmentation)
-> 
-> In goal-oriented RL training towards an optimal policy, by adding the goalderivative entries of the DKS vector to the observation space, the training can be more efficient.
+> In goal-oriented RL training towards an optimal policy, by adding the goalderivative entries of the DGS vector to the observation space, the training can be more efficient.
 
 (adding to the markov property)
 
@@ -69,20 +128,19 @@ The idea is now to evaluate the vector for either reward engineering, observatio
 (fetchpush)
 
 
-> **Research Claim 4** (Observation Reduction)
+> **Research Claim 4** (Goalkinematic Observation Reduction)
 > 
-> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DKS vector of a *verbose* goal (e.g. multi-dimensional), the training can be successful, more efficient and more general.
+> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DGS vector of a *verbose* goal (e.g. multi-dimensional), the training can be successful, more efficient and more general.
 
 (Experimental Proof)
 (fetchpush)
 
 
-## Case Study: Visual Imitation of Hand Gestures by a Robotic Hand (Multi-Goal RL with Multi-Dimensional Goals)
+## Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Multi-Goal RL with Multi-Dimensional Goals)
 
 (reward function granularity)
 
 (hand gesture imitation)
-
 
 ## References
 * HER
@@ -103,5 +161,8 @@ The idea is now to evaluate the vector for either reward engineering, observatio
 * overviewing tables
 * different algo(s)
 * different env(s)
-* "proving" graphs
-* "proving" gifs
+* "proving" imgs
+* "proving" graphs (eg. training process metric?)
+* "proving" gifs (eg. sped up training process video?)
+* disclaimer (autonomity)
+* license

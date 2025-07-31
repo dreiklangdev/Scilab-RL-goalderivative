@@ -21,7 +21,7 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         self.goaldeltas = []
         self.goaldists = []
         self.rewardsum = 0
-        self.step_goaldynamics = np.zeros(ORDER_GOALDYNAMICS)
+        self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
         self.outfile_goaldists = open('goaldists.dat', 'a')
 
         self.zs_scaler_goal = submodels['zs_scaler_goal']
@@ -45,7 +45,7 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         goaldists_recent = np.array([])
         goaldistdeltas = np.array([])
         
-        goaldynamics = np.array([])
+        goalderivs = np.array([])
 
         ob_gripper_pos = obs[0:3]
 
@@ -70,28 +70,24 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
 
         order = ORDER_GOALDYNAMICS
         if order > 0:
-            # goaldeltas_recent = np.array(self.goaldeltas[-(order + 1):]) # only enough recent goaldims. for all orders
-            # goaldeltas_recent = np.pad(goaldeltas_recent, ((max(0, order + 1 - len(goaldeltas_recent)),0), (0,0))) # fill up with starting 0s if not enough
-            # goaldeltas_velocity = np.diff(goaldeltas_recent, axis=0)
-
+            # TODO add discount factor to past goaldists? (negligible, if large gamma ie. small discount)
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
             for i in range(1, order + 1):
                 goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
-                goaldynamics = np.append(goaldynamics, goaldistdeltas[-1]) # front
+                goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
 
-        self.step_goaldynamics = np.array(goaldynamics)
+        self.step_goalderivs = np.array(goalderivs)
 
         return observation
 
 
     def step(self, action):
-        prev_goaldynamics = np.linalg.norm(self.step_goaldynamics)
         (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
-        goaldynamics = np.linalg.norm(self.step_goaldynamics)
+        goalderivs = np.linalg.norm(self.step_goalderivs)
 
         # potential-based shaping
-        reward -= 0.99 * goaldynamics - prev_goaldynamics
+        reward -= goalderivs
 
         # if info['is_success']:
             # reward = 1 # success learning
