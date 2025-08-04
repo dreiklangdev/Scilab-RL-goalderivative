@@ -47,13 +47,14 @@ n_epochs: 60
 n_test_rollouts: 10
 
 # The n last epochs over which to average for determining early stopping condition.
-early_stop_last_n: 3
+early_stop_last_n: 5
 
 # The early stopping threshold.
 early_stop_threshold: 0.9
 
 # The data column on which early stopping is based.
-early_stop_data_column: 'eval/success_rate'
+# early_stop_data_column: 'eval/success_rate'
+early_stop_data_column: ' '
 
 # A command line comment that will be integrated in the folder where the results
 # are stored. Useful for debugging and addressing temporary changes to the code.
@@ -64,7 +65,7 @@ save_model_freq: 0
 
 # WANDB options
 # Whether to use Weights and Biases. 1=use, 0=disable
-wandb: 1
+wandb: 0
 # wandb project name
 project_name: null
 # wandb entity

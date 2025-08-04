@@ -74,6 +74,9 @@ class EvalCallback(EvalCallback):
         wrapped with a Monitor wrapper)
     """
 
+    def _init_callback(self) -> None:
+        self.outfile_success_rate = open('success_rate.dat', 'a')
+
     def _log_data_callback(self, locals_: Dict[str, Any], globals_: Dict[str, Any]) -> None:
         """
         Callback passed to the  ``evaluate_policy`` function
@@ -151,6 +154,8 @@ class EvalCallback(EvalCallback):
                 if self.verbose > 0:
                     print(f"Success rate: {100 * success_rate:.2f}%")
                 self.logger.record("eval/success_rate", success_rate)
+                self.outfile_success_rate.write('%s\n' % (success_rate))
+                self.outfile_success_rate.flush()
 
             # Dump log so the evaluation results are printed with the correct timestep
             self.logger.record("time/total timesteps", self.num_timesteps, exclude="tensorboard")

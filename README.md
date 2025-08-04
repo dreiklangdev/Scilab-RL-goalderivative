@@ -83,20 +83,13 @@ d \\ s_{DGS}
 \begin{pmatrix}
 d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
 \end{pmatrix}
-\right\rVert_2
+\right\rVert_2,
 $$
+ 
+achieving states that are not only close, but also are expected to be closer in the next states, is higher rewarded - their *goaldynamics* are more favorable.
+On the other hand, achieving states that are only statically close, or even moving away, is rewarded lower.
 
-achieve
-
-In finite-horizon environments and with a discount factor close to 1, $R'$ can be approximated by
-
-$$
-R' \approx
-R -
-\left\lVert
-s_{DGS}
-\right\rVert_2
-$$
+In $10$ simulations within Gymnasium's *FetchPush* environment, where a 7-DoF robotic arm is trained to push a cube-shaped object from a start position to a target position, the shaped $\^R^1$ achieved a mean reduction of $...$ in training steps compared to the identical, but unshaped environment (baseline), which is the *sample efficiency improvement* $I^{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
 
 
 (Formal Proof)
@@ -105,6 +98,16 @@ $$
 (fetchpush)
 
 Note: With $\Phi_{goal}(s)$, this claim assumes that the goaldistance and the DGS are part of the observable state space, which is also a separate focus in this research. In the experiments, the efficiency gains are substantial enough even with non-observable DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
+
+Note 2: In finite-horizon environments and with a discount factor close to 1, $\^R^1$ can be approximated by the undiscounted
+$
+\^R^{1'}
+= R -
+\left\lVert
+s_{DGS}
+\right\rVert_2
+$
+ , which might change the optimal policy, however. In $10$ experiments with $\^R^{1'}$, $I^{1'}$ was $?$ while still being able to maintain the same success conditions of the original environment.
 
 > **Research Claim 2** (Goalkinematic Reward Design)
 > 

@@ -21,6 +21,7 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         self.goaldeltas = []
         self.goaldists = []
         self.rewardsum = 0
+        self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
         self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
         self.outfile_goaldists = open('goaldists.dat', 'a')
 
@@ -77,17 +78,22 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
                 goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
 
-        self.step_goalderivs = np.array(goalderivs)
+        self.step_goalderivs = goalderivs
+        self.step_phi = -np.linalg.norm(np.concatenate(([goaldist], goalderivs[:-1])))
 
         return observation
 
 
     def step(self, action):
+        phi_prev = self.step_phi
         (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
-        goalderivs = np.linalg.norm(self.step_goalderivs)
+        phi = self.step_phi
 
-        # potential-based shaping
-        reward -= goalderivs
+        # potential-based shaping (undiscounted)
+        # reward -= goalderivs
+
+        # potential-based shaping (discounted)
+        reward += 0.99 * phi - phi_prev
 
         # if info['is_success']:
             # reward = 1 # success learning
@@ -115,6 +121,8 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         self.goaldeltas = []
         self.goaldists = []
         self.rewardsum = 0
+        self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
+        self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
         return MujocoFetchPushEnv.reset(self)
     
 

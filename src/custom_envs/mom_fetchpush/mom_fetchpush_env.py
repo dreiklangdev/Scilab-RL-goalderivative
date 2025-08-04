@@ -25,8 +25,8 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         self.outfile_goaldists = open('goaldists.dat', 'a')
 
         self.zs_scaler_goal = submodels['zs_scaler_goal']
-
         MujocoFetchPushEnv.__init__(self, reward_type='dense')
+
 
         observation_space = spaces.Box(-np.inf, np.inf, shape=(59,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(3,), dtype='float64')
