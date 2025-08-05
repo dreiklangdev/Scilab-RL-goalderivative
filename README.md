@@ -59,7 +59,7 @@ The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state
 > 
 > In goal-oriented RL training towards an optimal policy, by adding to the existent rewards a shaping term based on the DGS vector, the training can be more efficient without changing the original optimal policy.
 
-In this work, rewards are deterministic, i.e. they are assigned to states by the real **reward function** $R:S\times A \to \R$, meaning at state $s_t$ the algorithm receives a reward $r_t = R(s_t, a_t)$. It is proven that by adding a strictly **shaping function** $F(s_t, a_t) = \gamma\Phi(s') - \Phi(s)$ with state-dependent potentials $\Phi$, the reward function can be modified to
+In this work, rewards are deterministic, i.e. they are assigned to states by the real **reward function** $R:S\times A \to \R$, meaning at state $s_t$ the algorithm receives a reward $r_t = R(s_t, a_t)$. It is proven that by adding a strictly **shaping function** $F(s_t, a_t) = \gamma\Phi(s_{t+1}) - \Phi(s_t)$ with state-dependent potentials $\Phi$, the reward function can be modified to
 
 $$
 R' = R + F
@@ -86,10 +86,17 @@ d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
 \right\rVert_2,
 $$
  
-achieving states that are not only close, but also are expected to be closer in the next states, is higher rewarded - their *goaldynamics* are more favorable.
-On the other hand, achieving states that are only statically close, or even moving away, is rewarded lower.
+achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their *goaldynamics* are more favorable.
+On the other hand, achieving states that are only statically close, or even moving away, will be rewarded lower.
 
-In $10$ simulations within Gymnasium's *FetchPush* environment, where a 7-DoF robotic arm is trained to push a cube-shaped object from a start position to a target position, the shaped $\^R^1$ achieved a mean reduction of $...$ in training steps compared to the identical, but unshaped environment (baseline), which is the *sample efficiency improvement* $I^{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
+In $5$ simulations within Gymnasium's *FetchPush* environment, where a 7-DoF robotic arm is trained to push a cube-shaped object from a random start position to a random target position, the modified reward ($k=3, \gamma = 0.99$)
+$$
+\begin{split}
+\^R_1(s,a) &= R(s,a) + F(s,a) \\ 
+&= R(s,a) + 0.99 * \Phi_{goal}(s') - \Phi_{goal}(s)
+\end{split}
+$$
+achieved a mean reduction of $...$ in training steps compared to the unshaped baseline environment, which is called the *sample efficiency improvement* $I^{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
 
 
 (Formal Proof)
@@ -107,7 +114,7 @@ $
 s_{DGS}
 \right\rVert_2
 $
- , which might change the optimal policy, however. In $10$ experiments with $\^R^{1'}$, $I^{1'}$ was $?$ while still being able to maintain the same success conditions of the original environment.
+ , which might change the original optimal policy. However, in $5$ experiments with $\^R^{1'}$, $I^{1'}$ was $?$ while still being able to maintain the same success conditions of the original environment.
 
 > **Research Claim 2** (Goalkinematic Reward Design)
 > 
@@ -133,7 +140,7 @@ $
 
 > **Research Claim 4** (Goalkinematic Observation Reduction)
 > 
-> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DGS vector of a *verbose* goal (e.g. multi-dimensional), the training can be successful, more efficient and more general.
+> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DGS vector of a *verbose* goal (e.g. multi-dimensional and contextual), the training can be successful, more efficient and more general.
 
 (Experimental Proof)
 (fetchpush)

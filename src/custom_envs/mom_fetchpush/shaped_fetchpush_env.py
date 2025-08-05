@@ -10,6 +10,48 @@ from gymnasium import spaces
 
 # TODO order vs. hardness vs. goaldiffObs vs. zscore
 
+# noObs_dense_baseline (unshaped)
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/17-56-48/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/19-10-58/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-10-50/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-10-27/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-11-36/rl_model_finished
+
+# noObs_dense_shaped (discounted)
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-12/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-17/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-20/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-24/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-27/rl_model_finished
+
+# noObs_sparse_baseline (unshaped)
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-02/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-08/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-12/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-16/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-20/rl_model_finished
+
+# noObs_sparse_shaped (discounted)
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-09/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-22/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-25/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-29/rl_model_finished
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-32/rl_model_finished
+
+
+# dense_baseline (unshaped)
+# WIP - top left
+
+# dense_shaped (discounted)
+# WIP - top right
+
+# sparse_baseline (unshaped)
+# WIP - bot left
+
+# sparse_shaped (discounted)
+
+
+
 ORDER_GOALDYNAMICS = 3
 
 class ShapedFetchPushEnv(MujocoFetchPushEnv):
@@ -27,7 +69,8 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
 
         self.zs_scaler_goal = submodels['zs_scaler_goal']
 
-        MujocoFetchPushEnv.__init__(self, reward_type='dense')
+        # sparse vs. dense
+        MujocoFetchPushEnv.__init__(self, reward_type='sparse')
 
 
     def _get_obs(self):
@@ -71,12 +114,16 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
 
         order = ORDER_GOALDYNAMICS
         if order > 0:
-            # TODO add discount factor to past goaldists? (negligible, if large gamma ie. small discount)
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
             for i in range(1, order + 1):
                 goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
+
+        # obs vs. no-obs
+        obs = np.append(obs, goaldist)
+        obs = np.append(obs, goalderivs)
+        observation['observation'] = obs
 
         self.step_goalderivs = goalderivs
         self.step_phi = -np.linalg.norm(np.concatenate(([goaldist], goalderivs[:-1])))
@@ -93,7 +140,7 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         # reward -= goalderivs
 
         # potential-based shaping (discounted)
-        reward += 0.99 * phi - phi_prev
+        # reward += 0.99 * phi - phi_prev
 
         # if info['is_success']:
             # reward = 1 # success learning
