@@ -38,16 +38,6 @@ from gymnasium import spaces
 # /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-29/rl_model_finished
 # /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-32/rl_model_finished
 
-
-# dense_baseline (unshaped)
-# WIP - top left
-
-# dense_shaped (discounted)
-# WIP - top right
-
-# sparse_baseline (unshaped)
-# WIP - bot left
-
 # sparse_shaped (discounted)
 
 
@@ -96,6 +86,10 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
         obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
 
+        if self.reward_type == "dense":
+            # goal augmentation for "denser" env. (to match reward shaping goal and density)
+            observation['achieved_goal'] = obs_achieved
+            observation['desired_goal'] = obs_desired
 
         IS_NORMALIZE_Z_SCORE_GOAL = False
         if IS_NORMALIZE_Z_SCORE_GOAL:
@@ -137,9 +131,9 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         phi = self.step_phi
 
         # potential-based shaping (undiscounted)
-        # reward -= goalderivs
+        reward -= self.step_goalderivs
 
-        # potential-based shaping (discounted)
+        # vs. potential-based shaping (discounted)
         # reward += 0.99 * phi - phi_prev
 
         # if info['is_success']:
@@ -175,9 +169,6 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
 
 
 def normalize_unit_limit(val, min_val, max_val):
-    # manual normalization (obs fairness)
-    # "interval-shifting"
-    # https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
     if max_val == min_val:
         return 0.5
     return (val - min_val) / (max_val - min_val)
