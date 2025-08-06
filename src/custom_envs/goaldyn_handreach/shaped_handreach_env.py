@@ -4,14 +4,15 @@ import mujoco
 import numpy as np
 
 # from gymnasium.envs.mujoco.pusher_v5 import PusherEnv
-from gymnasium_robotics.envs.fetch.push import MujocoFetchPushEnv
+from gymnasium_robotics.envs.shadow_dexterous_hand.reach import MujocoHandReachEnv
 
 
 # TODO order vs. hardness vs. goaldiffObs vs. zscore
 
+
 ORDER_GOALDYNAMICS = 3
 
-class ShapedFetchPushEnv(MujocoFetchPushEnv):
+class ShapedHandReachEnv(MujocoHandReachEnv):
 
 
     def __init__(self, is_render=False, is_eval=False, submodels=None):
@@ -27,16 +28,16 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         self.zs_scaler_goal = submodels['zs_scaler_goal']
 
         # sparse vs. dense
-        MujocoFetchPushEnv.__init__(self, reward_type='dense')
+        MujocoHandReachEnv.__init__(self, reward_type='dense')
 
 
     def _get_obs(self):
-        observation = MujocoFetchPushEnv._get_obs(self)
-        ob_box_achieved = observation['achieved_goal']
-        ob_box_desired = observation['desired_goal']
+        observation = MujocoHandReachEnv._get_obs(self)
+        obs_achieved = observation['achieved_goal']
+        obs_desired = observation['desired_goal']
         obs = observation['observation']
-        if ob_box_desired.size == 0:
-            ob_box_desired = np.zeros(3)
+        if obs_desired.size == 0:
+            obs_desired = np.zeros(15)
 
         goaldelta = np.array([])
         goaldeltas_recent = np.array([])
@@ -45,22 +46,8 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         goaldist = -1
         goaldists_recent = np.array([])
         goaldistdeltas = np.array([])
-        
+
         goalderivs = np.array([])
-
-        ob_gripper_pos = obs[0:3]
-
-        # goalaug. vs no-goalaug
-        # obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
-        # obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
-
-        obs_achieved = ob_box_achieved
-        obs_desired = ob_box_desired
-
-        if self.reward_type == "dense":
-            # goal augmentation for "denser" env. (to match reward shaping goal and density)
-            observation['achieved_goal'] = obs_achieved
-            observation['desired_goal'] = obs_desired
 
         IS_NORMALIZE_Z_SCORE_GOAL = False
         if IS_NORMALIZE_Z_SCORE_GOAL:
@@ -86,33 +73,22 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
 
         # obs vs. no-obs
-        # obs = np.append(obs, goaldist)
-        # obs = np.append(obs, goalderivs)
-        # observation['observation'] = obs
+        obs = np.append(obs, goaldist)
+        obs = np.append(obs, goalderivs)
+        observation['observation'] = obs
 
         self.step_goalderivs = goalderivs
-        # self.step_phi = -np.linalg.norm(np.concatenate(([goaldist], goalderivs[:-1])))
-        # BR1 sparse
-        # self.step_phi = -np.linalg.norm(goalderivs)
-        # BR2 sparse
-        # self.step_phi = np.all(goalderivs < 0)
-
-        if np.all(goalderivs < 0):
-            self.step_phi = 1
-        elif np.all(goalderivs > 0):
-            self.step_phi = -1
-        else:
-            self.step_phi = 0
+        self.step_phi = -np.linalg.norm(np.concatenate(([goaldist], goalderivs[:-1])))
 
         return observation
 
 
     def step(self, action):
         phi_prev = self.step_phi
-        (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
+        (observation, reward, terminated, truncated, info) = MujocoHandReachEnv.step(self, action)
         phi = self.step_phi
 
-        IS_POS_SPARSE_ENV = False
+        IS_POS_SPARSE_ENV = True
         if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
             reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition)
 
@@ -140,7 +116,7 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
 
     def reset(self, seed, options):
         goaldists_mean = np.mean(self.goaldists)
-        # print(goaldists_mean)
+        print(goaldists_mean)
         print(self.rewardsum)
         self.outfile_goaldists.write('%s\n' % (goaldists_mean))
         self.outfile_goaldists.flush()
@@ -150,7 +126,7 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         self.rewardsum = 0
         self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
         self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
-        return MujocoFetchPushEnv.reset(self)
+        return MujocoHandReachEnv.reset(self)
     
 
 

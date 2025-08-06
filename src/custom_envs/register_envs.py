@@ -199,6 +199,12 @@ def register_custom_envs():
     )
 
     register(
+        id="shaped-handreach-v3",
+        entry_point='custom_envs.goaldyn_handreach.shaped_handreach_env:ShapedHandReachEnv',
+        max_episode_steps=50,
+    )
+
+    register(
         id="fetchpush-v4",
         entry_point='gymnasium_robotics.envs.fetch.push:MujocoFetchPushEnv',
         max_episode_steps=50,

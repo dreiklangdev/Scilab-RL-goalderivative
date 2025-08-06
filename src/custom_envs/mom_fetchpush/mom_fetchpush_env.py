@@ -21,14 +21,14 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         self.goaldeltas = []
         self.goaldists = []
         self.rewardsum = 0
-        self.step_goalmomentum = []
+        self.step_goalderivs = []
         self.outfile_goaldists = open('goaldists.dat', 'a')
 
         self.zs_scaler_goal = submodels['zs_scaler_goal']
         MujocoFetchPushEnv.__init__(self, reward_type='dense')
 
 
-        observation_space = spaces.Box(-np.inf, np.inf, shape=(84,), dtype='float64')
+        observation_space = spaces.Box(-np.inf, np.inf, shape=(29,), dtype='float64')
         goal_space = spaces.Box(-np.inf, np.inf, shape=(3,), dtype='float64')
 
         self.observation_space = spaces.Dict(
@@ -96,32 +96,33 @@ class MomFetchPushEnv(MujocoFetchPushEnv):
         # goaldist history? goaldiff history?
         # obs = np.array([])
 
-        obs = np.append(obs, goaldelta)
-        obs = np.append(obs, goaldeltas_recent)
-        obs = np.append(obs, goaldeltas_velocity)
+        # obs = np.append(obs, goaldelta)
+        # obs = np.append(obs, goaldeltas_recent)
+        # obs = np.append(obs, goaldeltas_velocity)
 
         obs = np.append(obs, goaldist)
-        obs = np.append(obs, goaldists_recent)
-        obs = np.append(obs, goaldistdeltas)
+        # obs = np.append(obs, goaldists_recent)
+        # obs = np.append(obs, goaldistdeltas)
+        obs = np.append(obs, goalderivs)
         observation['observation'] = obs
 
 
-        self.step_goalmomentum = np.array(goalderivs)
+        self.step_goalderivs = np.array(goalderivs)
         
         return observation
 
 
     def step(self, action):
         (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
-        goalmomentum = self.step_goalmomentum
+        goalderivs = self.step_goalderivs
 
         reward = 0
 
         # soft vs. hard momentum
-        if np.all(goalmomentum < 0):
+        if np.all(goalderivs < 0):
             reward = 1
         # else:
-        if np.all(goalmomentum > 0):
+        if np.all(goalderivs > 0):
             reward = -1
 
         # if terminated:
