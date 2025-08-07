@@ -67,10 +67,10 @@ $$
 
  without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$.
 
-With a goalkinematic potential
+With a naive goalkinematic potential
 
 $$
-\Phi_{goal}(s) =
+\Phi_{naive}(s) =
 -
 \left\lVert 
 \begin{pmatrix}
@@ -88,33 +88,41 @@ $$
  
 achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their *goaldynamics* are more favorable.
 On the other hand, achieving states that are only statically close, or even moving away, will be rewarded lower.
+However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalkinematic potential**
 
-In $5$ simulations within Gymnasium's *FetchPush* environment, where a 7-DoF robotic arm is trained to push a cube-shaped object from a random start position to a random target position, the modified reward ($k=3, \gamma = 0.99$)
 $$
-\begin{split}
-\^R_1(s,a) &= R(s,a) + F(s,a) \\ 
-&= R(s,a) + 0.99 * \Phi_{goal}(s') - \Phi_{goal}(s)
-\end{split}
+\Phi_{conj}(s) =
+\begin{cases}
+1, & \text{if } \forall k: d^{(k)} \lt 0 ,\\
+-1, & \text{if } \forall k: d^{(k)} \gt 0, \\
+0, & \text{otherwise,}
+\end{cases}
 $$
-achieved a mean reduction of $...$ in training steps compared to the unshaped baseline environment, which is called the *sample efficiency improvement* $I^{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
 
+that type of reward hacking is decreased with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is increased - this is especially beneficial in the multi-goal environments of the later sections.
 
-(Formal Proof)
+(Formal Proofs?)
 
 (Experimental Proof)
 (fetchpush)
 
-Note: With $\Phi_{goal}(s)$, this claim assumes that the goaldistance and the DGS are part of the observable state space, which is also a separate focus in this research. In the experiments, the efficiency gains are substantial enough even with non-observable DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
+In $5$ simulations within a custom version of Gymnasium's sparse *FetchPush* environment, where a robotic arm is trained to push an object from a random start position to a random target position, the shaped reward ($k=3, \gamma = 0.99$)
+$$
+\begin{split}
+\^R_1(s,a) &= R(s,a) + F(s,a) \\ 
+&= R(s,a) + 0.99 * \Phi_{conj}(s') - \Phi_{conj}(s)
+\end{split}
+$$
+achieved a mean reduction of $...$ in the area under the curve (AUC) of the success rate over epochs, compared to the unshaped baseline reward, which translates to the *sample efficiency improvement* $I_{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
 
-Note 2: In finite-horizon environments and with a discount factor close to 1, $\^R^1$ can be approximated by the undiscounted
-$
-\^R^{1'}
-= R -
-\left\lVert
-s_{DGS}
-\right\rVert_2
-$
- , which might change the original optimal policy. However, in $5$ experiments with $\^R^{1'}$, $I^{1'}$ was $?$ while still being able to maintain the same success conditions of the original environment.
+Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldistance(?) and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains are substantial enough even with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption. To also amplify the reward shaping term, the sparse reward limits were changed from the nonpositive 2-tuple $(-1,0)$ to the nonnegative 2-tuple $(0,1)$. These are the only environmental changes to the original *FetchPush*, i.e.
+
+* an *augmentation* of the observation state space,
+* a *translation* of the sparse reward limits and
+* a *shaping* term to the reward.
+
+The first two changes are kept throughout the sections where this particular environment is used. 
+
 
 > **Research Claim 2** (Goalkinematic Reward Design)
 > 

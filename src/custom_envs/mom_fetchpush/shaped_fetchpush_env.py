@@ -27,16 +27,16 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         self.zs_scaler_goal = submodels['zs_scaler_goal']
 
         # sparse vs. dense
-        MujocoFetchPushEnv.__init__(self, reward_type='dense')
+        MujocoFetchPushEnv.__init__(self, reward_type='sparse')
 
 
     def _get_obs(self):
         observation = MujocoFetchPushEnv._get_obs(self)
         ob_box_achieved = observation['achieved_goal']
-        ob_box_desired = observation['desired_goal']
+        obs_box_desired = observation['desired_goal']
         obs = observation['observation']
-        if ob_box_desired.size == 0:
-            ob_box_desired = np.zeros(3)
+        if obs_box_desired.size == 0:
+            obs_box_desired = np.zeros(3)
 
         goaldelta = np.array([])
         goaldeltas_recent = np.array([])
@@ -50,17 +50,24 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
 
         ob_gripper_pos = obs[0:3]
 
-        # goalaug. vs no-goalaug
-        # obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
-        # obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
+        # denser shaping
+        obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
+        if obs_box_desired.size == 3:
+            obs_desired = np.concatenate((obs_box_desired, ob_box_achieved))
+        else:
+            # already modified
+            obs_desired = obs_box_desired
 
-        obs_achieved = ob_box_achieved
-        obs_desired = ob_box_desired
+        # obs_achieved = ob_box_achieved
+        # obs_desired = ob_box_desired
 
-        if self.reward_type == "dense":
-            # goal augmentation for "denser" env. (to match reward shaping goal and density)
+        # goal modification for "denser" env. (to match reward shaping goal and density)
+        IS_GOAL_MOD = False
+        if IS_GOAL_MOD and self.reward_type == 'dense':
             observation['achieved_goal'] = obs_achieved
             observation['desired_goal'] = obs_desired
+            self.goal = obs_desired
+
 
         IS_NORMALIZE_Z_SCORE_GOAL = False
         if IS_NORMALIZE_Z_SCORE_GOAL:
@@ -86,23 +93,22 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
 
         # obs vs. no-obs
-        # obs = np.append(obs, goaldist)
-        # obs = np.append(obs, goalderivs)
-        # observation['observation'] = obs
+        obs = np.append(obs, goaldist)
+        obs = np.append(obs, goalderivs)
+        observation['observation'] = obs
 
         self.step_goalderivs = goalderivs
+
         # self.step_phi = -np.linalg.norm(np.concatenate(([goaldist], goalderivs[:-1])))
-        # BR1 sparse
         # self.step_phi = -np.linalg.norm(goalderivs)
-        # BR2 sparse
         # self.step_phi = np.all(goalderivs < 0)
 
+        # boolphi
+        self.step_phi = 0
         if np.all(goalderivs < 0):
             self.step_phi = 1
         elif np.all(goalderivs > 0):
             self.step_phi = -1
-        else:
-            self.step_phi = 0
 
         return observation
 
@@ -112,15 +118,15 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         (observation, reward, terminated, truncated, info) = MujocoFetchPushEnv.step(self, action)
         phi = self.step_phi
 
-        IS_POS_SPARSE_ENV = False
+        IS_POS_SPARSE_ENV = True
         if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
-            reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition)
+            reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
 
-        # potential-based shaping (undiscounted)
+        # potential-based norm-shaping (undiscounted)
         # reward -= self.step_goalderivs
 
-        # vs. potential-based shaping (discounted)
-        reward += 0.99 * phi - phi_prev
+        # vs. potential-based norm-shaping (discounted)
+        # reward += 0.99 * phi - phi_prev
 
         # if info['is_success']:
             # reward = 1 # success learning

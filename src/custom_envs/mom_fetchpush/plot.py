@@ -157,13 +157,13 @@ c1_dense_shaped_origGoal = smooth_iqr([ # corrupt, not improving anyways, worse 
 #     # 'hard-bool (full)': c3_hardbool_full,
 # }
 
-all = { # c1-obs
-    'sparse-shaped* (C1)': c1_sparse_shaped,
-    'sparse-shaped* (C1, noobs.)': c1a_noObs_sparse_shaped,
-#     # 'sparse*':  TODO 0/1 rewards?
-    'sparse': c1_sparse_baseline,
-    'sparse-shaped, orig.goal': c1_sparse_shaped_origGoal,
-}
+# all = { # c1-obs
+#     'sparse-shaped* (C1)': c1_sparse_shaped,
+#     'sparse-shaped* (C1, noobs.)': c1a_noObs_sparse_shaped,
+# #     # 'sparse*':  TODO 0/1 rewards?
+#     'sparse': c1_sparse_baseline,
+#     'sparse-shaped, orig.goal': c1_sparse_shaped_origGoal,
+# }
 
 # all = { # c1a-no-obs
 #     'dense*-shaped (C1)': c1a_noObs_dense_shaped,
@@ -173,12 +173,12 @@ all = { # c1-obs
     # 'sparse': noObs_sparse_original,
 # }
 
-# all = { # c2, c3, c4
-#     'reduced obs. (C4)': c4_hardbool_obsRed,
-#     'augmented obs. (C3)': c3_hardbool_obsAug,
-#     'goaldynamic (C2)': c2_hardbool_dist_dgs,
-#     'dense*': c1_dense_baseline,
-# }
+all = { # c2, c3, c4
+    # 'reduced obs. (C4)': c4_hardbool_obsRed,
+    'augmented obs. (C3)': c3_hardbool_full,
+    'goaldynamic (C2)': c2_hardbool_dist_dgs,
+    'dense*': c1_dense_baseline,
+}
 
 success_rates = [experiment['success_rate_median'] for experiment in all.values()]
 success_rates = pd.concat(success_rates, axis=1, ignore_index=True)
