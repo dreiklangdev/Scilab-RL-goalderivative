@@ -3,11 +3,11 @@ name: 'sac'
 verbose: True
 
 # HER worsens/damages goaldyn.??
-# replay_buffer_class: null
-replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to not use HER
-replay_buffer_kwargs:
-  n_sampled_goal: 4
-  goal_selection_strategy: 'future'
+replay_buffer_class: null
+# replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to not use HER
+# replay_buffer_kwargs:
+#   n_sampled_goal: 4
+#   goal_selection_strategy: 'future'
 
 
 policy: 'MultiInputPolicy' # MlpPolicy
@@ -30,17 +30,16 @@ policy_kwargs:
 # n_timesteps: !!float 20000
 # normalize: True
 buffer_size: 1000000
-ent_coef: 'auto' # reach-exploration
+# ent_coef: 'auto' # reach-exploration
 # ent_coef: 'auto_0.01' # hold-conservation
-# ent_coef: '0.01' # reach-exploration
+ent_coef: '0.01' # reach-exploration
 
 batch_size: 256
 # gamma: 0.25 # 0.5 (reactive)
-# gamma: 0.99 # 0.5 (term., indirect, walking)
-gamma: 0.95 # 0.5 (non.-term., direct, reactive, hands)
+gamma: 0.95 # (non.-term., direct, dumb)
+# gamma: 0.95 (term., indirect, care)
+# gamma: 0.99
 # tau: 0.95 # 2018_plappert ???
-# gamma: 0.95
-# gamma: 0.995
 # learning_rate: 0.001 # reach
 # learning_rate: 0.0005 # reach
 learning_rate: 0.001 # hold

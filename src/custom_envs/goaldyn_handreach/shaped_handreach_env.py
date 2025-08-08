@@ -103,13 +103,43 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         return observation
     
 
+
     # is also used by HER (multi-dim. args.)
-    # def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info) -> float:
+    def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info) -> float:
+        if achieved_goal.ndim > 1:
+            # recursive for replay buffer
+            return np.array([self.compute_reward(ag, dg, i) for (ag, dg, i) in zip(achieved_goal, desired_goal, info)])
 
-    #     reward = MujocoHandReachEnv.compute_reward(self,achieved_goal, desired_goal, info)
+        reward = MujocoHandReachEnv.compute_reward(self,achieved_goal, desired_goal, info)
 
-    #     reward = (achieved_goal < desired_goal)
-    #     return reward.astype(np.float64)
+        # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
+        IS_POS_SPARSE_ENV = False
+        if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
+            reward += 1
+
+        # potential-based shaping (discounted)
+        IS_REWARD_SHAPING = True
+        if IS_REWARD_SHAPING:
+            if 'phi_prev' in info.keys():
+                phi_prev = info['phi_prev']
+                phi = info['phi']
+                reward += 0.95 * phi - phi_prev
+
+        # reward-design (inside vs. outside HER)
+        IS_REWARD_REDESIGN = False
+        if IS_REWARD_REDESIGN:
+            reward = 0
+            if 'goalderivs' in info.keys():
+                goalderivs = info['goalderivs']
+
+                # soft vs. hard dynamics ("get close fast")
+                if np.all(goalderivs < 0):
+                    reward = 1
+                # else:
+                if np.all(goalderivs > 0):
+                    reward = -1
+
+        return reward
 
 
     def step(self, action):
@@ -117,29 +147,10 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         (observation, reward, terminated, truncated, info) = MujocoHandReachEnv.step(self, action)
         phi = self.step_phi
 
-        # reward = self.compute_reward(observation['achieved_goal'], observation['desired_goal'], info)
-
-
-        # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
-        IS_POS_SPARSE_ENV = False
-        if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
-            reward += 1
-
-        # vs. potential-based shaping (discounted)
-        IS_REWARD_SHAPING = True
-        if IS_REWARD_SHAPING:
-            reward += 0.95 * phi - phi_prev
-
-        # reward-design
-        IS_REWARD_REDESIGN = False
-        if IS_REWARD_REDESIGN:
-            reward = 0
-            # soft vs. hard dynamics ("get close fast")
-            if np.all(self.step_goalderivs < 0):
-                reward = 1
-            # else:
-            if np.all(self.step_goalderivs > 0):
-                reward = -1
+        info['goalderivs'] = self.step_goalderivs
+        info['phi_prev'] = phi_prev
+        info['phi'] = phi
+        reward = self.compute_reward(observation['achieved_goal'], observation['desired_goal'], info)
 
         if info['is_success']:
             print('SUCCESS')
@@ -177,3 +188,8 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
         self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
         return MujocoHandReachEnv.reset(self)
+
+
+def goal_distance(goal_a, goal_b):
+    assert goal_a.shape == goal_b.shape
+    return np.linalg.norm(goal_a - goal_b, axis=-1)
