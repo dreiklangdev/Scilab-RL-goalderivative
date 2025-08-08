@@ -99,7 +99,7 @@ $$
 \end{cases}
 $$
 
-that type of reward hacking is decreased with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is increased - this is especially beneficial in the multi-goal environments of the later sections.
+that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is increased - this is especially beneficial in the multi-goal environments of the later sections.
 
 (Formal Proofs?)
 
@@ -113,20 +113,20 @@ $$
 &= R(s,a) + 0.99 * \Phi_{conj}(s') - \Phi_{conj}(s)
 \end{split}
 $$
-achieved a mean reduction of $...$ in the area under the curve (AUC) of the success rate over epochs, compared to the unshaped baseline reward, which translates to the *sample efficiency improvement* $I_{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
+solved the task (5 consecutive epochs with evaluated mean success rate $\sigma \ge 0.9$) and achieved a mean reduction of $...$ in the area under the curve (AUC) of the success rate over epochs, compared to the unshaped baseline reward. This defines the *sample efficiency improvement* $I_{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
 
-Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldistance(?) and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains are substantial enough even with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption. To also amplify the reward shaping term, the sparse reward limits were changed from the nonpositive 2-tuple $(-1,0)$ to the nonnegative 2-tuple $(0,1)$. These are the only environmental changes to the original *FetchPush*, i.e.
+Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldistance(?) and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains were substantial enough even with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption. To amplify the effect of the reward shaping term $F$, the limits of the sparse reward $R$ were changed from the nonpositive 2-tuple $(-1,0)$ to the nonnegative 2-tuple $(0,1)$ and the distance between the gripper and the object were added to the goal state space - creating a denser shaping by a multi-dimensional goal(-distance). Although these were substantial environmental changes to the original *FetchPush*, they are arguably reasonable design choices, i.e.
 
-* an *augmentation* of the observation state space,
-* a *translation* of the sparse reward limits and
-* a *shaping* term to the reward.
+* an *augmentation* to the observation state space,
+* an *augmentation* to the goal state space and
+* a *translation* of the reward limits.
 
-The first two changes are kept throughout the sections where this particular environment is used. 
+(compare/combine with HER, vs. (normalized) multi-dim. goals w/o threshold, ie. inexact goals with different reachable (unknown) thresholds, adaptability/generality to unseen goals (interpolative vs. extrapolative))
 
 
 > **Research Claim 2** (Goalkinematic Reward Design)
 > 
-> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DGS vector, the training can be successful (i.e. the policy reaches and keeps the goal) and more efficient.
+> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DGS vector, the training can be successful (i.e. the policy reaches and holds a reasonable goal) and more efficient.
 
 (Formal Proof)
 
@@ -172,6 +172,23 @@ The first two changes are kept throughout the sections where this particular env
 * observation augmentation
 * observation reduction (for generality)
 * multi-goal
+
+* https://openai.com/index/ingredients-for-robotics-research/
+* https://wandb.ai/rodrigodelazcano/gym_robotics/runs/1s3fuwye?nw=nwuserrodrigodelazcano
+
+
+## Hyperparams
+| Hyperparams | Relevance | Examples | Comment |
+| --- | --- | --- | --- |
+| $\gamma$ (Discount) | +++ | 0.5 (shortsight: non-term., direct, fast/greedy), 0.99 (longsight: term., indirect, prudent/careful) | watch actor NN learning loss
+| shaping vs. redesign | ++     |  |
+| reward limits | ++     | (0,1) (if shaping) |
+| goalkin. reward aggregate    | +++    | all(DGS) (term.), any(DGS) (non-term.) |
+| goalderiv. order k    | ++    | distance (1-2) vs. oscillation-res. (>3) | 
+| goalkin. obs.    | +++    | deltas, dist/derivs., augm. vs reduce | 
+| goalobs.    | ++   | single-goal vs. multi-goal | 
+| non-lin. activ.    | +   | ReLU (pos.) vs. Tanh (neg., normalized goal) | 
+
 
 
 ## TODO

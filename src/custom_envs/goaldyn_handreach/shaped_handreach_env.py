@@ -3,7 +3,6 @@
 import mujoco
 import numpy as np
 
-# from gymnasium.envs.mujoco.pusher_v5 import PusherEnv
 from gymnasium_robotics.envs.shadow_dexterous_hand.reach import MujocoHandReachEnv
 
 
@@ -28,7 +27,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         self.zs_scaler_goal = submodels['zs_scaler_goal']
 
         # sparse vs. dense
-        MujocoHandReachEnv.__init__(self, reward_type='dense')
+        MujocoHandReachEnv.__init__(self, reward_type='sparse')
 
 
     def _get_obs(self):
@@ -49,13 +48,6 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
         goalderivs = np.array([])
 
-        IS_NORMALIZE_Z_SCORE_GOAL = False
-        if IS_NORMALIZE_Z_SCORE_GOAL:
-            if not self.is_eval:
-                self.zs_scaler_goal.partial_fit(obs_achieved.reshape(1, -1))
-            obs_achieved = self.zs_scaler_goal.transform(obs_achieved.reshape(1, -1))[0]
-            obs_desired = self.zs_scaler_goal.transform(obs_desired.reshape(1, -1))[0]
-
 
         goaldelta = obs_achieved - obs_desired
         self.goaldeltas.append(goaldelta)
@@ -66,19 +58,42 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
         order = ORDER_GOALDYNAMICS
         if order > 0:
+            goaldeltas_recent = np.array(self.goaldeltas[-(order + 1):]) # only enough recent goaldists for all orders
+            goaldeltas_recent = np.pad(goaldeltas_recent, ((max(0, order + 1 - len(goaldeltas_recent)),0), (0,0))) # fill up with starting 0s if not enough
+            goaldeltas_velocity = np.diff(goaldeltas_recent, axis=0)
+
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
             for i in range(1, order + 1):
                 goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
 
-        # obs vs. no-obs
+
+        # obs reduce
+        obs = np.array([])
+
+        # full-obs
+        obs = np.append(obs, goaldelta)
+        obs = np.append(obs, goaldeltas_recent)
+        obs = np.append(obs, goaldeltas_velocity)
+
         obs = np.append(obs, goaldist)
+        obs = np.append(obs, goaldists_recent)
         obs = np.append(obs, goalderivs)
+
+        # dgs-obs
+        # obs = np.append(obs, goaldist)
+        # obs = np.append(obs, goalderivs)
         observation['observation'] = obs
 
         self.step_goalderivs = goalderivs
-        self.step_phi = -np.linalg.norm(np.concatenate(([goaldist], goalderivs[:-1])))
+
+        # boolphi
+        self.step_phi = 0
+        if np.all(goalderivs < 0):
+            self.step_phi = 1
+        elif np.all(goalderivs > 0):
+            self.step_phi = -1
 
         return observation
 
@@ -88,18 +103,27 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         (observation, reward, terminated, truncated, info) = MujocoHandReachEnv.step(self, action)
         phi = self.step_phi
 
-        IS_POS_SPARSE_ENV = True
+        IS_POS_SPARSE_ENV = False
         if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
-            reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition)
-
-        # potential-based shaping (undiscounted)
-        # reward -= self.step_goalderivs
+            reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
 
         # vs. potential-based shaping (discounted)
-        reward += 0.99 * phi - phi_prev
+        # reward += 0.99 * phi - phi_prev
 
-        # if info['is_success']:
-            # reward = 1 # success learning
+
+
+        # reward-design
+        reward = 0
+        # soft vs. hard dynamics ("get close fast")
+        if np.all(self.step_goalderivs < 0):
+            reward = 1
+        # else:
+        if np.all(self.step_goalderivs > 0):
+            reward = -1
+
+        if info['is_success']:
+            print('SUCCESS')
+            # reward = 1 # success learning ("finish line") # irritates?!
 
         self.rewardsum += reward
 

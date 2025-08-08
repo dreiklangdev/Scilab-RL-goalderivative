@@ -9,7 +9,6 @@ def smooth_iqr(multidata):
     
     multidata = pd.concat((pd.read_csv(f) for f in multidata), axis=1, ignore_index=True).rename_axis(['epoch']).reset_index()
     aucs = multidata.loc[:,1:].apply(lambda run: np.trapz(run, range(49)) / 48)
-    print(aucs)
 
     iqr = multidata.quantile((0.25,0.75), axis=1).unstack().to_frame('iqr').rename_axis(['epoch', 'quartile']).reset_index()
     iqr = iqr.pivot(index=['epoch'], columns='quartile' ,values = 'iqr').reset_index()
@@ -20,8 +19,8 @@ def smooth_iqr(multidata):
     multidata['q25'] = multidata['q25'].rolling(window=10, min_periods=1).mean()
     multidata['q75'] = multidata['q75'].rolling(window=10, min_periods=1).mean()
 
-    multidata.attrs['aucs_mean'] = aucs.mean()
-    multidata.attrs['aucs_std'] = aucs.std()
+    multidata.attrs['aucs_mean'] = np.round(aucs.mean(), 2)
+    multidata.attrs['aucs_std'] = np.round(aucs.std(), 2)
     return multidata
 
 
@@ -148,6 +147,26 @@ c1_dense_shaped_origGoal = smooth_iqr([ # corrupt, not improving anyways, worse 
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-56/success_rate.dat'
 ])
 
+c1_sparse_obsed_goalAug = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-19/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-22/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-26/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-58/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-37-01/success_rate.dat',
+])
+
+c1_sparse_allboolshaped_obsed_goalAug = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-39/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/13-59-02/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/13-59-05/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-45/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-48/success_rate.dat',
+])
+
+# HAND REACH =======================
+
+
+
 # all = { # c1-obs
 #     'dense*-shaped (C1)': c1_dense_shaped,
 #     'dense*': c1_dense_baseline_goalAug,
@@ -175,14 +194,15 @@ c1_dense_shaped_origGoal = smooth_iqr([ # corrupt, not improving anyways, worse 
 
 all = { # c2, c3, c4
     # 'reduced obs. (C4)': c4_hardbool_obsRed,
-    'augmented obs. (C3)': c3_hardbool_full,
-    'goaldynamic (C2)': c2_hardbool_dist_dgs,
-    'dense*': c1_dense_baseline,
+    # 'augmented obs. (C3)': c3_hardbool_full,
+    'c1_sparse_allbool_obsed_goalAug': c1_sparse_allboolshaped_obsed_goalAug,
+    'c1_sparse_obsed_goalAug': c1_sparse_obsed_goalAug,
+    # 'dense*': c1_dense_baseline,
 }
 
-success_rates = [experiment['success_rate_median'] for experiment in all.values()]
+success_rates = [ex['success_rate_median'] for ex in all.values()]
 success_rates = pd.concat(success_rates, axis=1, ignore_index=True)
-success_rates.columns = all.keys()
+success_rates.columns = [f"{ex[0]}: {ex[1].attrs['aucs_mean']} ±{ex[1].attrs['aucs_std']}" for ex in all.items()]
 ax = success_rates.plot()
 ax.set_title('FetchPush-v4 (SAC)')
 ax.set_axisbelow(True)

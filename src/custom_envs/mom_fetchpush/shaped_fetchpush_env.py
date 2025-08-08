@@ -33,10 +33,10 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
     def _get_obs(self):
         observation = MujocoFetchPushEnv._get_obs(self)
         ob_box_achieved = observation['achieved_goal']
-        obs_box_desired = observation['desired_goal']
+        ob_box_desired = observation['desired_goal']
         obs = observation['observation']
-        if obs_box_desired.size == 0:
-            obs_box_desired = np.zeros(3)
+        if ob_box_desired.size == 0:
+            ob_box_desired = np.zeros(3)
 
         goaldelta = np.array([])
         goaldeltas_recent = np.array([])
@@ -51,15 +51,17 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         ob_gripper_pos = obs[0:3]
 
         # denser shaping
-        obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
-        if obs_box_desired.size == 3:
-            obs_desired = np.concatenate((obs_box_desired, ob_box_achieved))
+        IS_GOAL_AUG = True
+        if IS_GOAL_AUG:
+            obs_achieved = np.concatenate((ob_box_achieved, ob_gripper_pos))
+            if ob_box_desired.size == 3:
+                obs_desired = np.concatenate((ob_box_desired, ob_box_achieved))
+            else:
+                # already augm.
+                obs_desired = ob_box_desired
         else:
-            # already modified
-            obs_desired = obs_box_desired
-
-        # obs_achieved = ob_box_achieved
-        # obs_desired = ob_box_desired
+            obs_achieved = ob_box_achieved
+            obs_desired = ob_box_desired
 
         # goal modification for "denser" env. (to match reward shaping goal and density)
         IS_GOAL_MOD = False
@@ -122,11 +124,21 @@ class ShapedFetchPushEnv(MujocoFetchPushEnv):
         if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
             reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
 
-        # potential-based norm-shaping (undiscounted)
-        # reward -= self.step_goalderivs
-
-        # vs. potential-based norm-shaping (discounted)
+        # vs. potential-based shaping (discounted)
         # reward += 0.99 * phi - phi_prev
+
+
+
+        reward = 0
+        # soft vs. hard momentum
+        if np.all(self.step_goalderivs < 0):
+            reward = 1
+        # else:
+        if np.all(self.step_goalderivs > 0):
+            reward = -1
+
+
+
 
         # if info['is_success']:
             # reward = 1 # success learning
