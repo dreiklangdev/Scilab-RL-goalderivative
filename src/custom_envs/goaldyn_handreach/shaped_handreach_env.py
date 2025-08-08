@@ -19,14 +19,12 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         self.is_eval = is_eval
         self.goaldeltas = []
         self.goaldists = []
+        self.goalprogress = 0
         self.rewardsum = 0
         self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
         self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
-        self.outfile_goaldists = open('goaldists.dat', 'a')
+        self.outfile_goalprogresses = open('goalprogresses.dat', 'a')
 
-        self.zs_scaler_goal = submodels['zs_scaler_goal']
-
-        # sparse vs. dense
         MujocoHandReachEnv.__init__(self, reward_type='sparse')
 
 
@@ -70,20 +68,27 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
 
         # obs reduce
-        obs = np.array([])
+        IS_OBS_REDUCE = False
+        if IS_OBS_REDUCE:
+            obs = np.array([])
 
         # full-obs
-        obs = np.append(obs, goaldelta)
-        obs = np.append(obs, goaldeltas_recent)
-        obs = np.append(obs, goaldeltas_velocity)
+        IS_OBS_AUG = False
+        if IS_OBS_AUG:
+            obs = np.append(obs, goaldelta)
+            obs = np.append(obs, goaldeltas_recent)
+            obs = np.append(obs, goaldeltas_velocity)
 
-        obs = np.append(obs, goaldist)
-        obs = np.append(obs, goaldists_recent)
-        obs = np.append(obs, goalderivs)
+            obs = np.append(obs, goaldist)
+            obs = np.append(obs, goaldists_recent)
+            obs = np.append(obs, goalderivs)
 
         # dgs-obs
-        # obs = np.append(obs, goaldist)
-        # obs = np.append(obs, goalderivs)
+        IS_OBS_DGS = True
+        if IS_OBS_DGS:
+            obs = np.append(obs, goaldist)
+            obs = np.append(obs, goalderivs)
+
         observation['observation'] = obs
 
         self.step_goalderivs = goalderivs
@@ -96,6 +101,15 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             self.step_phi = -1
 
         return observation
+    
+
+    # is also used by HER (multi-dim. args.)
+    # def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info) -> float:
+
+    #     reward = MujocoHandReachEnv.compute_reward(self,achieved_goal, desired_goal, info)
+
+    #     reward = (achieved_goal < desired_goal)
+    #     return reward.astype(np.float64)
 
 
     def step(self, action):
@@ -103,27 +117,40 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         (observation, reward, terminated, truncated, info) = MujocoHandReachEnv.step(self, action)
         phi = self.step_phi
 
+        # reward = self.compute_reward(observation['achieved_goal'], observation['desired_goal'], info)
+
+
+        # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
         IS_POS_SPARSE_ENV = False
         if IS_POS_SPARSE_ENV and self.reward_type == 'sparse':
-            reward += 1 # (0,1) instead of (-1,0) to improve shaping influence? (else inhibition: explore all left(-1) vs. exploit already found(1))
+            reward += 1
 
         # vs. potential-based shaping (discounted)
-        # reward += 0.99 * phi - phi_prev
-
-
+        IS_REWARD_SHAPING = True
+        if IS_REWARD_SHAPING:
+            reward += 0.95 * phi - phi_prev
 
         # reward-design
-        reward = 0
-        # soft vs. hard dynamics ("get close fast")
-        if np.all(self.step_goalderivs < 0):
-            reward = 1
-        # else:
-        if np.all(self.step_goalderivs > 0):
-            reward = -1
+        IS_REWARD_REDESIGN = False
+        if IS_REWARD_REDESIGN:
+            reward = 0
+            # soft vs. hard dynamics ("get close fast")
+            if np.all(self.step_goalderivs < 0):
+                reward = 1
+            # else:
+            if np.all(self.step_goalderivs > 0):
+                reward = -1
 
         if info['is_success']:
             print('SUCCESS')
             # reward = 1 # success learning ("finish line") # irritates?!
+
+
+        # goalprogress
+        if self.goaldists and self.goaldists[0] > 0:
+            self.goalprogress = (self.goaldists[0] - self.goaldists[-1]) / self.goaldists[0]
+            self.goalprogress = max(0, self.goalprogress)
+            info['goalprogress'] = self.goalprogress
 
         self.rewardsum += reward
 
@@ -132,18 +159,17 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'rewardsum', str(np.round(self.rewardsum, 2)))
-            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(self.goaldists[-1], 2)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalprogress', str(np.round(self.goalprogress, 2)))
             human_viewer.render()
 
         return observation, reward, terminated, truncated, info
 
 
     def reset(self, seed, options):
-        goaldists_mean = np.mean(self.goaldists)
-        print(goaldists_mean)
+        print(self.goalprogress)
         print(self.rewardsum)
-        self.outfile_goaldists.write('%s\n' % (goaldists_mean))
-        self.outfile_goaldists.flush()
+        self.outfile_goalprogresses.write('%s\n' % (self.goalprogress))
+        self.outfile_goalprogresses.flush()
 
         self.goaldeltas = []
         self.goaldists = []
@@ -151,10 +177,3 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
         self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
         return MujocoHandReachEnv.reset(self)
-    
-
-
-def normalize_unit_limit(val, min_val, max_val):
-    if max_val == min_val:
-        return 0.5
-    return (val - min_val) / (max_val - min_val)

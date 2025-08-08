@@ -76,6 +76,7 @@ class EvalCallback(EvalCallback):
 
     def _init_callback(self) -> None:
         self.outfile_success_rate = open('success_rate.dat', 'a')
+        self.outfile_goalprogress = open('goalprogress.dat', 'a')
 
     def _log_data_callback(self, locals_: Dict[str, Any], globals_: Dict[str, Any]) -> None:
         """
@@ -95,6 +96,11 @@ class EvalCallback(EvalCallback):
                 maybe_is_success = info.get("success")
             if maybe_is_success is not None:
                 self._is_success_buffer.append(maybe_is_success)
+
+            if "goalprogress" in info.keys():
+                goalprogress = info.get("goalprogress")
+                self._goalprogress_buffer.append(goalprogress)
+
         if 'rewards' in locals_.keys():
             reward = float(locals_['rewards'][0])
             self.logger.record('eval/rollout_rewards_step', reward)
@@ -107,6 +113,7 @@ class EvalCallback(EvalCallback):
 
             # Reset success rate buffer
             self._is_success_buffer = []
+            self._goalprogress_buffer = []
 
             episode_rewards, episode_lengths = evaluate_policy(
                 self.model,
@@ -157,6 +164,14 @@ class EvalCallback(EvalCallback):
                 self.outfile_success_rate.write('%s\n' % (success_rate))
                 self.outfile_success_rate.flush()
 
+            if len(self._goalprogress_buffer) > 0:
+                goalprogress_mean = np.mean(self._goalprogress_buffer)
+                if self.verbose > 0:
+                    print(f"goal progress: {goalprogress_mean}")
+                self.logger.record("eval/goal_progress", goalprogress_mean)
+                self.outfile_goalprogress.write('%s\n' % (goalprogress_mean))
+                self.outfile_goalprogress.flush()
+
             # Dump log so the evaluation results are printed with the correct timestep
             self.logger.record("time/total timesteps", self.num_timesteps, exclude="tensorboard")
             self.logger.dump(self.num_timesteps)
@@ -192,3 +207,7 @@ class EvalCallback(EvalCallback):
             maybe_success = info.get("success")
             if maybe_success is not None:
                 self._is_success_buffer.append(maybe_success)
+
+            if "goalprogress" in info.keys():
+                goalprogress = info.get("goalprogress")
+                self._goalprogress_buffer.append(goalprogress)

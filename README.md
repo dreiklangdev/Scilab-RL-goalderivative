@@ -188,6 +188,7 @@ Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldi
 | goalkin. obs.    | +++    | deltas, dist/derivs., augm. vs reduce | 
 | goalobs.    | ++   | single-goal vs. multi-goal | 
 | non-lin. activ.    | +   | ReLU (pos.) vs. Tanh (neg., normalized goal) | 
+| reward freq.    | +++   | sparse (indirect) vs. dense (direct, straight) | 
 
 
 

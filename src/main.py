@@ -133,28 +133,29 @@ def  get_algo_instance(cfg, logger, env):
     from torch import nn
     from custom_envs.le_humanoid_hand.CustomAttentionPolicy import CustomAttentionPolicy
 
-    policy_kwargs = dict(
+    alg_kwargs['policy_kwargs']['activation_fn'] = nn.ReLU
 
-        # https://datascience.stackexchange.com/questions/26021/negative-rewards-and-activation-functions
-        # outputs smoother action [-1,1]
-        activation_fn=nn.ReLU,
-        # not for many negative inputs? (clips off!) [0,1] eg. difficulties with inversed gestures
-        # activation_fn=nn.ReLU,
-        # activation_fn=nn.LeakyReLU,
+    # policy_kwargs = dict(
 
-        # net_arch=[256, 256],
-        # outputs more diverse action (complex input spaces)
-        net_arch=[256, 256, 128],
-        # optimizer_kwargs=dict(weight_decay=1e-4),
-        use_sde=False,
-    )
+    #     # https://datascience.stackexchange.com/questions/26021/negative-rewards-and-activation-functions
+    #     # outputs smoother action [-1,1]
+    #     activation_fn=nn.ReLU, # hand imitation possibly needs Tanh
+    #     # not for many negative inputs? (clips off!) [0,1] eg. difficulties with inversed gestures
+    #     # activation_fn=nn.ReLU,
+    #     # activation_fn=nn.LeakyReLU,
+
+    #     # net_arch=[256, 256],
+    #     # outputs more diverse action (complex input spaces)
+    #     # net_arch=[256, 256, 128], # hand imitation
+    #     net_arch=[256, 256, 128],
+    #     # optimizer_kwargs=dict(weight_decay=1e-4),
+    #     use_sde=False,
+    # )
 
     if cfg.restore_policy is not None:
-        baseline = baseline_class.load(cfg.restore_policy, env=env, policy_kwargs=policy_kwargs, **alg_kwargs)
+        baseline = baseline_class.load(cfg.restore_policy, env=env, **alg_kwargs)
     else:
-        from stable_baselines3.sac.sac import SAC
-        # baseline = baseline_class(env=env, policy=CustomAttentionPolicy, policy_kwargs=policy_kwargs, **alg_kwargs)
-        baseline = baseline_class(env=env, policy_kwargs=policy_kwargs, **alg_kwargs)
+        baseline = baseline_class(env=env, **alg_kwargs)
     baseline.set_logger(logger)
     return baseline
 
