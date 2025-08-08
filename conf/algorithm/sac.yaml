@@ -3,11 +3,11 @@ name: 'sac'
 verbose: True
 
 # HER worsens/damages goaldyn.??
-replay_buffer_class: null
-# replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to not use HER
-# replay_buffer_kwargs:
-#   n_sampled_goal: 4
-#   goal_selection_strategy: 'future'
+# replay_buffer_class: null
+replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to not use HER
+replay_buffer_kwargs:
+  n_sampled_goal: 4
+  goal_selection_strategy: 'future'
 
 
 policy: 'MultiInputPolicy' # MlpPolicy

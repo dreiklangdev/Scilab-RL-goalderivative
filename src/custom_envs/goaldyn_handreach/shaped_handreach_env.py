@@ -118,7 +118,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             reward += 1
 
         # potential-based shaping (discounted)
-        IS_REWARD_SHAPING = True
+        IS_REWARD_SHAPING = False
         if IS_REWARD_SHAPING:
             if 'phi_prev' in info.keys():
                 phi_prev = info['phi_prev']
@@ -156,7 +156,6 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             print('SUCCESS')
             # reward = 1 # success learning ("finish line") # irritates?!
 
-
         # goalprogress
         if self.goaldists and self.goaldists[0] > 0:
             self.goalprogress = (self.goaldists[0] - self.goaldists[-1]) / self.goaldists[0]
@@ -188,8 +187,3 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
         self.step_goalderivs = np.zeros(ORDER_GOALDYNAMICS)
         return MujocoHandReachEnv.reset(self)
-
-
-def goal_distance(goal_a, goal_b):
-    assert goal_a.shape == goal_b.shape
-    return np.linalg.norm(goal_a - goal_b, axis=-1)

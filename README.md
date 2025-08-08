@@ -191,6 +191,9 @@ Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldi
 | reward freq.    | +++   | sparse (indirect) vs. dense (direct, straight) | 
 
 
+## Anecdotes
+> "with enough goaldimensions, the goaldistance becomes meaningful goalprogress"
+
 
 ## TODO
 * hyperparams
