@@ -239,17 +239,22 @@ all = {
 
 metric = [ex['metric'] for ex in all.values()]
 metric = pd.concat(metric, axis=1, ignore_index=True)
-metric.columns = [f"{ex[0]}: {ex[1].attrs['aucs_mean']} ±{ex[1].attrs['aucs_std']}" for ex in all.items()]
+metric.columns = all.keys()
+
 ax = metric.plot()
+
 ax.set_title('HandReach-v3 (SAC+HER)')
 ax.set_ylabel('Median Test Goalprogress')
-ax.set_xlabel('Epoch')
+ax.set_xlabel('Epoch (à 200 Episodes)')
 ax.set_axisbelow(True)
 
 
 # iqr
-for experiment in all.values():
-    ax.fill_between(x=experiment['epoch'], y1=experiment['q25'], y2=experiment['q75'], alpha=0.1)
+for ex in all.values():
+    ax.fill_between(x=ex['epoch'], y1=ex['q25'], y2=ex['q75'], alpha=0.1)
+    ax.text(x=49, y=ex['metric'].tail(1), s=f"{ex.attrs['aucs_mean']} ±{ex.attrs['aucs_std']}")
 
+plt.tight_layout()
+plt.box(False)
 plt.grid()
 plt.show()

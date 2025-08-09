@@ -84,7 +84,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             obs = np.append(obs, goalderivs)
 
         # dgs-obs
-        IS_OBS_DGS = True
+        IS_OBS_DGS = False
         if IS_OBS_DGS:
             obs = np.append(obs, goaldist)
             obs = np.append(obs, goalderivs)
@@ -125,20 +125,6 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
                 phi = info['phi']
                 reward += 0.95 * phi - phi_prev
 
-        # reward-design (inside vs. outside HER)
-        IS_REWARD_REDESIGN = False
-        if IS_REWARD_REDESIGN:
-            reward = 0
-            if 'goalderivs' in info.keys():
-                goalderivs = info['goalderivs']
-
-                # soft vs. hard dynamics ("get close fast")
-                if np.all(goalderivs < 0):
-                    reward = 1
-                # else:
-                if np.all(goalderivs > 0):
-                    reward = -1
-
         return reward
 
 
@@ -151,6 +137,18 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         info['phi_prev'] = phi_prev
         info['phi'] = phi
         reward = self.compute_reward(observation['achieved_goal'], observation['desired_goal'], info)
+
+        # reward-design (inside vs. outside HER)
+        IS_REWARD_REDESIGN = True
+        if IS_REWARD_REDESIGN:
+            reward = 0
+            # soft vs. hard dynamics ("get close fast")
+            if np.all(self.step_goalderivs < 0):
+                reward = 1
+            # else:
+            if np.all(self.step_goalderivs > 0):
+                reward = -1
+
 
         if info['is_success']:
             print('SUCCESS')

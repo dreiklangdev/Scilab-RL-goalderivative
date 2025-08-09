@@ -36,7 +36,7 @@ ent_coef: '0.01' # reach-exploration
 
 batch_size: 256
 # gamma: 0.25 # 0.5 (reactive)
-gamma: 0.95 # (non.-term., direct, dumb)
+gamma: 0.5 # (non.-term., direct, dumb)
 # gamma: 0.95 (term., indirect, care)
 # gamma: 0.99
 # tau: 0.95 # 2018_plappert ???

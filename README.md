@@ -88,7 +88,7 @@ $$
  
 achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their *goaldynamics* are more favorable.
 On the other hand, achieving states that are only statically close, or even moving away, will be rewarded lower.
-However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalkinematic potential**
+However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalkinematic potential (CGP)**
 
 $$
 \Phi_{conj}(s) =
@@ -99,9 +99,9 @@ $$
 \end{cases}
 $$
 
-that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is increased - this is especially beneficial in the multi-goal environments of the later sections.
+that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in the multi-goal environments of the later sections.
 
-In 5 simulations within Gymnasium's sparse *HandReach* environment, where a robotic hand is trained to reach coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
+In 5 simulations à 50 epochs (one epoch consists of 200 episodes  à 50 timesteps) within Gymnasium's sparse *HandReach* environment, where a robotic hand is trained to reach coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
 $$
 \begin{split}
 \^R_1(s,a) &= R(s,a) + F(s,a) \\ 
@@ -109,26 +109,26 @@ $$
 \end{split}
 $$
 
-improved the median **sample efficiency**, defined as the area under the curve (AUC) of the *goalprogress*
+increased the evaluation **sample efficiency**, defined as the area under the curve (AUC) of the test *goalprogress*
 
 $$
-P = \frac{d_0 - d_{end}}{d_0} \\
+P = \frac{d_0 - d_{end}}{d_0}\quad (0 \le P \le 1) \\
 (d_{end} := \text{goaldistance at the end of the episode}),
 $$
 
-by factor **2.75** after 50 epochs (one epoch consists of 200 episodes  à 50 timesteps), compared to the unshaped baseline reward. The details of the experiments are described in the full work.
+by factor **2.75** (Fig. 1: blue line) compared to the unshaped baseline reward (Fig. 1: green line). The details of the experiments are described in the full work.
 
 [<img src="res/c1_goalprogress.png" width="100%"/>](res/c1_goalprogress.png) | 
 |:--:| 
-| Fig. 1: *Median test goalprogress (line) with interquartile range (shaded area) and area under the curve (legend)* |
+| Fig. 1: *Median test goalprogress (line) with interquartile range (shaded area) and mean AUC±std (label)* |
 
 
-Note: With potential-based shaping, this claim technically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains were even more substantial (factor **6**, orange line) with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
+Note: With potential-based shaping, this claim technically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains were even more substantial by factor **6** (Fig. 1: orange line) with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
 
 
 > **Research Claim 2** (Goalkinematic Reward Design)
 > 
-> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DGS vector, the training can be successful (i.e. the policy reaches and holds a reasonable goal) and more efficient.
+> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DGS vector, the training can be more efficient.
 
 (Formal Proof)
 
@@ -138,7 +138,7 @@ Note: With potential-based shaping, this claim technically requires that the goa
 
 > **Research Claim 3** (Goalkinematic Observation Augmentation)
 > 
-> In goal-oriented RL training towards an optimal policy, by adding the goalderivative entries of the DGS vector to the observation space, the training can be more efficient.
+> In goal-oriented RL training towards an optimal policy, by adding goalkinematic information to the observation space, the training can be more efficient.
 
 (adding to the markov property)
 
@@ -150,7 +150,10 @@ Note: With potential-based shaping, this claim technically requires that the goa
 
 > **Research Claim 4** (Goalkinematic Observation Reduction)
 > 
-> In goal-oriented RL training towards an optimal policy, by reducing the observation space to the goalderivative entries of the DGS vector of a *verbose* goal (e.g. multi-dimensional and contextual), the training can be successful, more efficient and more general.
+> In goal-oriented RL training towards an optimal policy, by reducing the observation space to contain *only* goalkinematic information, the training can be successful, more efficient and more general.
+
+define success (vs. goalprogress)
+define general
 
 (Experimental Proof)
 (fetchpush)
@@ -194,6 +197,8 @@ Note: With potential-based shaping, this claim technically requires that the goa
 
 ## Anecdotes
 > "with enough goaldimensions, the goaldistance becomes meaningful goalprogress"
+
+> "efficiency does not necessarily mean success/effectiveness"
 
 
 ## TODO
