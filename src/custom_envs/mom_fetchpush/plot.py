@@ -6,165 +6,193 @@ import numpy as np
 def smooth_iqr(multidata):
     if not multidata:
         return None
-    
+
     multidata = pd.concat((pd.read_csv(f) for f in multidata), axis=1, ignore_index=True).rename_axis(['epoch']).reset_index()
     aucs = multidata.loc[:,1:].apply(lambda run: np.trapz(run, range(49)) / 48)
 
     iqr = multidata.quantile((0.25,0.75), axis=1).unstack().to_frame('iqr').rename_axis(['epoch', 'quartile']).reset_index()
     iqr = iqr.pivot(index=['epoch'], columns='quartile' ,values = 'iqr').reset_index()
     iqr.columns = ['epoch', 'q25', 'q75']
-    multidata = multidata.median(axis=1).to_frame('success_rate_median').rename_axis('epoch').merge(iqr, on='epoch', how='inner')
+    multidata = multidata.median(axis=1).to_frame('metric').rename_axis('epoch').merge(iqr, on='epoch', how='inner')
 
-    multidata['success_rate_median'] = multidata['success_rate_median'].rolling(window=10, min_periods=1).mean()
-    multidata['q25'] = multidata['q25'].rolling(window=10, min_periods=1).mean()
-    multidata['q75'] = multidata['q75'].rolling(window=10, min_periods=1).mean()
+    rolling_window = 20
+    multidata['metric'] = multidata['metric'].rolling(window=rolling_window, min_periods=1).mean()
+    multidata['q25'] = multidata['q25'].rolling(window=rolling_window, min_periods=1).mean()
+    multidata['q75'] = multidata['q75'].rolling(window=rolling_window, min_periods=1).mean()
 
     multidata.attrs['aucs_mean'] = np.round(aucs.mean(), 2)
     multidata.attrs['aucs_std'] = np.round(aucs.std(), 2)
     return multidata
 
 
-noObs_sparse_original = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-02/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-08/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-12/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-16/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-20/success_rate.dat',
-])
-noObs_dense_original = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/17-56-48/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/19-10-58/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-10-50/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-10-27/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-11-36/success_rate.dat',
-])
-noObs_dense_original_goalAug = smooth_iqr([
-    # WIP top left
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-12/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-15/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-17/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-19/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-21/success_rate.dat',
-])
+# FETCH PUSH =======================
+
+# noObs_sparse_original = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-02/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-08/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-12/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-16/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-01-20/success_rate.dat',
+# ])
+# noObs_dense_original = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/17-56-48/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/19-10-58/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-10-50/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-10-27/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/20-11-36/success_rate.dat',
+# ])
+# noObs_dense_original_goalAug = smooth_iqr([
+#     # WIP top left
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-12/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-15/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-17/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-19/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-11-21/success_rate.dat',
+# ])
 
 
-c1_sparse_baseline = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-45/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-48/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-51/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-54/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-56/success_rate.dat',
-])
-c1_sparse_shaped = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-32/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-34/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-37/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-40/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-43/success_rate.dat',
-])
-c1_dense_baseline = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-12/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-15/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-18/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-20/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-23/success_rate.dat',
-])
-c1_dense_baseline_goalAug = smooth_iqr([
-    # WIP bot left
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-13-08/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-13-06/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-13-03/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-12-55/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-12-52/success_rate.dat',
-])
-c1_dense_shaped = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-14/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-17/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-20/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-22/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-25/success_rate.dat',
-])
-c1_dense_shaped_goalAug = smooth_iqr([
-    # TODO
-])
+# c1_sparse_baseline = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-45/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-48/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-51/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-54/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-39-56/success_rate.dat',
+# ])
+# c1_sparse_shaped = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-32/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-34/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-37/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-40/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/shaped-fetchpush-v4/16-25-43/success_rate.dat',
+# ])
+# c1_dense_baseline = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-12/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-15/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-18/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-20/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-37-23/success_rate.dat',
+# ])
+# c1_dense_baseline_goalAug = smooth_iqr([
+#     # WIP bot left
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-13-08/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-13-06/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-13-03/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-12-55/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/01-12-52/success_rate.dat',
+# ])
+# c1_dense_shaped = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-14/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-17/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-20/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-22/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-25/success_rate.dat',
+# ])
+# c1_dense_shaped_goalAug = smooth_iqr([
+#     # TODO
+# ])
 
-c1a_noObs_sparse_shaped = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-09/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-22/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-25/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-29/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-32/success_rate.dat',
-])
-c1a_noObs_dense_shaped = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-12/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-17/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-20/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-24/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-27/success_rate.dat',
-])
-c1a_noObs_dense_shaped_goalAug = smooth_iqr([
-    # TODO
-])
+# c1a_noObs_sparse_shaped = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-09/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-22/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-25/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-29/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/23-05-32/success_rate.dat',
+# ])
+# c1a_noObs_dense_shaped = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-12/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-17/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-20/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-24/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-27/success_rate.dat',
+# ])
+# c1a_noObs_dense_shaped_goalAug = smooth_iqr([
+#     # TODO
+# ])
 
-c1b_sparse_shaped_undiscounted = smooth_iqr([
-])
-c1b_dense_shaped_undiscounted = smooth_iqr([
-])
+# c1b_sparse_shaped_undiscounted = smooth_iqr([
+# ])
+# c1b_dense_shaped_undiscounted = smooth_iqr([
+# ])
 
-c2_hardbool_dist_dgs = smooth_iqr([
-    # WIP top right
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-29/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-27/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-26/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-21/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-18/success_rate.dat',
-])
-c2_softbool_dist_dgs = smooth_iqr([
-])
+# c2_hardbool_dist_dgs = smooth_iqr([
+#     # WIP top right
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-29/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-27/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-26/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-21/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/mom-fetchpush-v4/21-50-18/success_rate.dat',
+# ])
+# c2_softbool_dist_dgs = smooth_iqr([
+# ])
 
-c3_hardbool_full = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-32/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-31/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-29/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-25/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-22/success_rate.dat',
-])
+# c3_hardbool_full = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-32/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-31/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-29/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-25/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/ea53eec/mom-fetchpush-v4/17-00-22/success_rate.dat',
+# ])
 
-c4_hardbool_obsRed = smooth_iqr([
-])
+# c4_hardbool_obsRed = smooth_iqr([
+# ])
 
-c1_sparse_shaped_origGoal = smooth_iqr([ # not improving, worse than without shaped
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-23/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-48/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-46/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-44/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-41/success_rate.dat'
-])
+# c1_sparse_shaped_origGoal = smooth_iqr([ # not improving, worse than without shaped
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-23/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-48/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-46/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-44/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/14-07-41/success_rate.dat'
+# ])
 
-c1_dense_shaped_origGoal = smooth_iqr([ # corrupt, not improving anyways, worse even
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-49/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-54/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-56/success_rate.dat'
-])
+# c1_dense_shaped_origGoal = smooth_iqr([ # corrupt, not improving anyways, worse even
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-49/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-54/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/abf72da/shaped-fetchpush-v4/16-54-56/success_rate.dat'
+# ])
 
-c1_sparse_obsed_goalAug = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-19/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-22/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-26/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-58/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-37-01/success_rate.dat',
-])
+# c1_sparse_obsed_goalAug = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-19/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-22/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-26/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-36-58/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-37-01/success_rate.dat',
+# ])
 
-c1_sparse_allboolshaped_obsed_goalAug = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-39/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/13-59-02/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/13-59-05/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-45/success_rate.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-48/success_rate.dat',
-])
+# c1_sparse_allboolshaped_obsed_goalAug = smooth_iqr([
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-39/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/13-59-02/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/13-59-05/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-45/success_rate.dat',
+#     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/0aaf96d/shaped-fetchpush-v4/14-35-48/success_rate.dat',
+# ])
+
 
 # HAND REACH =======================
 
+sparse_HER_obs_baseline = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-45/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-54/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-43-14/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-43-37/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-44-02/goalprogress.dat',
+])
+
+shaped_HER_shaped_no_obs = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-39/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-46/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-00/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-12/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-27/goalprogress.dat',
+])
+
+shaped_HER_shaped_obsed = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-09-57/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-06/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-21/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-33/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-45/goalprogress.dat',
+
+])
 
 
 # all = { # c1-obs
@@ -192,19 +220,30 @@ c1_sparse_allboolshaped_obsed_goalAug = smooth_iqr([
     # 'sparse': noObs_sparse_original,
 # }
 
-all = { # c2, c3, c4
-    # 'reduced obs. (C4)': c4_hardbool_obsRed,
-    # 'augmented obs. (C3)': c3_hardbool_full,
-    'c1_sparse_allbool_obsed_goalAug': c1_sparse_allboolshaped_obsed_goalAug,
-    'c1_sparse_obsed_goalAug': c1_sparse_obsed_goalAug,
-    # 'dense*': c1_dense_baseline,
+# all = { # c2, c3, c4
+#     # 'reduced obs. (C4)': c4_hardbool_obsRed,
+#     # 'augmented obs. (C3)': c3_hardbool_full,
+#     'c1_sparse_allbool_obsed_goalAug': c1_sparse_allboolshaped_obsed_goalAug,
+#     'c1_sparse_obsed_goalAug': c1_sparse_obsed_goalAug,
+#     # 'dense*': c1_dense_baseline,
+# }
+
+
+
+all = {
+    'shaped': shaped_HER_shaped_obsed,
+    'shaped (unobserved)': shaped_HER_shaped_no_obs,
+    'sparse (baseline)': sparse_HER_obs_baseline,
 }
 
-success_rates = [ex['success_rate_median'] for ex in all.values()]
-success_rates = pd.concat(success_rates, axis=1, ignore_index=True)
-success_rates.columns = [f"{ex[0]}: {ex[1].attrs['aucs_mean']} ±{ex[1].attrs['aucs_std']}" for ex in all.items()]
-ax = success_rates.plot()
-ax.set_title('FetchPush-v4 (SAC)')
+
+metric = [ex['metric'] for ex in all.values()]
+metric = pd.concat(metric, axis=1, ignore_index=True)
+metric.columns = [f"{ex[0]}: {ex[1].attrs['aucs_mean']} ±{ex[1].attrs['aucs_std']}" for ex in all.items()]
+ax = metric.plot()
+ax.set_title('HandReach-v3 (SAC+HER)')
+ax.set_ylabel('Median Test Goalprogress')
+ax.set_xlabel('Epoch')
 ax.set_axisbelow(True)
 
 

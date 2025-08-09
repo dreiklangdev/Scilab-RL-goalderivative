@@ -10,7 +10,7 @@ The probed improvements include sample-efficiency during training and generality
 
 ---
 
-![goalderivs](res/goalderivs.gif)
+[<img src="res/goalderivs.gif" width="100%"/>](res/goalderivs.gif)
 
 A **goalderivative** $d^{(k)}$ of order $k>1$ is the rate of change in the scalar distance $d$ (specific to e.g. the $L²$-norm) or its derivatives (velocity $d^{(1)}$, acceleration $d^{(2)}$, jerk $d^{(3)}$ etc.) *towards* a numerically defined goal.
 
@@ -101,27 +101,29 @@ $$
 
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is increased - this is especially beneficial in the multi-goal environments of the later sections.
 
-(Formal Proofs?)
-
-(Experimental Proof)
-(fetchpush)
-
-In $5$ simulations within a custom version of Gymnasium's sparse *FetchPush* environment, where a robotic arm is trained to push an object from a random start position to a random target position, the shaped reward ($k=3, \gamma = 0.99$)
+In 5 simulations within Gymnasium's sparse *HandReach* environment, where a robotic hand is trained to reach coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
 $$
 \begin{split}
 \^R_1(s,a) &= R(s,a) + F(s,a) \\ 
-&= R(s,a) + 0.99 * \Phi_{conj}(s') - \Phi_{conj}(s)
+&= R(s,a) + 0.95 * \Phi_{conj}(s') - \Phi_{conj}(s)
 \end{split}
 $$
-solved the task (5 consecutive epochs with evaluated mean success rate $\sigma \ge 0.9$) and achieved a mean reduction of $...$ in the area under the curve (AUC) of the success rate over epochs, compared to the unshaped baseline reward. This defines the *sample efficiency improvement* $I_{1}$ by this particular MDP modification. The details of the experiments are described in the full work.
 
-Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldistance(?) and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains were substantial enough even with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption. To amplify the effect of the reward shaping term $F$, the limits of the sparse reward $R$ were changed from the nonpositive 2-tuple $(-1,0)$ to the nonnegative 2-tuple $(0,1)$ and the distance between the gripper and the object were added to the goal state space - creating a denser shaping by a multi-dimensional goal(-distance). Although these were substantial environmental changes to the original *FetchPush*, they are arguably reasonable design choices, i.e.
+improved the median **sample efficiency**, defined as the area under the curve (AUC) of the *goalprogress*
 
-* an *augmentation* to the observation state space,
-* an *augmentation* to the goal state space and
-* a *translation* of the reward limits.
+$$
+P = \frac{d_0 - d_{end}}{d_0} \\
+(d_{end} := \text{goaldistance at the end of the episode}),
+$$
 
-(compare/combine with HER, vs. (normalized) multi-dim. goals w/o threshold, ie. inexact goals with different reachable (unknown) thresholds, adaptability/generality to unseen goals (interpolative vs. extrapolative))
+by factor **2.75** after 50 epochs (one epoch consists of 200 episodes  à 50 timesteps), compared to the unshaped baseline reward. The details of the experiments are described in the full work.
+
+[<img src="res/c1_goalprogress.png" width="100%"/>](res/c1_goalprogress.png) | 
+|:--:| 
+| Fig. 1: *Median test goalprogress (line) with interquartile range (shaded area) and area under the curve (legend)* |
+
+
+Note: With potential-based shaping, this claim technically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains were even more substantial (factor **6**, orange line) with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
 
 
 > **Research Claim 2** (Goalkinematic Reward Design)
@@ -180,11 +182,10 @@ Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldi
 ## Hyperparams
 | Hyperparams | Relevance | Examples | Comment |
 | --- | --- | --- | --- |
-| $\gamma$ (Discount) | +++ | 0.5 (shortsight: non-term., direct, fast/greedy), 0.99 (longsight: term., indirect, prudent/careful) | watch actor NN learning loss
+| $\gamma$ (Discount) | +++ | 0.5 (shortsight: non-term., direct, fast/dumb), 0.95 (longsight: term., indirect, prudent/careful) | watch actor NN learning loss
 | shaping vs. redesign | ++     |  |
-| reward limits | ++     | (0,1) (if shaping) |
 | goalkin. reward aggregate    | +++    | all(DGS) (term.), any(DGS) (non-term.) |
-| goalderiv. order k    | ++    | distance (1-2) vs. oscillation-res. (>3) | 
+| goalderiv. order k    | ++    | oscillation-res. (>2) | 
 | goalkin. obs.    | +++    | deltas, dist/derivs., augm. vs reduce | 
 | goalobs.    | ++   | single-goal vs. multi-goal | 
 | non-lin. activ.    | +   | ReLU (pos.) vs. Tanh (neg., normalized goal) | 
@@ -205,3 +206,7 @@ Note: With potential-based $\Phi_{conj}(s)$, this claim requires that the goaldi
 * "proving" gifs (eg. sped up training process video?)
 * disclaimer (autonomity)
 * license
+
+* dense HER baseline, too?
+* goalprogress vs. success
+* (compare/combine with HER, vs. (normalized) multi-dim. goals w/o threshold, ie. inexact goals with different reachable (unknown) thresholds, adaptability/generality to unseen goals (interpolative vs. extrapolative))
