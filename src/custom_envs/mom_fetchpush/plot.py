@@ -167,6 +167,11 @@ def smooth_iqr(multidata):
 
 # HAND REACH ======================= (sorted by performance)
 
+GP_sparse_HER_unobs_baseline = smooth_iqr([
+])
+SR_sparse_HER_unobs_baseline = smooth_iqr([
+])
+
 GP_sparse_HER_obs_baseline = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-45/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-54/goalprogress.dat',
@@ -182,14 +187,14 @@ SR_sparse_HER_obs_baseline = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-44-02/success_rate.dat',
 ])
 
-GP_shaped_HER_obsed = smooth_iqr([
+GP_shaped_HER_obs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-09-57/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-06/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-21/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-33/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-45/goalprogress.dat',
 ])
-SR_shaped_HER_obsed = smooth_iqr([
+SR_shaped_HER_obs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-09-57/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-06/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-21/success_rate.dat',
@@ -197,14 +202,14 @@ SR_shaped_HER_obsed = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-45/success_rate.dat',
 ])
 
-GP_shaped_HER_no_obs = smooth_iqr([
+GP_shaped_HER_unobs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-39/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-46/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-00/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-12/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-27/goalprogress.dat',
 ])
-SR_shaped_HER_no_obs = smooth_iqr([
+SR_shaped_HER_unobs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-39/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-46/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-00/success_rate.dat',
@@ -212,14 +217,14 @@ SR_shaped_HER_no_obs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-27/success_rate.dat',
 ])
 
-GP_redesigned_HER_no_obs = smooth_iqr([
+GP_redesigned_HER_unobs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-08/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-18/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-26/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-33/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-43/goalprogress.dat',
 ])
-SR_redesigned_HER_no_obs = smooth_iqr([
+SR_redesigned_HER_unobs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-08/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-18/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-26/success_rate.dat',
@@ -248,8 +253,18 @@ SR_redesigned_HER_reduced = smooth_iqr([
 ])
 
 GP_redesigned_reduced = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-10-55/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-26/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-33/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-44/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/12-26-35/goalprogress.dat',
 ])
 SR_redesigned_reduced = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-10-55/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-26/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-33/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-44/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/12-26-35/success_rate.dat',
 ])
 
 
@@ -289,54 +304,72 @@ SR_redesigned_reduced = smooth_iqr([
 
 
 all = { # C1
-    'goaldyn. shape (unobs.)': GP_shaped_HER_no_obs,
-    'goaldyn. shape (obs.)': GP_shaped_HER_obsed,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
+    # 'sparse': GP_sparse_HER_unobs_baseline,
+    'goaldyn. shape (obs.)': GP_shaped_HER_obs,
+    'goaldyn. shape': GP_shaped_HER_unobs,
 }
 
 all = { # C2
-    'goaldyn. design (unobs.)': GP_redesigned_HER_no_obs,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
+    'goaldyn. design': GP_redesigned_HER_unobs,
 }
 
 all = { # C3
-    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
+    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
 }
 
 all = { # C4
-    # 'goaldyn. design (red., no HER)': GP_redesigned_reduced,
-    # 'goaldyn. design (red.)': GP_redesigned_HER_reduced,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
+    # 'goaldyn. design (red.)': GP_redesigned_HER_reduced,
+    # 'goaldyn. design (red., no HER)': GP_redesigned_reduced,
 }
 
 all = { # C2, C3, C4
-#     'goaldyn. design (red., no HER)': GP_redesigned_reduced,
-    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
-    'goaldyn. design (unobs.)': GP_redesigned_HER_no_obs,
-    'goaldyn. shape (unobs.)': GP_shaped_HER_no_obs,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
+    'goaldyn. shape': GP_shaped_HER_unobs,
+    'goaldyn. design': GP_redesigned_HER_unobs,
+    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
+    'goaldyn. design (red., no HER)': GP_redesigned_reduced,
 }
 
-all = { # C4 (successrate)
+# all = { # C4 (successrate)
+#     'sparse (obs.)': SR_sparse_HER_obs_baseline,
+#     'goaldyn. shape': SR_shaped_HER_unobs,
+#     'goaldyn. design': SR_redesigned_HER_unobs,
+#     'goaldyn. design (augm.)': SR_redesigned_HER_augmented,
 #     'goaldyn. design (red., no HER)': SR_redesigned_reduced,
-    'goaldyn. design (augm.)': SR_redesigned_HER_augmented,
-    'goaldyn. design (unobs.)': SR_redesigned_HER_no_obs,
-    'goaldyn. shape (unobs.)': SR_shaped_HER_no_obs,
-    'sparse (obs.)': SR_sparse_HER_obs_baseline,
-}
+# }
 
 
 metric = [ex['metric'] for ex in all.values()]
 metric = pd.concat(metric, axis=1, ignore_index=True)
 metric.columns = all.keys()
 
-ax = metric.plot()
+colormap = {
+    'sparse (obs.)': '#1f77b4',
+    'sparse': '#17becf',
+    'goaldyn. shape (obs.)': '#bcbd22',
+    'goaldyn. shape': '#ff7f0e',
+    'goaldyn. design': '#2ca02c',
+    'goaldyn. design (augm.)': '#d62728',
+    'goaldyn. design (red., no HER)': '#9467bd',
+    # '#8c564b',
+    # '#e377c2',
+    # '#7f7f7f',
+    # '#bcbd22',
+}
 
-ax.set_title('HandReach-v3 (SAC)')
+colors = [colormap[key] for key in all.keys()]
+
+ax = metric.plot(color=colors)
+ax.set_title('HandReach-v3, SAC (+HER)')
 ax.set_ylabel('Median Test Goalprogress')
 ax.set_xlabel('Epoch (à 200 Episodes)')
+ax.set_prop_cycle(plt.cycler(color=colors))
 ax.set_axisbelow(True)
+
 
 
 # iqr
@@ -344,6 +377,7 @@ for ex in all.values():
     ax.fill_between(x=ex['epoch'], y1=ex['q25'], y2=ex['q75'], alpha=0.1)
     ax.text(x=49, y=ex['metric'].tail(1), s=f"{ex.attrs['aucs_mean']} ±{ex.attrs['aucs_std']}")
 
+# plt.gca().set_color_cycle(['red', 'green', 'blue', 'yellow'])
 plt.tight_layout()
 plt.box(False)
 plt.grid()
