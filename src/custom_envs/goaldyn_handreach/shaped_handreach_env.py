@@ -68,12 +68,12 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
 
         # obs reduce
-        IS_OBS_REDUCE = False
+        IS_OBS_REDUCE = True
         if IS_OBS_REDUCE:
             obs = np.array([])
 
         # full-obs
-        IS_OBS_AUG = False
+        IS_OBS_AUG = True
         if IS_OBS_AUG:
             obs = np.append(obs, goaldelta)
             obs = np.append(obs, goaldeltas_recent)
@@ -150,8 +150,8 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
                 reward = -1
 
 
-        if info['is_success']:
-            print('SUCCESS')
+        # if info['is_success']:
+            # print('SUCCESS')
             # reward = 1 # success learning ("finish line") # irritates?!
 
         # goalprogress

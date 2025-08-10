@@ -55,9 +55,9 @@ of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states 
 
 The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state its optimal action. Note that a higher-level goal is not formalized in the MDP - its optimality does not ensure the objective success in reaching (or keeping) an indirect goal. Careful and effective design of the underlying MDP is therefore crucial for the correct and efficient convergence of RL.
 
-> **Research Claim 1** (Goalkinematic Reward Shaping)
+> **Research Claim 1** (Goalkinematic Potential-Based Reward Shaping)
 > 
-> In goal-oriented RL training towards an optimal policy, by adding to the existent rewards a shaping term based on the DGS vector, the training can be more efficient without changing the original optimal policy.
+> In goal-oriented RL training towards an optimal policy, by adding to the existent rewards a potential-based shaping term based on the DGS vector, the training can be more efficient without changing the original optimal policy.
 
 In this work, rewards are deterministic, i.e. they are assigned to states by the real **reward function** $R:S\times A \to \R$, meaning at state $s_t$ the algorithm receives a reward $r_t = R(s_t, a_t)$. It is proven that by adding a strictly **shaping function** $F(s_t, a_t) = \gamma\Phi(s_{t+1}) - \Phi(s_t)$ with state-dependent potentials $\Phi$, the reward function can be modified to
 
@@ -128,7 +128,7 @@ Note: With potential-based shaping, this claim technically requires that the goa
 
 > **Research Claim 2** (Goalkinematic Reward Design)
 > 
-> In goal-oriented RL training towards an optimal policy, by designing rewards based on the goalderivative entries of the DGS vector, the training can be more efficient.
+> In goal-oriented RL training towards an optimal policy, by designing rewards based on the DGS vector, the training can be more efficient.
 
 (Formal Proof)
 
@@ -215,3 +215,5 @@ define general
 * dense HER baseline, too?
 * goalprogress vs. success
 * (compare/combine with HER, vs. (normalized) multi-dim. goals w/o threshold, ie. inexact goals with different reachable (unknown) thresholds, adaptability/generality to unseen goals (interpolative vs. extrapolative))
+* C2,C3 w/o HER
+* C4 w/ HER

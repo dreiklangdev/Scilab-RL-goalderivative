@@ -167,31 +167,81 @@ def smooth_iqr(multidata):
 # ])
 
 
-# HAND REACH =======================
+# HAND REACH ======================= (sorted by performance)
 
-sparse_HER_obs_baseline = smooth_iqr([
+GP_sparse_HER_obs_baseline = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-45/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-54/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-43-14/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-43-37/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-44-02/goalprogress.dat',
 ])
+SR_sparse_HER_obs_baseline = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-45/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-42-54/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-43-14/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-43-37/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-44-02/success_rate.dat',
+])
 
-shaped_HER_shaped_no_obs = smooth_iqr([
+GP_shaped_HER_obsed = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-09-57/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-06/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-21/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-33/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-45/goalprogress.dat',
+])
+SR_shaped_HER_obsed = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-09-57/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-06/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-21/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-33/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-45/success_rate.dat',
+])
+
+GP_shaped_HER_no_obs = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-39/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-46/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-00/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-12/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-27/goalprogress.dat',
 ])
+SR_shaped_HER_no_obs = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-39/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-40-46/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-00/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-12/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-41-27/success_rate.dat',
+])
 
-shaped_HER_shaped_obsed = smooth_iqr([
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-09-57/goalprogress.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-06/goalprogress.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-21/goalprogress.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-33/goalprogress.dat',
-    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/9cb58d8/shaped-handreach-v3/22-10-45/goalprogress.dat',
+GP_redesigned_HER_no_obs = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-08/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-18/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-26/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-33/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-43/goalprogress.dat',
+])
+SR_redesigned_HER_no_obs = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-08/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-18/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-26/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-33/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-32-43/success_rate.dat',
+])
 
+GP_redesigned_HER_augmented = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-21/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-29/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-46/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-55/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-35-06/goalprogress.dat',
+])
+SR_redesigned_HER_augmented = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-21/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-29/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-46/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-34-55/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-35-06/success_rate.dat',
 ])
 
 
@@ -230,10 +280,42 @@ shaped_HER_shaped_obsed = smooth_iqr([
 
 
 
-all = {
-    'shaped': shaped_HER_shaped_obsed,
-    'shaped (unobserved)': shaped_HER_shaped_no_obs,
-    'sparse (baseline)': sparse_HER_obs_baseline,
+all = { # c1
+    'goaldyn. shape (unobs.)': GP_shaped_HER_no_obs,
+    'goaldyn. shape (obs.)': GP_shaped_HER_obsed,
+    'sparse (obs.)': GP_sparse_HER_obs_baseline,
+}
+
+all = { # C2
+    'goaldyn. design (unobs.)': GP_redesigned_HER_no_obs,
+    'sparse (obs.)': GP_sparse_HER_obs_baseline,
+}
+
+all = { # C3
+    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
+    'sparse (obs.)': GP_sparse_HER_obs_baseline,
+}
+
+all = { # C4
+#     'goaldyn. design (red., no HER)': GP_redesigned_reduced,
+#     'goaldyn. design (red.)': GP_redesigned_reduced,
+    'sparse (obs.)': GP_sparse_HER_obs_baseline,
+}
+
+all = { # C2, C3, C4
+#     'goaldyn. design (red., no HER)': GP_redesigned_reduced,
+    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
+    'goaldyn. design (unobs.)': GP_redesigned_HER_no_obs,
+    'goaldyn. shape (unobs.)': GP_shaped_HER_no_obs,
+    'sparse (obs.)': GP_sparse_HER_obs_baseline,
+}
+
+all = { # C4 (successrate)
+#     'goaldyn. design (red., no HER)': SR_redesigned_reduced,
+    'goaldyn. design (augm.)': SR_redesigned_HER_augmented,
+    'goaldyn. design (unobs.)': SR_redesigned_HER_no_obs,
+    'goaldyn. shape (unobs.)': SR_shaped_HER_no_obs,
+    'sparse (obs.)': SR_sparse_HER_obs_baseline,
 }
 
 
@@ -243,7 +325,7 @@ metric.columns = all.keys()
 
 ax = metric.plot()
 
-ax.set_title('HandReach-v3 (SAC+HER)')
+ax.set_title('HandReach-v3 (SAC)')
 ax.set_ylabel('Median Test Goalprogress')
 ax.set_xlabel('Epoch (à 200 Episodes)')
 ax.set_axisbelow(True)
