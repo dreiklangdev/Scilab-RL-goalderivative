@@ -88,7 +88,6 @@ def smooth_iqr(multidata):
 #     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/07-38-25/success_rate.dat',
 # ])
 # c1_dense_shaped_goalAug = smooth_iqr([
-#     # TODO
 # ])
 
 # c1a_noObs_sparse_shaped = smooth_iqr([
@@ -106,7 +105,6 @@ def smooth_iqr(multidata):
 #     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/d04860e/shaped-fetchpush-v4/22-49-27/success_rate.dat',
 # ])
 # c1a_noObs_dense_shaped_goalAug = smooth_iqr([
-#     # TODO
 # ])
 
 # c1b_sparse_shaped_undiscounted = smooth_iqr([
@@ -244,6 +242,16 @@ SR_redesigned_HER_augmented = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/22-35-06/success_rate.dat',
 ])
 
+GP_redesigned_HER_reduced = smooth_iqr([
+])
+SR_redesigned_HER_reduced = smooth_iqr([
+])
+
+GP_redesigned_reduced = smooth_iqr([
+])
+SR_redesigned_reduced = smooth_iqr([
+])
+
 
 # all = { # c1-obs
 #     'dense*-shaped (C1)': c1_dense_shaped,
@@ -280,7 +288,7 @@ SR_redesigned_HER_augmented = smooth_iqr([
 
 
 
-all = { # c1
+all = { # C1
     'goaldyn. shape (unobs.)': GP_shaped_HER_no_obs,
     'goaldyn. shape (obs.)': GP_shaped_HER_obsed,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
@@ -297,8 +305,8 @@ all = { # C3
 }
 
 all = { # C4
-#     'goaldyn. design (red., no HER)': GP_redesigned_reduced,
-#     'goaldyn. design (red.)': GP_redesigned_reduced,
+    # 'goaldyn. design (red., no HER)': GP_redesigned_reduced,
+    # 'goaldyn. design (red.)': GP_redesigned_HER_reduced,
     'sparse (obs.)': GP_sparse_HER_obs_baseline,
 }
 

@@ -55,7 +55,7 @@ of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states 
 
 The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state its optimal action. Note that a higher-level goal is not formalized in the MDP - its optimality does not ensure the objective success in reaching (or keeping) an indirect goal. Careful and effective design of the underlying MDP is therefore crucial for the correct and efficient convergence of RL.
 
-> **Research Claim 1** (Goalkinematic Potential-Based Reward Shaping)
+> **Research Claim 1** (Goalderivative Potential-Based Reward Shaping)
 > 
 > In goal-oriented RL training towards an optimal policy, by adding to the existent rewards a potential-based shaping term based on the DGS vector, the training can be more efficient without changing the original optimal policy.
 
@@ -86,9 +86,9 @@ d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
 \right\rVert_2,
 $$
  
-achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their *goaldynamics* are more favorable.
+achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their goalderivatives are more favorable.
 On the other hand, achieving states that are only statically close, or even moving away, will be rewarded lower.
-However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalkinematic potential (CGP)**
+However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalderivative potential (CGP)**
 
 $$
 \Phi_{conj}(s) =
@@ -96,7 +96,7 @@ $$
 1, & \text{if } \forall k: d^{(k)} \lt 0 ,\\
 -1, & \text{if } \forall k: d^{(k)} \gt 0, \\
 0, & \text{otherwise,}
-\end{cases}
+\end{cases} \qquad (d^{(k)} \in s_{DGS}) \\
 $$
 
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in the multi-goal environments of the later sections.
@@ -112,11 +112,11 @@ $$
 increased the evaluation **sample efficiency**, defined as the area under the curve (AUC) of the test *goalprogress*
 
 $$
-P = \frac{d_0 - d_{end}}{d_0}\quad (0 \le P \le 1) \\
+P = \frac{d_0 - d_{end}}{d_0}\qquad (0 \le P \le 1) \\
 (d_{end} := \text{goaldistance at the end of the episode}),
 $$
 
-by factor **2.75** (Fig. 1: blue line) compared to the unshaped baseline reward (Fig. 1: green line). The details of the experiments are described in the full work.
+by factor **2.75** (Fig. 1: blue line) compared to the unshaped baseline reward (Fig. 1: green line) (median). The details of the experiments are described in the full work.
 
 [<img src="res/c1_goalprogress.png" width="100%"/>](res/c1_goalprogress.png) | 
 |:--:| 
@@ -126,7 +126,7 @@ by factor **2.75** (Fig. 1: blue line) compared to the unshaped baseline reward 
 Note: With potential-based shaping, this claim technically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains were even more substantial by factor **6** (Fig. 1: orange line) with non-observable goaldistance and DGS, i.e. possibly justifying the theoretical violation of the Markov assumption.
 
 
-> **Research Claim 2** (Goalkinematic Reward Design)
+> **Research Claim 2** (Goalderivative Reward Design)
 > 
 > In goal-oriented RL training towards an optimal policy, by designing rewards based on the DGS vector, the training can be more efficient.
 
