@@ -53,6 +53,9 @@ def get_env_instance(cfg, logger, submodels):
     elif cfg.render == 'train':
         train_env = gym.make(cfg.env, is_render=True, submodels=submodels, **cfg.env_kwargs)
         eval_env = gym.make(cfg.env, is_eval=True, is_render=False, submodels=submodels, **cfg.env_kwargs)
+    elif cfg.render == 'silent':
+        train_env = gym.make(cfg.env, is_render=False, submodels=submodels, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, submodels=submodels, **cfg.env_kwargs)
     else:
         train_env = gym.make(cfg.env, **cfg.env_kwargs)
         eval_env = gym.make(cfg.env, **cfg.env_kwargs)

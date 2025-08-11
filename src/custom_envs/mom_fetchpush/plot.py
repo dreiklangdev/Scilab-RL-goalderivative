@@ -321,18 +321,21 @@ all = { # C1
 }
 
 all = { # C2
-    'sparse': GP_sparse_HER_unobs_baseline,
+    # 'sparse': GP_sparse_HER_unobs_baseline,
+    'goalderiv. shape': GP_shaped_HER_unobs,
     'goalderiv. design': GP_redesigned_HER_unobs,
 }
 
 all = { # C3
-    'sparse': GP_sparse_HER_unobs_baseline,
+    # 'sparse': GP_sparse_HER_unobs_baseline,
+    'goalderiv. design': GP_redesigned_HER_unobs,
     'goalderiv. design (augm.)': GP_redesigned_HER_augmented,
 }
 
 all = { # C4
-    'sparse': GP_sparse_HER_unobs_baseline,
+    # 'sparse': GP_sparse_HER_unobs_baseline,
     # 'goalderiv. design (red.)': GP_redesigned_HER_reduced,
+    'goalderiv. design (augm.)': GP_redesigned_HER_augmented,
     'goalderiv. design (red., no HER)': GP_redesigned_reduced,
 }
 

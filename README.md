@@ -1,6 +1,6 @@
 
 ---
-title: "Reward and Observe Higher-Order Goalderivatives (2025)"
+title: "Reward and Observe Higher-Order Goalderivatives"
 bibliography: bibliography.bib
 csl: bibstyle.csl
 output: pdf_document
@@ -18,7 +18,9 @@ This repository researches into possible improvements to Goal-Oriented Reinforce
 
 The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
 
-*Keywords: Deep Reinforcement Learning, Robotics*
+Keywords: Deep Reinforcement Learning, Robotics
+
+> <i><p align="right">"Der Weg ist das Ziel."</i></p>
 
 ---
 
@@ -163,11 +165,11 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 > In goal-oriented RL training towards an optimal policy, by reducing the observation space to contain *only* goalkinematic information, the training can be successful, more efficient and more general.
 
 [<img src="res/c4_goalprogress.png" />](res/c4_goalprogress.png) \
-**Fig. 4:** *Median test goalprogress by obs. reduction (magenta line) with IQR (shaded area) and mean AUC (±s.d., label)*
+**Fig. 4:** *Median test goalprogress by obs. reduction (purple line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
 [<img src="res/c4_design_reduced_noHer_10k_train.gif" />](res/c4_design_reduced_noHer_10k_train.gif) | [<img src="res/c4_design_reduced_noHer_500k_eval.gif" />](res/c4_design_reduced_noHer_500k_eval.gif) | 
 |:--:| :--:| 
-| *Real-time screen recording of 9e3 rendered training steps directly after learning of the networks started for the first time (**blank policy**)* | *Real-time screen recording of rendered evaluation steps after 5e5 training steps (**trained policy**)*
+| *Real-time screen recording of 9k rendered training steps directly after learning of the networks started for the first time (**progress from blank policy**)* | *Real-time screen recording of rendered evaluation steps after 500k training steps (**trained policy**)*
 
 [...]
 
@@ -191,16 +193,29 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 
 
 ## Hyperparams
-| Hyperparams | Relevance | Examples | Comment |
-| --- | --- | --- | --- |
-| $\gamma$ (discount) | +++ | 0.5 (shortsight: non-term., direct, fast/dumb), 0.95 (longsight: term., indirect, prudent/careful) | watch actor NN learning loss
-| shaping vs. redesign | ++     |  |
-| goalkin. reward aggregate    | +++    | all(DGS) (term.), any(DGS) (non-term.) |
-| goalderiv. order k    | ++    | oscillation-res. (>2) | 
-| goalkin. obs.    | +++    | deltas, dist/derivs., augm. vs reduce | 
-| goalobs.    | ++   | single-goal vs. multi-goal | 
-| non-lin. activ.    | +   | ReLU (pos.) vs. Tanh (neg., normalized goal) | 
-| reward freq.    | +++   | sparse (indirect) vs. dense (direct, straight) | 
+| Hyperparams | HandReach-v3 (Baseline) | HandReach-v3 (Reduced) | Case Study | Comment
+| --- | --- | --- | --- | --- |
+| $\gamma$ (discount coeff.) | 0.95 | 0.5 | 0.5 | shortsight (non-term., direct, fast/dumb) vs. longsight (term., indirect, prudent/careful)
+| HER | yes | no | no | |
+| Net. Arch. | [256,256,256] | [256,256,256] | [256,256,128] | |
+| activation | ReLU | ReLU | Tanh | pos. vs. neg. (normalized goal and obs) 
+| $\alpha$ (entr. coeff.) | 0.01 | 0.01 | 0.01 | |
+| buffer size | 1e6 | 1e6 | 1e6 | |
+| batch size | 256 | 256 | 256 |  |
+| $\eta$ (learning rate) | 1e-3 | 1e-3 | 5e-4 |  |
+| learning start | 1e3 | 1e3 | 1e3 |  |
+| train. freq. | 1 | 1 | 1 |  |
+| gradient steps | 1 | 1 | 1 |  |
+| epochs | 50 | 50 | 10 |  |
+| episode per epoch | 200 | 200 | variable |  |
+| timesteps per episode | 50 | 50 | continuous | |
+| test rollouts per epoch | 10 | 10 | 10 |  |
+| seed(s) | random | random | random |  |
+| reward aggregation | - | conj. | conj. |  `all(DGS)` (non-term.) vs. `any(DGS)` (term., explorative) |
+| reward freq. | sparse | semi-dense | semi-dense | indirect vs. direct/straight
+| $k$ (goalderiv. order) | - | 3 |  4 | oscillation-resist. (>2) | 
+| observation state space | original | reduced |  reduced | vs. augmented (deltas, dist/derivs.) | 
+
 
 
 ## Anecdotes

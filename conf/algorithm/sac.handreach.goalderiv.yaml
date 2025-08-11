@@ -17,6 +17,7 @@ policy_kwargs:
     - 256
     - 256
   use_sde: False
+  activation_fn: relu
 
 # device: cpu
 

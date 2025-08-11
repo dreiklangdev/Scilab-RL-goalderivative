@@ -124,8 +124,8 @@ IS_OBSPACE_PAD_TO_NEXT_BASE_2 = False
 # 0.5M noWorldPosObs (only worldderivs), fullDerivsObs, derivFrontRewarding   restore_policy=/home/t14/Documents/tuhh/dsf/Scilab-RL/data/4f83e3b/le-hand-imitation-v1/15-12-59/rl_model_finished
 # 0.3M noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs)    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7ab0a84/le-hand-imitation-v1/22-11-37/rl_model_finished
 # 0.5M(!) noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/300e824/le-hand-imitation-v1/23-29-18/rl_model_finished
-# 0.5M no pos. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/13-05-44/rl_model_finished
-# 0.5M goalMom3, no pos. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures, validSet   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/22-59-03/rl_model_finished
+# 0.5M no posit. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/13-05-44/rl_model_finished
+# 0.5M goalMom3, no posit. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures, validSet   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/22-59-03/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -147,6 +147,7 @@ class HandImitationEnv(HumanoidEnv):
         self.tr_is_eval = is_eval
         self.is_plot = is_plot
         self.outfile_tr_multigoal_lastmeans = open('tr_multigoal_lastmeans.dat', 'a')
+        self.outfile_tr_goalprogresses = open('goalprogresses.dat', 'a')
 
         # https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python
         self.landmarker_options_achieved = HandLandmarkerOptions(
@@ -432,6 +433,11 @@ class HandImitationEnv(HumanoidEnv):
             #     self.ep_lives -= 1
             #     reward = 0
 
+        if self.tr_is_eval:
+            if self.ep_num_steps >= 1000:
+                truncated = True
+
+
 
         self.ep_goaldist_mean = (((self.ep_num_steps - 1) * self.ep_goaldist_mean) + goaldist) / (self.ep_num_steps)
         self.tr_multigoal_lastmeans[self.fep_goalid] = self.ep_goaldist_mean
@@ -445,11 +451,18 @@ class HandImitationEnv(HumanoidEnv):
             is_success = bool(self.ep_rewards_mean > self.cfg.General.EPISODE_SUCCESS_THRESHOLD_REWARD_MEAN)
             info['success'] = is_success
 
+        # goalprogress
+        if self.ep_goaldists and self.ep_goaldists[0] > 0:
+            self.ep_goalprogress = (self.ep_goaldists[0] - self.ep_goaldists[-1]) / self.ep_goaldists[0]
+            self.ep_goalprogress = max(0, self.ep_goalprogress)
+            info['goalprogress'] = self.ep_goalprogress
+
         if self.is_render:
             self.render_mode = 'human'
             human_viewer = self.mujoco_renderer._get_viewer('human')
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'reward', str(np.round(reward, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goaldist', str(np.round(goaldist, 2)))
+            human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalprogress', str(np.round(self.ep_goalprogress, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'goalseek', str(goaldist > self.ep_reward_threshold))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'meandist_r', str(np.round(goaldist / self.ep_goaldist_mean, 2)))
             human_viewer.add_overlay(mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, 'ep_rewards_mean', str(np.round(self.ep_rewards_mean, 2)))
@@ -945,7 +958,10 @@ class HandImitationEnv(HumanoidEnv):
                 performance = np.mean(self.tr_multigoal_lastmeans)
                 if performance < 100:
                     self.outfile_tr_multigoal_lastmeans.write('%s\n' % (performance))
-                    self.outfile_tr_multigoal_lastmeans.flush()
+                    self.outfile_tr_multigoal_lastmeans.flush()                
+                    self.outfile_tr_goalprogresses.write('%s\n' % (self.ep_goalprogress))
+                    self.outfile_tr_goalprogresses.flush()
+
 
         if not self.tr_is_eval and cfg.TrajectoryHalving.IS_ENABLED:
             self.fep_lives -= 1
@@ -1093,6 +1109,7 @@ class HandImitationEnv(HumanoidEnv):
         self.ep_states = []
         self.ep_rewards = []
         self.ep_actions = []
+        self.ep_goalprogress = 0
         self.ep_num_steps_goal_zone = 0
         self.ep_count_fails_pose_detection = 0
        

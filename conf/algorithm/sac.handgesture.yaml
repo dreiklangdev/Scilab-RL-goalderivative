@@ -14,7 +14,7 @@ policy_kwargs:
   net_arch:
     - 256
     - 256
-    - 256
+    - 128
   use_sde: False
   activation_fn: tanh
   # optimizer_kwargs:
