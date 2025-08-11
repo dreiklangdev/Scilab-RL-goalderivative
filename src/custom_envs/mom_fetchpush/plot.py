@@ -168,8 +168,18 @@ def smooth_iqr(multidata):
 # HAND REACH ======================= (sorted by performance)
 
 GP_sparse_HER_unobs_baseline = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-29-31/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-33-58/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-34-00/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-34-02/goalprogress.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-34-04/goalprogress.dat',
 ])
 SR_sparse_HER_unobs_baseline = smooth_iqr([
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-29-31/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-33-58/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-34-00/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-34-02/success_rate.dat',
+    '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-34-04/success_rate.dat',
 ])
 
 GP_sparse_HER_obs_baseline = smooth_iqr([
@@ -304,42 +314,42 @@ SR_redesigned_reduced = smooth_iqr([
 
 
 all = { # C1
-    'sparse (obs.)': GP_sparse_HER_obs_baseline,
-    # 'sparse': GP_sparse_HER_unobs_baseline,
-    'goaldyn. shape (obs.)': GP_shaped_HER_obs,
-    'goaldyn. shape': GP_shaped_HER_unobs,
+    # 'sparse (obs.)': GP_sparse_HER_obs_baseline,
+    'sparse': GP_sparse_HER_unobs_baseline,
+    'goalderiv. shape (obs.)': GP_shaped_HER_obs,
+    'goalderiv. shape': GP_shaped_HER_unobs,
 }
 
 all = { # C2
-    'sparse (obs.)': GP_sparse_HER_obs_baseline,
-    'goaldyn. design': GP_redesigned_HER_unobs,
+    'sparse': GP_sparse_HER_unobs_baseline,
+    'goalderiv. design': GP_redesigned_HER_unobs,
 }
 
 all = { # C3
-    'sparse (obs.)': GP_sparse_HER_obs_baseline,
-    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
+    'sparse': GP_sparse_HER_unobs_baseline,
+    'goalderiv. design (augm.)': GP_redesigned_HER_augmented,
 }
 
 all = { # C4
-    'sparse (obs.)': GP_sparse_HER_obs_baseline,
-    # 'goaldyn. design (red.)': GP_redesigned_HER_reduced,
-    # 'goaldyn. design (red., no HER)': GP_redesigned_reduced,
+    'sparse': GP_sparse_HER_unobs_baseline,
+    # 'goalderiv. design (red.)': GP_redesigned_HER_reduced,
+    'goalderiv. design (red., no HER)': GP_redesigned_reduced,
 }
 
-all = { # C2, C3, C4
-    'sparse (obs.)': GP_sparse_HER_obs_baseline,
-    'goaldyn. shape': GP_shaped_HER_unobs,
-    'goaldyn. design': GP_redesigned_HER_unobs,
-    'goaldyn. design (augm.)': GP_redesigned_HER_augmented,
-    'goaldyn. design (red., no HER)': GP_redesigned_reduced,
-}
+# all = { # C2, C3, C4
+#     'sparse': GP_sparse_HER_unobs_baseline,
+#     'goalderiv. shape': GP_shaped_HER_unobs,
+#     'goalderiv. design': GP_redesigned_HER_unobs,
+#     'goalderiv. design (augm.)': GP_redesigned_HER_augmented,
+#     'goalderiv. design (red., no HER)': GP_redesigned_reduced,
+# }
 
-# all = { # C4 (successrate)
-#     'sparse (obs.)': SR_sparse_HER_obs_baseline,
-#     'goaldyn. shape': SR_shaped_HER_unobs,
-#     'goaldyn. design': SR_redesigned_HER_unobs,
-#     'goaldyn. design (augm.)': SR_redesigned_HER_augmented,
-#     'goaldyn. design (red., no HER)': SR_redesigned_reduced,
+# all = { # C2, C3, C4 (successrate)
+#     'sparse': SR_sparse_HER_unobs_baseline,
+#     'goalderiv. shape': SR_shaped_HER_unobs,
+#     'goalderiv. design': SR_redesigned_HER_unobs,
+#     'goalderiv. design (augm.)': SR_redesigned_HER_augmented,
+#     'goalderiv. design (red., no HER)': SR_redesigned_reduced,
 # }
 
 
@@ -348,13 +358,13 @@ metric = pd.concat(metric, axis=1, ignore_index=True)
 metric.columns = all.keys()
 
 colormap = {
-    'sparse (obs.)': '#1f77b4',
-    'sparse': '#17becf',
-    'goaldyn. shape (obs.)': '#bcbd22',
-    'goaldyn. shape': '#ff7f0e',
-    'goaldyn. design': '#2ca02c',
-    'goaldyn. design (augm.)': '#d62728',
-    'goaldyn. design (red., no HER)': '#9467bd',
+    'sparse (obs.)': '#17becf',
+    'sparse': '#1f77b4',
+    'goalderiv. shape (obs.)': '#bcbd22',
+    'goalderiv. shape': '#ff7f0e',
+    'goalderiv. design': '#2ca02c',
+    'goalderiv. design (augm.)': '#d62728',
+    'goalderiv. design (red., no HER)': '#9467bd',
     # '#8c564b',
     # '#e377c2',
     # '#7f7f7f',
@@ -364,7 +374,7 @@ colormap = {
 colors = [colormap[key] for key in all.keys()]
 
 ax = metric.plot(color=colors)
-ax.set_title('HandReach-v3, SAC (+HER)')
+ax.set_title('Observation Reduction (HandReach-v3, SAC+HER)')
 ax.set_ylabel('Median Test Goalprogress')
 ax.set_xlabel('Epoch (à 200 Episodes)')
 ax.set_prop_cycle(plt.cycler(color=colors))
@@ -375,7 +385,7 @@ ax.set_axisbelow(True)
 # iqr
 for ex in all.values():
     ax.fill_between(x=ex['epoch'], y1=ex['q25'], y2=ex['q75'], alpha=0.1)
-    ax.text(x=49, y=ex['metric'].tail(1), s=f"{ex.attrs['aucs_mean']} ±{ex.attrs['aucs_std']}")
+    ax.text(x=49, y=ex['metric'].tail(1), s=f"{ex.attrs['aucs_mean']} (±{ex.attrs['aucs_std']})")
 
 # plt.gca().set_color_cycle(['red', 'green', 'blue', 'yellow'])
 plt.tight_layout()

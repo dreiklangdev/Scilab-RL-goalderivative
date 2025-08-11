@@ -68,12 +68,12 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
 
         # obs reduce
-        IS_OBS_REDUCE = False
+        IS_OBS_REDUCE = True
         if IS_OBS_REDUCE:
             obs = np.array([])
 
         # full-obs
-        IS_OBS_AUG = False
+        IS_OBS_AUG = True
         if IS_OBS_AUG:
             obs = np.append(obs, goaldelta)
             obs = np.append(obs, goaldeltas_recent)
@@ -139,7 +139,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         reward = self.compute_reward(observation['achieved_goal'], observation['desired_goal'], info)
 
         # reward-design (inside vs. outside HER)
-        IS_REWARD_REDESIGN = False
+        IS_REWARD_REDESIGN = True
         if IS_REWARD_REDESIGN:
             reward = 0
             # soft vs. hard dynamics ("get close fast")

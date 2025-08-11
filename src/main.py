@@ -133,7 +133,7 @@ def  get_algo_instance(cfg, logger, env):
     from torch import nn
     from custom_envs.le_humanoid_hand.CustomAttentionPolicy import CustomAttentionPolicy
 
-    alg_kwargs['policy_kwargs']['activation_fn'] = nn.ReLU
+    alg_kwargs['policy_kwargs']['activation_fn'] = nn.Tanh
 
     # policy_kwargs = dict(
 

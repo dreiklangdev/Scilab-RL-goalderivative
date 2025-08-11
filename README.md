@@ -125,51 +125,58 @@ $$
 increased the training **sample efficiency**, defined as the area under the curve (AUC) of the test *goalprogress*
 
 $$
-P = \frac{d_0 - d_{end}}{d_0}\qquad (0 \le P \le 1) \\
+\begin{split}
+P = \frac{d_0 - d_{end}}{d_0}\qquad (0 \le P \le 1) \\ 
 (d_{end} := \text{goaldistance at the end of the episode}),
+\end{split}
 $$
 
 by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline reward (Fig. 1: blue line) (median). The details of the experiments are described in the full work.
 
-[<img src="res/c1_goalprogress.png" width="100%"/>](res/c1_goalprogress.png) | 
-|:--:| 
-| Fig. 1: *Median test goalprogress (line) with interquartile range (shaded area) and mean AUC±std (label)* |
 
+[<img src="res/c1_goalprogress.png" />](res/c1_goalprogress.png) \
+**Fig. 1:** *Median test goalprogress by reward shaping (yellow and orange line) with interquartile range (IQR, shaded area) and mean AUC (±s.d., label)*
 
-Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. In the experiments, the efficiency gains with non-observable goaldistance and DGS were even more substantial with factor **6** (Fig. 1: orange line), i.e. possibly justifying the theoretical violation of the Markov assumption.
+Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
 
 
 > **Research Claim 2** (Goalderivative Reward Design)
 > 
 > In goal-oriented RL training towards an optimal policy, by designing rewards based on the DGS vector, the training can be more efficient.
 
-(Formal Proof)
-
-(Experimental Proof)
-(fetchpush)
+[<img src="res/c2_goalprogress.png" />](res/c2_goalprogress.png) \
+**Fig. 2:** *Median test goalprogress by reward design (green line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
 
 > **Research Claim 3** (Goalkinematic Observation Augmentation)
 > 
 > In goal-oriented RL training towards an optimal policy, by adding goalkinematic information to the observation space, the training can be more efficient.
 
-(adding to the markov property)
-
-(Formal Proof?)
-
-(Experimental Proof)
-(fetchpush)
+[<img src="res/c3_goalprogress.png" />](res/c3_goalprogress.png) \
+**Fig. 3:** *Median test goalprogress by obs. augmentation (red line) with interquartile range (shaded area) and mean AUC (±s.d., label)*
 
 
 > **Research Claim 4** (Goalkinematic Observation Reduction)
 > 
 > In goal-oriented RL training towards an optimal policy, by reducing the observation space to contain *only* goalkinematic information, the training can be successful, more efficient and more general.
 
-define success (vs. goalprogress)
-define general
+[<img src="res/c4_goalprogress.png" />](res/c4_goalprogress.png) \
+**Fig. 4:** *Median test goalprogress by obs. reduction (magenta line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
-(Experimental Proof)
-(fetchpush)
+[<img src="res/c4_design_reduced_noHer_10k_train.gif" />](res/c4_design_reduced_noHer_10k_train.gif) | [<img src="res/c4_design_reduced_noHer_500k_eval.gif" />](res/c4_design_reduced_noHer_500k_eval.gif) | 
+|:--:| :--:| 
+| *Real-time screen recording of 9e3 rendered training steps directly after learning of the networks started for the first time (**blank policy**)* | *Real-time screen recording of rendered evaluation steps after 5e5 training steps (**trained policy**)*
+
+> **Summary** 
+>
+> ...
+
+[<img src="res/c1234_goalprogress.png" />](res/c1234_goalprogress.png) \
+**Fig. 5:** *Median test goalprogress overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*
+
+[<img src="res/c1234_successrate.png" />](res/c1234_successrate.png) \
+**Fig. 6:** *Median test success rate overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*
+
 
 
 ## Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Multi-Goal RL with Multi-Dimensional Goals)
@@ -206,15 +213,19 @@ define general
 * "proving" imgs
 * "proving" graphs (eg. training process metric?)
 * "proving" gifs (eg. sped up training process video?)
+* "proving" code snippets
 * disclaimer (autonomity)
 * license
 
 * dense HER baseline, too?
 * goalprogress vs. success
 * (compare/combine with HER, vs. (normalized) multi-dim. goals w/o threshold, ie. inexact goals with different reachable (unknown) thresholds, adaptability/generality to unseen goals (interpolative vs. extrapolative))
+* C3: adding to the markov property
+* C4: define success (vs. goalprogress), define general
 * C2,C3 w/o HER
 * C4 w/ HER
 * sparse baseline unobs.
+* formal proofs?
 
 
 ## References

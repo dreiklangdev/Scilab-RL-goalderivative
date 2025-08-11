@@ -8,7 +8,17 @@ replay_buffer_class: null
 #   n_sampled_goal: 4
 #   goal_selection_strategy: 'future'
 
+
 policy: 'MultiInputPolicy' # MlpPolicy
+policy_kwargs:
+  net_arch:
+    - 256
+    - 256
+    - 256
+  use_sde: False
+  # optimizer_kwargs:
+  #   weight_decay:
+  #     1e-4
 
 # device: cpu
 
@@ -41,17 +51,3 @@ learning_starts: 1000
 device: cuda
 train_freq: 1
 gradient_steps: 1
-
-# policy_kwargs:
-#   optimizer_kwargs:
-#     weight_decay:
-#       1e-4
-
-# policy_kwargs:
-#   net_arch:
-#     - 256
-#     - 256
-#     - 256
-
-
-# policy_kwargs: "dict(net_arch=[64, 64])"

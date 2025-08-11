@@ -16,6 +16,7 @@ policy_kwargs:
     - 256
     - 256
     - 256
+  use_sde: False
 
 # device: cpu
 

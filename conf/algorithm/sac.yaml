@@ -2,12 +2,11 @@ name: 'sac'
 
 verbose: True
 
-# HER worsens/damages goaldyn.??
-# replay_buffer_class: null
-replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to not use HER
-replay_buffer_kwargs:
-  n_sampled_goal: 4
-  goal_selection_strategy: 'future'
+replay_buffer_class: null
+# replay_buffer_class: HerReplayBuffer  # ++algorithm.replay_buffer_class=null to not use HER
+# replay_buffer_kwargs:
+#   n_sampled_goal: 4
+#   goal_selection_strategy: 'future'
 
 
 policy: 'MultiInputPolicy' # MlpPolicy
@@ -15,15 +14,17 @@ policy_kwargs:
   net_arch:
     - 256
     - 256
-    - 256
+    - 128
+  use_sde: False
+  # optimizer_kwargs:
+  #   weight_decay:
+  #     1e-4
 
 # device: cpu
 
 # learning_starts: 1000
 
 # https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/sac.yml
-# https://wandb.ai/rodrigodelazcano/gym_robotics/runs/11xcqjzh/overview
-# 
 # n_timesteps: !!float 1e6
 # learning_starts: 10000
 
@@ -36,13 +37,12 @@ ent_coef: '0.01' # reach-exploration
 
 batch_size: 256
 # gamma: 0.25 # 0.5 (reactive)
-# gamma: 0.5 # (non.-term., direct, dumb)
-gamma: 0.95 # (term., indirect, care)
-# gamma: 0.99
-# tau: 0.95 # 2018_plappert ???
+gamma: 0.5 # 0.5 (reactive)
+# gamma: 0.95
+# gamma: 0.995
 # learning_rate: 0.001 # reach
-# learning_rate: 0.0005 # reach
-learning_rate: 0.001 # hold
+learning_rate: 0.0005 # reach
+# learning_rate: 0.0001 # hold
 learning_starts: 1000
 
 # n_steps: 100000
@@ -51,8 +51,3 @@ learning_starts: 1000
 device: cuda
 train_freq: 1
 gradient_steps: 1
-
-# policy_kwargs:
-#   optimizer_kwargs:
-#     weight_decay:
-#       1e-4
