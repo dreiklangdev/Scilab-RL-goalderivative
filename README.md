@@ -78,7 +78,7 @@ $$
 R' = R + F
 $$
 
- without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$.
+ without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$. [@ng1999policy]
 
 With a naive goalkinematic potential
 
@@ -96,7 +96,7 @@ d \\ s_{DGS}
 \begin{pmatrix}
 d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
 \end{pmatrix}
-\right\rVert_2,
+\right\rVert_2 \quad,
 $$
  
 achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their goalderivatives are more favorable.
@@ -137,7 +137,7 @@ by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline rewar
 [<img src="res/c1_goalprogress.png" />](res/c1_goalprogress.png) \
 **Fig. 1:** *Median test goalprogress by reward shaping (yellow and orange line) with interquartile range (IQR, shaded area) and mean AUC (±s.d., label)*
 
-Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space, which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
+Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [@ng1999policy], which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
 
 
 > **Research Claim 2** (Goalderivative Reward Design)
@@ -147,6 +147,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 [<img src="res/c2_goalprogress.png" />](res/c2_goalprogress.png) \
 **Fig. 2:** *Median test goalprogress by reward design (green line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
+[...]
 
 > **Research Claim 3** (Goalkinematic Observation Augmentation)
 > 
@@ -155,6 +156,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 [<img src="res/c3_goalprogress.png" />](res/c3_goalprogress.png) \
 **Fig. 3:** *Median test goalprogress by obs. augmentation (red line) with interquartile range (shaded area) and mean AUC (±s.d., label)*
 
+[...]
 
 > **Research Claim 4** (Goalkinematic Observation Reduction)
 > 
@@ -167,9 +169,11 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 |:--:| :--:| 
 | *Real-time screen recording of 9e3 rendered training steps directly after learning of the networks started for the first time (**blank policy**)* | *Real-time screen recording of rendered evaluation steps after 5e5 training steps (**trained policy**)*
 
+[...]
+
 > **Summary** 
 >
-> ...
+> [...]
 
 [<img src="res/c1234_goalprogress.png" />](res/c1234_goalprogress.png) \
 **Fig. 5:** *Median test goalprogress overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*

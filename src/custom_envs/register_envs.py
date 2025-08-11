@@ -210,6 +210,12 @@ def register_custom_envs():
         max_episode_steps=50,
     )
 
+    register(
+        id="handreach-v3",
+        entry_point='gymnasium_robotics.envs.shadow_dexterous_hand.reach:MujocoHandReachEnv',
+        max_episode_steps=50,
+    )
+
 
 
 def register_metaworld_envs():

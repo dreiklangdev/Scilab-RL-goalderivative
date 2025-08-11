@@ -16,6 +16,7 @@ policy_kwargs:
     - 256
     - 256
   use_sde: False
+  activation_fn: tanh
   # optimizer_kwargs:
   #   weight_decay:
   #     1e-4

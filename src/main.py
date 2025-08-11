@@ -28,6 +28,17 @@ from utils.custom_callbacks import EarlyStopCallback, EvalCallback
 from utils.custom_wrappers import DisplayWrapper, RecordVideo
 from utils.custom_stateful_observation import NormalizeDictObservation
 
+from torch import nn
+ACTIVATION_MAP = {
+    "relu": nn.ReLU,
+    "tanh": nn.Tanh,
+    "sigmoid": nn.Sigmoid,
+    "elu": nn.ELU,
+    "leaky_relu": nn.LeakyReLU,
+    "selu": nn.SELU,
+    "gelu": nn.GELU,
+}
+
 # make git_label available in hydra
 OmegaConf.register_new_resolver("git_label", get_git_label)
 OmegaConf.register_new_resolver("as_tuple", tuple)
@@ -43,8 +54,8 @@ def get_env_instance(cfg, logger, submodels):
         train_env = gym.make(cfg.env, is_render=True, submodels=submodels, **cfg.env_kwargs)
         eval_env = gym.make(cfg.env, is_eval=True, is_render=False, submodels=submodels, **cfg.env_kwargs)
     else:
-        train_env = gym.make(cfg.env, is_render=False, submodels=submodels, **cfg.env_kwargs)
-        eval_env = gym.make(cfg.env, is_eval=True, is_render=False, submodels=submodels, **cfg.env_kwargs)
+        train_env = gym.make(cfg.env, **cfg.env_kwargs)
+        eval_env = gym.make(cfg.env, **cfg.env_kwargs)
 
     # wrappers for rendering
     train_render_schedule = get_train_render_schedule(cfg.render_freq)
@@ -129,28 +140,7 @@ def  get_algo_instance(cfg, logger, env):
         alg_kwargs['replay_buffer_class'] = HerReplayBuffer
         alg_kwargs = avoid_start_learn_before_first_episode_finishes(alg_kwargs, env)
 
-    # LE: custom
-    from torch import nn
-    from custom_envs.le_humanoid_hand.CustomAttentionPolicy import CustomAttentionPolicy
-
-    alg_kwargs['policy_kwargs']['activation_fn'] = nn.Tanh
-
-    # policy_kwargs = dict(
-
-    #     # https://datascience.stackexchange.com/questions/26021/negative-rewards-and-activation-functions
-    #     # outputs smoother action [-1,1]
-    #     activation_fn=nn.ReLU, # hand imitation possibly needs Tanh
-    #     # not for many negative inputs? (clips off!) [0,1] eg. difficulties with inversed gestures
-    #     # activation_fn=nn.ReLU,
-    #     # activation_fn=nn.LeakyReLU,
-
-    #     # net_arch=[256, 256],
-    #     # outputs more diverse action (complex input spaces)
-    #     # net_arch=[256, 256, 128], # hand imitation
-    #     net_arch=[256, 256, 128],
-    #     # optimizer_kwargs=dict(weight_decay=1e-4),
-    #     use_sde=False,
-    # )
+    alg_kwargs['policy_kwargs']['activation_fn'] = ACTIVATION_MAP[alg_kwargs['policy_kwargs']['activation_fn']]
 
     if cfg.restore_policy is not None:
         baseline = baseline_class.load(cfg.restore_policy, env=env, **alg_kwargs)
