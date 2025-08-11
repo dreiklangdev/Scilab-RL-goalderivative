@@ -22,19 +22,19 @@ A **goalderivative** $d^{(k)}$ of order $k>1$ is the rate of change in the scala
 
 In time-discrete environments, the goalderivatives at a time $t_i$ can be recursively estimated with the distance to the goal (*goaldistance*) at $t_i$ by backward difference:
 
-$$
+```math
 d^{(0)}(t_i) = d(t_i) := \text{goaldistance at time } t_i
-$$
+```
 
-$$
+```math
 d^{(k)}(t_i) \approx \frac{d^{(k-1)}(t_i) - d^{(k-1)}(t_{i-1})}{t_i - t_{i-1}}
-$$
+```
 
 In a vector, multiple goalderivatives of $k > 1$ at $t_i$ form a differential kinematic state vector
 
-$$
+```math
 s_{DGS}(t_i) = \begin{pmatrix} d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k)} \end{pmatrix}(t_i)
-$$
+```
 
 The idea is now to evaluate the vector for either reward design, observation augmentation, or both.
 
@@ -44,18 +44,18 @@ The idea is now to evaluate the vector for either reward design, observation aug
 
 RL algorithms are applied to a formal **Markov Decision Process (MDP)** 
 
-$$
+```math
 \begin{split}
 M &= (\text{states, actions, transition probabilities, discount factor, rewards}) \\
 &= (S, A, T, \gamma, R)
 \end{split}
-$$
+```
 
 to find, for each **state** $s_k \in S$, the optimal **action** $a^*_{k} \in A$ that maximizes the expected $\gamma$ - discounted return 
 
-$$
+```math
 G = \mathbb{E} [\sum^{\infty}_{t=0} \gamma^t r_t]
-$$
+```
 
 of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states $\{s', s'',\dots\} \subseteq S$, which are reached with probabilities in $T$. However with RL, $T$ and $R$ are initially unknown and must be gradually discovered by exploration similar to *trial and error*. [[1]](#1)
 
@@ -68,15 +68,15 @@ The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state
 
 In this work, rewards are deterministic, i.e. they are assigned to states by the real **reward function** $R:S\times A \to \mathbb{R}$, meaning at state $s_t$ the algorithm receives a reward $r_t = R(s_t, a_t)$. It is proven that by adding a strictly **shaping function** $F(s_t, a_t) = \gamma\Phi(s_{t+1}) - \Phi(s_t)$ with state-dependent potentials $\Phi$, the reward function can be modified to
 
-$$
+```math
 R' = R + F
-$$
+```
 
  without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$. [[2]](#2)
 
 With a naive goalkinematic potential
 
-$$
+```math
 \Phi_{naive}(s) = - 
 \left\lVert 
 \begin{pmatrix}
@@ -89,40 +89,40 @@ d \\ s_{DGS}
 d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
 \end{pmatrix}
 \right\rVert_2 \quad,
-$$
+```
  
 achieving states that are not only close, but are also expected to be closer in the next states, will be rewarded higher - their goalderivatives are more favorable.
 On the other hand, achieving states that are only statically close, or even moving away, will be rewarded lower.
 However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalderivative potential (CGP)**
 
-$$
+```math
 \Phi_{conj}(s) =
 \begin{cases}
 1, & \text{if } \forall k: d^{(k)} \lt 0 ,\\
 -1, & \text{if } \forall k: d^{(k)} \gt 0, \\
 0, & \text{otherwise,}
 \end{cases} \qquad (d^{(k)} \in s_{DGS}) \\
-$$
+```
 
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in multi-goal environments.
 
 In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timesteps) within Gymnasium's sparse *HandReach* environment [[3]](#3), where a robotic hand is trained to reach different coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
 
-$$
+```math
 \begin{split}
 \hat R_1(s,a) &= R(s,a) + F(s,a) \\ 
 &= R(s,a) + 0.95 * \Phi_{conj}(s') - \Phi_{conj}(s)
 \end{split}
-$$
+```
 
 increased the training **sample efficiency**, defined as the area under the curve (AUC) of the test *goalprogress*
 
-$$
+```math
 \begin{split}
 P = \frac{d_0 - d_{end}}{d_0}\qquad (0 \le P \le 1) \\ 
 (d_{end} := \text{goaldistance at the end of the episode}),
 \end{split}
-$$
+```
 
 by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline reward (Fig. 1: blue line) (median). The details of the experiments are described in the full work.
 
