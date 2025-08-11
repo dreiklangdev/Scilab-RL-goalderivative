@@ -1,12 +1,4 @@
 
----
-title: "Reward and Observe Higher-Order Goalderivatives"
-bibliography: bibliography.bib
-csl: bibstyle.csl
-output: pdf_document
----
-
-
 
 # (Research) Reward and Observe Higher-Order Goalderivatives (2025)
 
@@ -65,7 +57,7 @@ $$
 G = \mathbb{E} [\sum^{\infty}_{t=0} \gamma^t r_t]
 $$
 
-of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states $\{s', s'',\dots\} \subseteq S$, which are reached with probabilities in $T$. However with RL, $T$ and $R$ are initially unknown and must be gradually discovered by exploration similar to *trial and error*. [@barto2021reinforcement]
+of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states $\{s', s'',\dots\} \subseteq S$, which are reached with probabilities in $T$. However with RL, $T$ and $R$ are initially unknown and must be gradually discovered by exploration similar to *trial and error*. [[1]](#1)
 
 The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state its optimal action. Note that a higher-level goal is not formalized in the MDP - its optimality does not ensure the objective success in reaching (or keeping) an indirect goal. Careful and effective design of the underlying MDP is therefore crucial for the correct and efficient convergence of RL.
 
@@ -80,20 +72,18 @@ $$
 R' = R + F
 $$
 
- without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$. [@ng1999policy]
+ without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$. [[2]](#2)
 
 With a naive goalkinematic potential
 
 $$
-\Phi_{naive}(s) =
--
+\Phi_{naive}(s) = - 
 \left\lVert 
 \begin{pmatrix}
 d \\ s_{DGS}
 \end{pmatrix}
 \right\rVert_2
-=
--
+= -
 \left\lVert 
 \begin{pmatrix}
 d \\ d^{(1)} \\ d^{(2)} \\ \vdots \\ d^{(k-1)}
@@ -116,7 +106,8 @@ $$
 
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in multi-goal environments.
 
-In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timesteps) within Gymnasium's sparse *HandReach* environment [@plappert2018multi], where a robotic hand is trained to reach different coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
+In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timesteps) within Gymnasium's sparse *HandReach* environment [[3]](#3), where a robotic hand is trained to reach different coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
+
 $$
 \begin{split}
 \hat R_1(s,a) &= R(s,a) + F(s,a) \\ 
@@ -139,7 +130,7 @@ by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline rewar
 [<img src="res/c1_goalprogress.png" />](res/c1_goalprogress.png) \
 **Fig. 1:** *Median test goalprogress by reward shaping (yellow and orange line) with interquartile range (IQR, shaded area) and mean AUC (±s.d., label)*
 
-Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [@ng1999policy], which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
+Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [[2]](#2), which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
 
 
 > **Research Claim 2** (Goalderivative Reward Design)
@@ -207,7 +198,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 | timesteps per episode | 50 | 50 | **continuous** | |
 | test rollouts per epoch | 10 | 10 | 10 |  |
 | seed(s) | random | random | random |  |
-| reward aggregation | - | conj. | conj. |  `all(DGS)` (non-term.) vs. `any(DGS)` (term., explorative) |
+| reward aggregation | - | conj. | conj. |  `all(DGS)` (non-term.) vs. `any(DGS)` (term., explorative, slower) |
 | reward freq. | sparse | semi-dense | semi-dense | indirect vs. direct/straight
 | $k$ (goalderiv. order) | - | 3 | **4** | oscillation-resist. (>2) | 
 | observation state space | original | **reduced** |  reduced | vs. augmented (deltas, dist/derivs.) | 
@@ -259,3 +250,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 
 * https://openai.com/index/ingredients-for-robotics-research/
 * https://wandb.ai/rodrigodelazcano/gym_robotics/runs/1s3fuwye?nw=nwuserrodrigodelazcano
+
+<a id="1">[1]</a> Barto, Andrew G. "Reinforcement learning: An introduction. by richard’s sutton." SIAM Rev 6.2 (2021): 423.
+<a id="2">[2]</a> Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
+<a id="3">[3]</a> Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
