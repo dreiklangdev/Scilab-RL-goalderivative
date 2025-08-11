@@ -125,7 +125,7 @@ IS_OBSPACE_PAD_TO_NEXT_BASE_2 = False
 # 0.3M noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs)    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/7ab0a84/le-hand-imitation-v1/22-11-37/rl_model_finished
 # 0.5M(!) noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/300e824/le-hand-imitation-v1/23-29-18/rl_model_finished
 # 0.5M no posit. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/13-05-44/rl_model_finished
-# 0.5M goalMom3, no posit. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures, validSet   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/22-59-03/rl_model_finished
+# 0.5M goalMom3, no posit. rewards (only deriv.), noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures, validSet   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/22-59-03/rl_model_finished
 class HandImitationEnv(HumanoidEnv):
 
 
@@ -911,6 +911,7 @@ class HandImitationEnv(HumanoidEnv):
         elif achieved_goal[0] <= threshold_escape:
             reward = 0
 
+            # all() vs. any()
             # dont always look on the compass (else dependency/overfit) - only every k episode? less and less? (decaying)
             # NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
             if self.fep_is_dense: # compass, else sparse

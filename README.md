@@ -184,21 +184,17 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 **Fig. 6:** *Median test success rate overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
 
-
 ## Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Multi-Goal RL with Multi-Dimensional Goals)
 
-(reward function granularity)
+[<img src="res/case_study.gif" />](res/case_study.gif)
 
-(hand gesture imitation)
-
-
-## Hyperparams
+## Hyperparameters
 | Hyperparams | HandReach-v3 (Baseline) | HandReach-v3 (Reduced) | Case Study | Comment
 | --- | --- | --- | --- | --- |
-| $\gamma$ (discount coeff.) | 0.95 | 0.5 | 0.5 | shortsight (non-term., direct, fast/dumb) vs. longsight (term., indirect, prudent/careful)
+| $\gamma$ (discount coeff.) | 0.95 | **0.5** | 0.5 | shortsight (non-term., direct, fast/dumb) vs. longsight (term., indirect, prudent/careful)
 | HER | yes | no | no | |
 | Net. Arch. | [256,256,256] | [256,256,256] | [256,256,128] | |
-| activation | ReLU | ReLU | Tanh | pos. vs. neg. (normalized goal and obs) 
+| activation | ReLU | ReLU | **tanh** | pos. vs. neg. (normalized goal and obs) 
 | $\alpha$ (entr. coeff.) | 0.01 | 0.01 | 0.01 | |
 | buffer size | 1e6 | 1e6 | 1e6 | |
 | batch size | 256 | 256 | 256 |  |
@@ -208,13 +204,13 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 | gradient steps | 1 | 1 | 1 |  |
 | epochs | 50 | 50 | 10 |  |
 | episode per epoch | 200 | 200 | variable |  |
-| timesteps per episode | 50 | 50 | continuous | |
+| timesteps per episode | 50 | 50 | **continuous** | |
 | test rollouts per epoch | 10 | 10 | 10 |  |
 | seed(s) | random | random | random |  |
 | reward aggregation | - | conj. | conj. |  `all(DGS)` (non-term.) vs. `any(DGS)` (term., explorative) |
 | reward freq. | sparse | semi-dense | semi-dense | indirect vs. direct/straight
-| $k$ (goalderiv. order) | - | 3 |  4 | oscillation-resist. (>2) | 
-| observation state space | original | reduced |  reduced | vs. augmented (deltas, dist/derivs.) | 
+| $k$ (goalderiv. order) | - | 3 | **4** | oscillation-resist. (>2) | 
+| observation state space | original | **reduced** |  reduced | vs. augmented (deltas, dist/derivs.) | 
 
 
 
@@ -236,6 +232,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * disclaimer (autonomity)
 * license
 
+* longer training (>1M)
 * dense HER baseline, too?
 * goalprogress vs. success
 * (compare/combine with HER, vs. (normalized) multi-dim. goals w/o threshold, ie. inexact goals with different reachable (unknown) thresholds, adaptability/generality to unseen goals (interpolative vs. extrapolative))
@@ -245,7 +242,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * C4 w/ HER
 * sparse baseline unobs.
 * formal proofs?
-
+* reward function granularity (multi-dim.)
 
 ## References
 * HER
