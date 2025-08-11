@@ -95,14 +95,14 @@ achieving states that are not only close, but are also expected to be closer in 
 On the other hand, achieving states that are only statically close, or even moving away, will be rewarded lower.
 However, such a frequent rewarding enables *reward hacking*, where the agent might oscillate between moving closer and farther from the goal without actually reaching the goal, i.e. the converged policy is not the optimal policy, let alone a successful one. With a **conjunctive goalderivative potential (CGP)**
 
-```math
+$$
 \Phi_{conj}(s) =
 \begin{cases}
 1, & \text{if } \forall k: d^{(k)} \lt 0 ,\\
 -1, & \text{if } \forall k: d^{(k)} \gt 0, \\
 0, & \text{otherwise,}
 \end{cases} \qquad (d^{(k)} \in s_{DGS}) \\
-```
+$$
 
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in multi-goal environments.
 
@@ -252,5 +252,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * https://wandb.ai/rodrigodelazcano/gym_robotics/runs/1s3fuwye?nw=nwuserrodrigodelazcano
 
 <a id="1">[1]</a> Barto, Andrew G. "Reinforcement learning: An introduction. by richard’s sutton." SIAM Rev 6.2 (2021): 423.
+
 <a id="2">[2]</a> Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
+
 <a id="3">[3]</a> Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
