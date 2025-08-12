@@ -126,6 +126,18 @@ IS_OBSPACE_PAD_TO_NEXT_BASE_2 = False
 # 0.5M(!) noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures    /home/t14/Documents/tuhh/dsf/Scilab-RL/data/300e824/le-hand-imitation-v1/23-29-18/rl_model_finished
 # 0.5M no posit. rewards, noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/13-05-44/rl_model_finished
 # 0.5M goalMom3, no posit. rewards (only deriv.), noWorldObs whatsoever: pca0.5-reduced goalobs only (goaldiffs/-derivs, goaldist/-derivs), allGestures, validSet   /home/t14/Documents/tuhh/dsf/Scilab-RL/data/244f064/le-hand-imitation-v1/22-59-03/rl_model_finished
+
+
+# # bad goal, less fluent, very sharp, bad generality, more efficient
+# 500k, k3, (256,256,256), 0.001,  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ac87bda/le-hand-imitation-v1/16-45-00/rl_model_finished
+
+# # (current best) ok goal, more fluent
+# 1M, k4, (256,256,128), 0.001, /home/t14/Documents/tuhh/dsf/Scilab-RL/data/d246874/le-hand-imitation-v1/12-54-38/rl_model_finished
+
+# # worse, no imitation, slightly better start though (looked promising)
+# 0.5M, k4, (1024,1024,1024), 0.001,  /home/t14/Documents/tuhh/dsf/Scilab-RL/data/ac87bda/le-hand-imitation-v1/18-54-15/rl_model_finished
+
+
 class HandImitationEnv(HumanoidEnv):
 
 

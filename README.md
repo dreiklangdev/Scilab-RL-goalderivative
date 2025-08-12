@@ -57,7 +57,7 @@ to find, for each **state** $s_k \in S$, the optimal **action** $a^*_{k} \in A$ 
 G = \mathbb{E} [\sum^{\infty}_{t=0} \gamma^t r_t]
 ```
 
-of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states $\{s', s'',\dots\} \subseteq S$, which are reached with probabilities in $T$. However with RL, $T$ and $R$ are initially unknown and must be gradually discovered by exploration similar to *trial and error*. [[1]](#1)
+of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states $\{s', s'',\dots\} \subseteq S$, which are reached with probabilities in $T$. However with RL, $T$ and $R$ are initially unknown and must be gradually discovered by exploration similar to *trial and error*. [^1]
 
 The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state its optimal action. Note that a higher-level goal is not formalized in the MDP - its optimality does not ensure the objective success in reaching (or keeping) an indirect goal. Careful and effective design of the underlying MDP is therefore crucial for the correct and efficient convergence of RL.
 
@@ -72,7 +72,7 @@ In this work, rewards are deterministic, i.e. they are assigned to states by the
 R' = R + F
 ```
 
- without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$. [[2]](#2)
+ without changing the optimal policy: By solving the modified MDP $M' = (S, A, T, \gamma, R')$ we also solve the original MDP $M$. [^2]
 
 With a naive goalkinematic potential
 
@@ -106,7 +106,7 @@ $$
 
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in multi-goal environments.
 
-In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timesteps) within Gymnasium's sparse *HandReach* environment [[3]](#3), where a robotic hand is trained to reach different coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
+In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timesteps) within Gymnasium's sparse *HandReach* environment [^3], where a robotic hand is trained to reach different coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
 
 ```math
 \begin{split}
@@ -130,7 +130,7 @@ by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline rewar
 [<img src="res/c1_goalprogress.png" />](res/c1_goalprogress.png) \
 **Fig. 1:** *Median test goalprogress by reward shaping (yellow and orange line) with interquartile range (IQR, shaded area) and mean AUC (±s.d., label)*
 
-Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [[2]](#2), which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
+Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [^2], which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
 
 
 > **Research Claim 2** (Goalderivative Reward Design)
@@ -175,9 +175,17 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 **Fig. 6:** *Median test success rate overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
 
-## Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Multi-Goal RL with Multi-Dimensional Goals)
+### Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand
 
 [<img src="res/case_study.gif" />](res/case_study.gif)
+[^4]
+
+* **goal-reduced** end-to-end RL
+* naive mapping between visually detected joints and robotic joints 
+* trained on 18 images of different gestures
+* tested on 4 images of unseen gestures (static imitation)
+* tested on webcam/video input with intermediate gestures (**fluent** imitation)
+
 
 ## Hyperparameters
 | Hyperparams | HandReach-v3 (Baseline) | HandReach-v3 (Reduced) | Case Study | Comment
@@ -251,8 +259,10 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * https://openai.com/index/ingredients-for-robotics-research/
 * https://wandb.ai/rodrigodelazcano/gym_robotics/runs/1s3fuwye?nw=nwuserrodrigodelazcano
 
-<a id="1">[1]</a> Barto, Andrew G. "Reinforcement learning: An introduction. by richard’s sutton." SIAM Rev 6.2 (2021): 423.
+[^1] Barto, Andrew G. "Reinforcement learning: An introduction. by richard’s sutton." SIAM Rev 6.2 (2021): 423.
 
-<a id="2">[2]</a> Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
+[^2] Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
 
-<a id="3">[3]</a> Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
+[^3] Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
+
+[^4] Screen-Recording of the training samples
