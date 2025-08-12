@@ -186,6 +186,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * tested on 4 images of unseen gestures (static imitation)
 * tested on webcam/video input with intermediate gestures (**fluent** imitation)
 
+[<img src="res/webcam_still.png" />](res/webcam_still.png)
 
 ## Hyperparameters
 | Hyperparams | HandReach-v3 (Baseline) | HandReach-v3 (Reduced) | Case Study | Comment
