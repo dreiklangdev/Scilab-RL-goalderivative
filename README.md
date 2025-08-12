@@ -259,10 +259,10 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * https://openai.com/index/ingredients-for-robotics-research/
 * https://wandb.ai/rodrigodelazcano/gym_robotics/runs/1s3fuwye?nw=nwuserrodrigodelazcano
 
-[^1] Barto, Andrew G. "Reinforcement learning: An introduction. by richard’s sutton." SIAM Rev 6.2 (2021): 423.
+[^1]: Barto, Andrew G. "Reinforcement learning: An introduction. by richard’s sutton." SIAM Rev 6.2 (2021): 423.
 
-[^2] Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
+[^2]: Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
 
-[^3] Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
+[^3]: Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
 
-[^4] Screen-Recording of the training samples
+[^4]: Screen-Recording of the training samples
