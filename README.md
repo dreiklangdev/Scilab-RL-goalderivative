@@ -169,10 +169,10 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 > [...]
 
 [<img src="res/c1234_goalprogress.png" />](res/c1234_goalprogress.png) \
-**Fig. 5:** *Median test goalprogress overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*
+**Fig. 5:** *Median test goalprogress (line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
 [<img src="res/c1234_successrate.png" />](res/c1234_successrate.png) \
-**Fig. 6:** *Median test success rate overview (line) with IQR (shaded area) and mean AUC (±s.d., label)*
+**Fig. 6:** *Median test success rate (mean goaldistance ≤ 1cm, line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
 
 ### Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand
