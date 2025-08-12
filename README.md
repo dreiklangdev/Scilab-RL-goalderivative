@@ -266,4 +266,4 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 
 [^3]: Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
 
-[^4]: Screen-Recording of some training samples after 1M training steps (~55k per gesture)
+[^4]: Screen-Recording of random training samples after 1M training steps (~55k per gesture)
