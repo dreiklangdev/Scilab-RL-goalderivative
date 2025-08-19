@@ -104,6 +104,14 @@ $$
 \end{cases} \qquad (d^{(k)} \in s_{DGS}) \\
 $$
 
+```python
+    phi = 0
+    if np.all(goalderivs < 0):
+        phi = 1
+    elif np.all(goalderivs > 0):
+        phi = -1
+```
+
 that type of reward hacking is less probable with higher order $k$ , since isolated goalderivatives are not rewarded anymore. Since they are also not penalized, exploration is allowed - this is especially beneficial in multi-goal environments.
 
 In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timesteps) within Gymnasium's sparse *HandReach* environment [^3], where a robotic hand is trained to reach different coordinates with its fingertips, the shaped reward ($k=3, \gamma = 0.95$)
@@ -137,6 +145,14 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 > 
 > In goal-oriented RL training towards an optimal policy, by designing rewards based on the DGS vector, the training can be more efficient.
 
+```python
+    reward = 0
+    if np.all(goalderivs < 0):
+        reward = 1
+    if np.all(goalderivs > 0):
+        reward = -1
+```
+
 [<img src="res/c2_goalprogress.png" />](res/c2_goalprogress.png) \
 **Fig. 2:** *Median test goalprogress by reward design (green line) with IQR (shaded area) and mean AUC (±s.d., label)*
 
@@ -146,6 +162,18 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 > 
 > In goal-oriented RL training towards an optimal policy, by adding goalkinematic information to the observation space, the training can be more efficient.
 
+```python
+    obs = np.concatenate(obs, [
+                    goaldist, # current eucl. distance
+                    goaldists_recent, # eucl. distances from prev. steps
+                    goalderivs, # k-derivatives of current eucl. distance
+
+                    goaldelta, # current difference in each goal dims.
+                    goaldeltas_recent, # differences from prev. steps
+                    goaldeltas_velocity # 1-derivatives in each dims. 
+                    ]) 
+```
+
 [<img src="res/c3_goalprogress.png" />](res/c3_goalprogress.png) \
 **Fig. 3:** *Median test goalprogress by obs. augmentation (red line) with interquartile range (shaded area) and mean AUC (±s.d., label)*
 
@@ -154,6 +182,20 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 > **Research Claim 4** (Goalkinematic Observation Reduction)
 > 
 > In goal-oriented RL training towards an optimal policy, by reducing the observation space to contain *only* goalkinematic information, the training can be successful, more efficient and more general.
+
+```python
+    obs = np.array([]) # empty observations
+
+    obs = np.concatenate(obs, [
+                    goaldist,
+                    goaldists_recent,
+                    goalderivs,
+
+                    goaldelta,
+                    goaldeltas_recent,
+                    goaldeltas_velocity 
+                    ]) 
+```
 
 [<img src="res/c4_goalprogress.png" />](res/c4_goalprogress.png) \
 **Fig. 4:** *Median test goalprogress by obs. reduction (purple line) with IQR (shaded area) and mean AUC (±s.d., label)*
