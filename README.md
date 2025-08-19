@@ -202,7 +202,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 
 [<img src="res/c4_design_reduced_noHer_10k_train.gif" />](res/c4_design_reduced_noHer_10k_train.gif) | [<img src="res/c4_design_reduced_noHer_500k_eval.gif" />](res/c4_design_reduced_noHer_500k_eval.gif) | 
 |:--:| :--:| 
-| *Real-time screen recording of rendered training steps directly after learning of the networks started for the first time (2:34 mins. wall-clock time, **progress from blank policy**)* | *Real-time screen recording of rendered evaluation steps after 500k training steps (**trained policy**)*
+| *Real-time screen recording of all rendered training steps directly after learning of the networks started for the first time (2:34 mins. wall-clock time, **progress from blank policy**)* | *Real-time screen recording of rendered evaluation steps after 500k training steps (ca. 60 mins. wall-clock time, **trained policy**)*
 
 [...]
 
