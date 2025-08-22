@@ -927,7 +927,7 @@ class HandImitationEnv(HumanoidEnv):
             # dont always look on the compass (else dependency/overfit) - only every k episode? less and less? (decaying)
             # NN learns to follow/"feel" compass other than rely on positional obs (ie. in sparse mode), if derivative compass data is in obs/observed?! (positional overfit minimized (eliminated?): new (goal) generality level)
             if self.fep_is_dense: # compass, else sparse
-                if np.all(achieved_goal[1:] < 0): 
+                if np.all(achieved_goal[1:] < 0):
                     reward = 1
                 #     reward = (1 + meandist_inv) # closer -> larger
 

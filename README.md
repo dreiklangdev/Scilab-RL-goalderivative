@@ -10,7 +10,7 @@ This repository researches into possible improvements to Goal-Oriented Reinforce
 
 The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
 
-Keywords: Deep Reinforcement Learning, Robotics
+<sub>Keywords: Deep Reinforcement Learning, Robotics</sub>
 
 > <i><p align="right">"Der Weg ist das Ziel."</i></p>
 
@@ -136,7 +136,7 @@ by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline rewar
 
 
 [<img src="res/c1_goalprogress.png" />](res/c1_goalprogress.png) \
-**Fig. 1:** *Median test goalprogress by reward shaping (yellow and orange line) with interquartile range (IQR, shaded area) and mean AUC (±s.d., label)*
+<sub>**Fig. 1:** Median test goalprogress by reward shaping (yellow and orange line) with interquartile range (IQR, shaded area) and mean AUC (±s.d., label)</sub>
 
 Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [^2], which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
 
@@ -154,7 +154,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 ```
 
 [<img src="res/c2_goalprogress.png" />](res/c2_goalprogress.png) \
-**Fig. 2:** *Median test goalprogress by reward design (green line) with IQR (shaded area) and mean AUC (±s.d., label)*
+<sub>**Fig. 2:** Median test goalprogress by reward design (green line) with IQR (shaded area) and mean AUC (±s.d., label)</sub>
 
 [...]
 
@@ -175,7 +175,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 ```
 
 [<img src="res/c3_goalprogress.png" />](res/c3_goalprogress.png) \
-**Fig. 3:** *Median test goalprogress by obs. augmentation (red line) with interquartile range (shaded area) and mean AUC (±s.d., label)*
+<sub>**Fig. 3:** Median test goalprogress by obs. augmentation (red line) with interquartile range (shaded area) and mean AUC (±s.d., label)</sub>
 
 [...]
 
@@ -198,11 +198,11 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 ```
 
 [<img src="res/c4_goalprogress.png" />](res/c4_goalprogress.png) \
-**Fig. 4:** *Median test goalprogress by obs. reduction (purple line) with IQR (shaded area) and mean AUC (±s.d., label)*
+<sub>**Fig. 4:** Median test goalprogress by obs. reduction (purple line) with IQR (shaded area) and mean AUC (±s.d., label)</sub>
 
 [<img src="res/c4_design_reduced_noHer_10k_train.gif" />](res/c4_design_reduced_noHer_10k_train.gif) | [<img src="res/c4_design_reduced_noHer_500k_eval.gif" />](res/c4_design_reduced_noHer_500k_eval.gif) | 
 |:--:| :--:| 
-| *Real-time screen recording of all rendered training steps directly after learning of the networks started for the first time (2:34 mins. wall-clock time, **progress from blank policy**)* | *Real-time screen recording of rendered evaluation steps after 500k training steps (ca. 60 mins. wall-clock time, **trained policy**)*
+| <sub>Real-time screen recording of 9k rendered training steps directly after learning of the networks started for the first time (2:34 mins. wall-clock time, **progress from blank policy**)</sub> | <sub>Real-time screen recording of rendered evaluation steps after 500k training steps (ca. 60 mins. wall-clock time, **trained policy**)</sub>
 
 [...]
 
@@ -211,16 +211,13 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 > [...]
 
 [<img src="res/c1234_goalprogress.png" />](res/c1234_goalprogress.png) \
-**Fig. 5:** *Median test goalprogress (line) with IQR (shaded area) and mean AUC (±s.d., label)*
+<sub>**Fig. 5:** Median test goalprogress (line) with IQR (shaded area) and mean AUC (±s.d., label)</sub>
 
 [<img src="res/c1234_successrate.png" />](res/c1234_successrate.png) \
-**Fig. 6:** *Median test success rate (mean goaldistance ≤ 1cm, line) with IQR (shaded area) and mean AUC (±s.d., label)*
+<sub>**Fig. 6:** Median test success rate (mean goaldistance ≤ 1cm, line) with IQR (shaded area) and mean AUC (±s.d., label)</sub>
 
 
 ### Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand
-
-[<img src="res/case_study.gif" />](res/case_study.gif)
-[^4]
 
 * **goal-reduced** end-to-end RL
 * naive mapping between visually detected joints and robotic joints 
@@ -228,7 +225,15 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 * tested on 4 images of unseen gestures (static imitation)
 * tested on webcam/video input with intermediate gestures (**fluent** imitation)
 
+[<img src="res/case_study_singlegesture_progress_from_blank.gif" />](res/case_study_singlegesture_progress_from_blank.gif)
+<sub>Real-time screen recording of 15k rendered training steps directly after learning of the networks started for the first time (**progress from blank policy with a single gesture**)</sub>
+
+[<img src="res/case_study.gif" />](res/case_study.gif)
+<sub>Real-time screen recording of rendered evaluation steps after 1M training steps (~55k steps per gesture, **trained policy with random evaluation samples**)</sub>
+
+
 [<img src="res/webcam_still.png" />](res/webcam_still.png)
+
 
 ## Hyperparameters
 | Hyperparams | HandReach-v3 (Baseline) | HandReach-v3 (Reduced) | Case Study | Comment
@@ -307,5 +312,3 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 [^2]: Ng, Andrew Y., Daishi Harada, and Stuart Russell. "Policy invariance under reward transformations: Theory and application to reward shaping." Icml. Vol. 99. 1999.
 
 [^3]: Plappert, Matthias, et al. "Multi-goal reinforcement learning: Challenging robotics environments and request for research." arXiv preprint arXiv:1802.09464 (2018).
-
-[^4]: Screen-Recording of random training samples after 1M training steps (~55k per gesture)
