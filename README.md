@@ -123,7 +123,7 @@ In 5 simulations à 50 epochs (one epoch consists of 200 episodes à 50 timestep
 \end{split}
 ```
 
-increased the training **sample efficiency**, defined as the area under the curve (AUC) of the test *goalprogress*
+increased the training **sample efficiency**, defined as the mean area under the curve (AUC) of the test *goalprogress*
 
 ```math
 \begin{split}
