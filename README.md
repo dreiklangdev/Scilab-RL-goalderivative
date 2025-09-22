@@ -24,13 +24,13 @@ The probed improvements include sample-efficiency during training and generality
 
 ## Contents
 
-* [Definition](#definition)
-* [Goalderivative Potential-Based Reward Shaping](#goalderivative-potential-based-reward-shaping)
+0. [Definition](#definition)
+1. [Goalderivative Potential-Based Reward Shaping](#goalderivative-potential-based-reward-shaping)
 
-* [Goalderivative Reward Design](#goalderivative-reward-design)
-* [Goalkinematic Observation Augmentation](#goalkinematic-observation-augmentation)
-* [Goalkinematic Observation Reduction](#goalkinematic-observation-reduction)
-* [Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Case Study)](#fluent-visual-imitation-of-hand-gestures-by-a-robotic-hand-case-study)
+2. [Goalderivative Reward Design](#goalderivative-reward-design)
+3. [Goalkinematic Observation Augmentation](#goalkinematic-observation-augmentation)
+4. [Goalkinematic Observation Reduction](#goalkinematic-observation-reduction)
+5. [Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Case Study)](#fluent-visual-imitation-of-hand-gestures-by-a-robotic-hand-case-study)
 
 
 
