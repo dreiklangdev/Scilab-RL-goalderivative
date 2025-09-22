@@ -1,14 +1,17 @@
 
 
-# (Research) Reward and Observe Higher-Order Goalderivatives (2025)
+# Reward and Observe Higher-Order Goalderivatives (2025)
 
 Nhu Huy Le \
 Hamburg University of Technology
 
 
-This repository researches into possible improvements to Goal-Oriented Reinforcement Learning (RL) by evaluating the **Differential Goalkinematic State (DGS)**, whose components are based on the distance to the goal - in the following called goal-directed derivatives or simply *goalderivatives*.
+This repository researches into possible improvements to Goal-Oriented Reinforcement Learning (RL) by evaluating the *Differential Goalkinematic State (DGS)*, whose components are based on the distance to the goal - in the following called goal-directed derivatives or simply *goalderivatives*.
 
 The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
+
+
+**Goalderivatives can reduce the number of training samples by factor $6$ (*reward shaped*), factor $14$ (*reward designed*) or factor $20$ (*observation augmented/reduced*) compared to sparse RL environments.**
 
 <sub>Keywords: Deep Reinforcement Learning, Robotics</sub>
 
@@ -17,6 +20,21 @@ The probed improvements include sample-efficiency during training and generality
 ---
 
 [<img src="res/goalderivs.gif" width="100%"/>](res/goalderivs.gif)
+
+
+## Contents
+
+* [Definition](#definition)
+* [Goalderivative Potential-Based Reward Shaping](#goalderivative-potential-based-reward-shaping)
+
+* [Goalderivative Reward Design](#goalderivative-reward-design)
+* [Goalkinematic Observation Augmentation](#goalkinematic-observation-augmentation)
+* [Goalkinematic Observation Reduction](#goalkinematic-observation-reduction)
+* [Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Case Study)](#fluent-visual-imitation-of-hand-gestures-by-a-robotic-hand-case-study)
+
+
+
+## Definition
 
 A **goalderivative** $d^{(k)}$ of order $k>1$ is the rate of change in the scalar distance $d$ (specific to e.g. the $L²$-norm) or its derivatives (velocity $d^{(1)}$, acceleration $d^{(2)}$, jerk $d^{(3)}$ etc.) *towards* a numerically defined goal.
 
@@ -61,8 +79,9 @@ of experienced **rewards** $\{r', r'',\dots\} \subseteq R$ from its next states 
 
 The result is an optimal **policy** $\pi^* : S \to A$ that assigns to each state its optimal action. Note that a higher-level goal is not formalized in the MDP - its optimality does not ensure the objective success in reaching (or keeping) an indirect goal. Careful and effective design of the underlying MDP is therefore crucial for the correct and efficient convergence of RL.
 
+## Goalderivative Potential-Based Reward Shaping
 
-> **Research Claim 1** (Goalderivative Potential-Based Reward Shaping)
+> **Research Claim 1**
 > 
 > In goal-oriented RL training towards an optimal policy, by adding to the existent rewards a potential-based shaping term based on the DGS vector, the training can be more efficient without changing the original optimal policy.
 
@@ -140,8 +159,9 @@ by factor **2.75** (Fig. 1: yellow line) compared to the unshaped baseline rewar
 
 Note: With potential-based shaping, this claim theoretically requires that the goaldistance and the DGS are part of the observable state space [^2], which is a separate focus in this research. However, in the experiments, the efficiency gains with non-observable goaldistance and DGS were even greater with factor **6** (Fig. 1: orange line) compared to the baseline, i.e. possibly justifying the violation of the Markov assumption.
 
+## Goalderivative Reward Design
 
-> **Research Claim 2** (Goalderivative Reward Design)
+>  **Research Claim 2**
 > 
 > In goal-oriented RL training towards an optimal policy, by designing rewards based on the DGS vector, the training can be more efficient.
 
@@ -158,7 +178,9 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 
 [...]
 
-> **Research Claim 3** (Goalkinematic Observation Augmentation)
+## Goalkinematic Observation Augmentation
+
+> **Research Claim 3**
 > 
 > In goal-oriented RL training towards an optimal policy, by adding goalkinematic information to the observation space, the training can be more efficient.
 
@@ -179,7 +201,9 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 
 [...]
 
-> **Research Claim 4** (Goalkinematic Observation Reduction)
+## Goalkinematic Observation Reduction
+
+> **Research Claim 4**
 > 
 > In goal-oriented RL training towards an optimal policy, by reducing the observation space to contain *only* goalkinematic information, the training can be successful, more efficient and more general.
 
@@ -217,7 +241,7 @@ Note: With potential-based shaping, this claim theoretically requires that the g
 <sub>**Fig. 6:** Median test success rate (mean goaldistance ≤ 1cm, line) with IQR (shaded area) and mean AUC (±s.d., label)</sub>
 
 
-### Case Study: Fluent Visual Imitation of Hand Gestures by a Robotic Hand
+## Fluent Visual Imitation of Hand Gestures by a Robotic Hand (Case Study)
 
 * **goal-reduced** end-to-end RL
 * naive mapping between visually detected joints and robotic joints 
