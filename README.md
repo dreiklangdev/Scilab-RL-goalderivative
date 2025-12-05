@@ -11,7 +11,7 @@ This repository researches into possible improvements to Goal-Oriented Reinforce
 The probed improvements include sample-efficiency during training and generality of the resulting policy to unseen goals.
 
 
-**Goalderivatives can reduce the number of training samples by factor $6$ (*reward shaped*), factor $14$ (*reward designed*) or factor $20$ (*observation augmented/reduced*) compared to sparse RL environments.**
+**Goalderivatives can speed-up the training by factor $6$ (*reward shaped*), factor $14$ (*reward designed*) or factor $20$ (*observation augmented/reduced*) compared to sparse RL environments.**
 
 <sub>Keywords: Deep Reinforcement Learning, Robotics</sub>
 
