@@ -167,6 +167,8 @@ def smooth_iqr(multidata):
 
 # HAND REACH ======================= (sorted by performance)
 
+# GP=goalprogress, SR=successrate
+
 GP_sparse_HER_unobs_baseline = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-29-31/goalprogress.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/09c63aa/shaped-handreach-v3/16-33-58/goalprogress.dat',
@@ -276,6 +278,9 @@ SR_redesigned_reduced = smooth_iqr([
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/11-37-44/success_rate.dat',
     '/home/t14/Documents/tuhh/dsf/Scilab-RL/data/dc09a61/shaped-handreach-v3/12-26-35/success_rate.dat',
 ])
+
+# GP - redesigned_reduced: total progress only: not solving!
+# /home/t14/Documents/tuhh/dsf/Scilab-RL/data/9785a8a/shaped-handreach-v3/12-10-35/rl_model_finished
 
 
 # all = { # c1-obs

@@ -36,21 +36,22 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         if obs_desired.size == 0:
             obs_desired = np.zeros(15)
 
-        goaldelta = np.array([])
+        goaldeltas = np.array([])
         goaldeltas_recent = np.array([])
-        goaldeltas_velocity = np.array([])
+        goaldeltas_velo = np.array([])
 
         goaldist = -1
         goaldists_recent = np.array([])
         goaldistdeltas = np.array([])
 
         goalderivs = np.array([])
+        goalvelos = np.array([])
 
 
-        goaldelta = obs_achieved - obs_desired
-        self.goaldeltas.append(goaldelta)
+        goaldeltas = obs_achieved - obs_desired
+        self.goaldeltas.append(goaldeltas)
 
-        goaldist = np.linalg.norm(goaldelta, axis=-1)
+        goaldist = np.linalg.norm(goaldeltas, axis=-1)
         self.goaldists.append(goaldist)
 
 
@@ -58,13 +59,16 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         if order > 0:
             goaldeltas_recent = np.array(self.goaldeltas[-(order + 1):]) # only enough recent goaldists for all orders
             goaldeltas_recent = np.pad(goaldeltas_recent, ((max(0, order + 1 - len(goaldeltas_recent)),0), (0,0))) # fill up with starting 0s if not enough
-            goaldeltas_velocity = np.diff(goaldeltas_recent, axis=0)
+            goaldeltas_velo = np.diff(goaldeltas_recent, axis=0)
+            goaldeltas_acc = np.diff(goaldeltas_recent, axis=0)
 
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
             for i in range(1, order + 1):
                 goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
+                if order == 1:
+                    goalvelos = np.append(goalvelos, goaldistdeltas[-1]) # front
 
 
         # obs reduce
@@ -75,13 +79,19 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         # full-obs
         IS_OBS_AUG = True
         if IS_OBS_AUG:
-            obs = np.append(obs, goaldelta)
-            obs = np.append(obs, goaldeltas_recent)
-            obs = np.append(obs, goaldeltas_velocity)
 
-            obs = np.append(obs, goaldist)
-            obs = np.append(obs, goaldists_recent)
+            # maingoal space
+            obs = np.append(obs, goaldist) # +c constant (offset)
+            # obs = np.append(obs, goaldists_recent) # not necessary? (NN can infer integration)
             obs = np.append(obs, goalderivs)
+            # obs = np.append(obs, goalvelos) # only? (not working)
+
+            # subgoal space
+            obs = np.append(obs, goaldeltas)
+            # obs = np.append(obs, goaldeltas_recent)
+            obs = np.append(obs, goaldeltas_velo)
+            # obs = np.append(obs, goaldeltas_acc)
+
 
         # dgs-obs
         IS_OBS_DGS = False

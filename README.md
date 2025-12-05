@@ -26,7 +26,6 @@ The probed improvements include sample-efficiency during training and generality
 
 0. [Definition](#definition)
 1. [Goalderivative Potential-Based Reward Shaping](#goalderivative-potential-based-reward-shaping)
-
 2. [Goalderivative Reward Design](#goalderivative-reward-design)
 3. [Goalkinematic Observation Augmentation](#goalkinematic-observation-augmentation)
 4. [Goalkinematic Observation Reduction](#goalkinematic-observation-reduction)
