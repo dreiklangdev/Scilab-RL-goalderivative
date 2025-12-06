@@ -110,11 +110,6 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         elif np.all(goalderivs > 0):
             self.step_phi = -1
 
-        # if (goalderivs[0] < 0) and np.all(goalderivs[1:] > 0): # reward slow down towards goal (instead of old version: speed up towards goal)
-        #     self.step_phi = 1
-        # elif np.all(goalderivs > 0):
-        #     self.step_phi = -1
-
         return observation
     
 
