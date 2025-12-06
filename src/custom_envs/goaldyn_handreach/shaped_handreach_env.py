@@ -45,8 +45,6 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         goaldistdeltas = np.array([])
 
         goalderivs = np.array([])
-        goalvelos = np.array([])
-
 
         goaldeltas = obs_achieved - obs_desired
         self.goaldeltas.append(goaldeltas)
@@ -60,15 +58,13 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             goaldeltas_recent = np.array(self.goaldeltas[-(order + 1):]) # only enough recent goaldists for all orders
             goaldeltas_recent = np.pad(goaldeltas_recent, ((max(0, order + 1 - len(goaldeltas_recent)),0), (0,0))) # fill up with starting 0s if not enough
             goaldeltas_velo = np.diff(goaldeltas_recent, axis=0)
-            goaldeltas_acc = np.diff(goaldeltas_recent, axis=0)
+            goaldeltas_acc = np.diff(goaldeltas_velo, axis=0)
 
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
             for i in range(1, order + 1):
                 goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
                 goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
-                if order == 1:
-                    goalvelos = np.append(goalvelos, goaldistdeltas[-1]) # front
 
 
         # obs reduce
@@ -80,11 +76,14 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         IS_OBS_AUG = True
         if IS_OBS_AUG:
 
+            # k = 10 # override past history length? (might be best at order+1 anyway)
+            # goaldists_recent = np.pad(self.goaldists[-k:], (max(0, k - len(self.goaldists[-k:])),0))
+            # goaldeltas_recent = np.pad(self.goaldeltas[-k:], ((max(0, k - len(self.goaldeltas[-k:])),0), (0,0))) # fill up with starting 0s if not enough
+
             # maingoal space
-            obs = np.append(obs, goaldist) # +c constant (offset)
-            # obs = np.append(obs, goaldists_recent) # not necessary? (NN can infer integration)
-            obs = np.append(obs, goalderivs)
-            # obs = np.append(obs, goalvelos) # only? (not working)
+            obs = np.append(obs, goaldist) # +c constant (offset) # at least one recent 
+            # obs = np.append(obs, goaldists_recent) # recent positions (NN can infer integrations/differences, but alone might affect generality)
+            obs = np.append(obs, goalderivs) # (higher) goaldynamics might improve generality
 
             # subgoal space
             obs = np.append(obs, goaldeltas)
