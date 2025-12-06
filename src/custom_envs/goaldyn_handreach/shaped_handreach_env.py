@@ -105,10 +105,15 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
         # boolphi
         self.step_phi = 0
-        if np.all(goalderivs < 0):
+        if np.all(goalderivs[::2] < 0) and np.all(goalderivs[1::2] > 0): # reward slow down every derivative towards goal (instead of wrong old version: slowing down only every second derivative)
             self.step_phi = 1
         elif np.all(goalderivs > 0):
             self.step_phi = -1
+
+        # if (goalderivs[0] < 0) and np.all(goalderivs[1:] > 0): # reward slow down towards goal (instead of old version: speed up towards goal)
+        #     self.step_phi = 1
+        # elif np.all(goalderivs > 0):
+        #     self.step_phi = -1
 
         return observation
     
