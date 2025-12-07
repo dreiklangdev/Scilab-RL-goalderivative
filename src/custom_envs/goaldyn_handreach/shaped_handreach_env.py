@@ -17,7 +17,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
     def __init__(self, is_render=False, is_eval=False, submodels=None):
         self.is_render = is_render
         self.is_eval = is_eval
-        self.goaldeltas = []
+        self.subdists = []
         self.goaldists = []
         self.goalprogress = 0
         self.rewardsum = 0
@@ -36,35 +36,36 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         if obs_desired.size == 0:
             obs_desired = np.zeros(15)
 
-        goaldeltas = np.array([])
-        goaldeltas_recent = np.array([])
-        goaldeltas_velo = np.array([])
+        subdists = np.array([])
+        subdists_recent = np.array([])
+        subdists_velo = np.array([])
+        subdists_acc = np.array([])
 
         goaldist = -1
         goaldists_recent = np.array([])
-        goaldistdeltas = np.array([])
+        goaldistdiffs = np.array([])
 
         goalderivs = np.array([])
 
-        goaldeltas = obs_achieved - obs_desired
-        self.goaldeltas.append(goaldeltas)
+        subdists = obs_achieved - obs_desired
+        self.subdists.append(subdists)
 
-        goaldist = np.linalg.norm(goaldeltas, axis=-1)
+        goaldist = np.linalg.norm(subdists, axis=-1)
         self.goaldists.append(goaldist)
 
 
         order = ORDER_GOALDYNAMICS
         if order > 0:
-            goaldeltas_recent = np.array(self.goaldeltas[-(order + 1):]) # only enough recent goaldists for all orders
-            goaldeltas_recent = np.pad(goaldeltas_recent, ((max(0, order + 1 - len(goaldeltas_recent)),0), (0,0))) # fill up with starting 0s if not enough
-            goaldeltas_velo = np.diff(goaldeltas_recent, axis=0)
-            goaldeltas_acc = np.diff(goaldeltas_velo, axis=0)
+            subdists_recent = np.array(self.subdists[-(order + 1):]) # only enough recent goaldists for all orders
+            subdists_recent = np.pad(subdists_recent, ((max(0, order + 1 - len(subdists_recent)),0), (0,0))) # fill up with starting 0s if not enough
+            subdists_velo = np.diff(subdists_recent, axis=0)
+            subdists_acc = np.diff(subdists_velo, axis=0)
 
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
             for i in range(1, order + 1):
-                goaldistdeltas = np.append(goaldistdeltas, np.diff(goaldists_recent, n=i, axis=0))
-                goalderivs = np.append(goalderivs, goaldistdeltas[-1]) # front
+                goaldistdiffs = np.append(goaldistdiffs, np.diff(goaldists_recent, n=i, axis=0))
+                goalderivs = np.append(goalderivs, goaldistdiffs[-1]) # front
 
 
         # obs reduce
@@ -78,18 +79,19 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
             # k = 10 # override past history length? (might be best at order+1 anyway)
             # goaldists_recent = np.pad(self.goaldists[-k:], (max(0, k - len(self.goaldists[-k:])),0))
-            # goaldeltas_recent = np.pad(self.goaldeltas[-k:], ((max(0, k - len(self.goaldeltas[-k:])),0), (0,0))) # fill up with starting 0s if not enough
+            # subdists_recent = np.pad(self.subdists[-k:], ((max(0, k - len(self.subdists[-k:])),0), (0,0))) # fill up with starting 0s if not enough
 
             # maingoal space
-            obs = np.append(obs, goaldist) # +c constant (offset) # at least one recent 
-            # obs = np.append(obs, goaldists_recent) # recent positions (NN can infer integrations/differences, but alone might affect generality)
-            obs = np.append(obs, goalderivs) # (higher) goaldynamics might improve generality
+            obs = np.append(obs, goaldist) # +c constant (offset) # at least one recent (NN can infer more recent goaldists. by integration with given goalderivs.)
+            # obs = np.append(obs, goaldists_recent) # recent positions for inferring goalderivs. on its own (but might affect generality,speed)
+            obs = np.append(obs, goalderivs) # given pre-computed goaldynamics might improve generality,speed
 
             # subgoal space
-            obs = np.append(obs, goaldeltas)
-            # obs = np.append(obs, goaldeltas_recent)
-            obs = np.append(obs, goaldeltas_velo)
-            # obs = np.append(obs, goaldeltas_acc)
+            obs = np.append(obs, subdists)
+            # obs = np.append(obs, subdists_recent)
+            # TODO more subderivs? (improves stability,convergence,speed?! how about generality?)
+            obs = np.append(obs, subdists_velo)
+            obs = np.append(obs, subdists_acc)
 
 
         # dgs-obs
@@ -188,7 +190,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         self.outfile_goalprogresses.write('%s\n' % (self.goalprogress))
         self.outfile_goalprogresses.flush()
 
-        self.goaldeltas = []
+        self.subdists = []
         self.goaldists = []
         self.rewardsum = 0
         self.step_phi = np.zeros(ORDER_GOALDYNAMICS)
