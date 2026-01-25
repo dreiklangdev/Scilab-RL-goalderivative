@@ -1,13 +1,41 @@
 name: 'cleanppo'
-learning_rate: 3e-4
-n_steps: 2048
-batch_size: 64 # The batch size for the training
-n_epochs: 10 # These are the training epochs for the neural network training, not the rollout epochs (these are in main.yaml)
-gamma: 0.99
-gae_lambda: 0.95
-clip_range: 0.2
-clip_range_vf: null
-normalize_advantage: true
-ent_coef: 0.0
-vf_coef: 0.5
-max_grad_norm: 0.5
+
+policy_kwargs:
+  # net_arch:
+  #   - 512
+  #   - 512
+  #   - 256
+  net_arch:
+    - 256
+    - 256
+    - 128
+  # use_sde: False
+  activation_fn: relu
+  # optimizer_kwargs:
+  #   weight_decay:
+  #     1e-4
+
+# https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml
+# normalize: true
+# n_envs: 1
+# n_timesteps: !!float 1e7
+batch_size: 256
+n_steps: 512
+# gamma: 0.99
+gamma: 0.5
+# learning_rate: 3.56987e-05
+# learning_rate: 0.001
+learning_rate: 0.0005 # reach
+ent_coef: 0
+# ent_coef: 0.00238306
+clip_range: 0.3
+# n_epochs: 5
+gae_lambda: 0.9
+max_grad_norm: 2
+vf_coef: 0.431892
+# policy_kwargs: "dict(
+#                   log_std_init=-2,
+#                   ortho_init=False,
+#                   activation_fn=nn.ReLU,
+#                   net_arch=dict(pi=[256, 256], vf=[256, 256])
+#                 )"

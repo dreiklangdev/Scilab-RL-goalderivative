@@ -3,6 +3,20 @@ name: 'ppo'
 verbose: True
 
 policy: 'MultiInputPolicy' # use MlpPolicy when not using an environment with DictObs
+policy_kwargs:
+  # net_arch:
+  #   - 512
+  #   - 512
+  #   - 256
+  net_arch:
+    - 256
+    - 256
+    - 128
+  # use_sde: False
+  activation_fn: relu
+  # optimizer_kwargs:
+  #   weight_decay:
+  #     1e-4
 
 # from clean-ppo
 # learning_rate: 3e-4
@@ -24,10 +38,13 @@ policy: 'MultiInputPolicy' # use MlpPolicy when not using an environment with Di
 # n_timesteps: !!float 1e7
 batch_size: 256
 n_steps: 512
-gamma: 0.99
+# gamma: 0.99
+gamma: 0.5
 # learning_rate: 3.56987e-05
-learning_rate: 0.001
-ent_coef: 0.00238306
+# learning_rate: 0.001
+learning_rate: 0.0005 # reach
+ent_coef: 0
+# ent_coef: 0.00238306
 clip_range: 0.3
 # n_epochs: 5
 gae_lambda: 0.9
