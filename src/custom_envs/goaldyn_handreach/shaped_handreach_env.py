@@ -38,8 +38,8 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
         subdists = np.array([])
         subdists_recent = np.array([])
-        subdists_velo = np.array([])
-        subdists_acc = np.array([])
+        subdists_velos_recent = np.array([])
+        subdists_accs_recent = np.array([])
 
         goaldist = -1
         goaldists_recent = np.array([])
@@ -58,8 +58,9 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         if order > 0:
             subdists_recent = np.array(self.subdists[-(order + 1):]) # only enough recent goaldists for all orders
             subdists_recent = np.pad(subdists_recent, ((max(0, order + 1 - len(subdists_recent)),0), (0,0))) # fill up with starting 0s if not enough
-            subdists_velo = np.diff(subdists_recent, axis=0)
-            subdists_acc = np.diff(subdists_velo, axis=0)
+            subdists_velos_recent = np.diff(subdists_recent, axis=0)
+            subdists_accs_recent = np.diff(subdists_velos_recent, axis=0)
+            subdists_jerks_recent = np.diff(subdists_accs_recent, axis=0)
 
             goaldists_recent = np.array(self.goaldists[-(order + 1):]) # only enough recent goaldists for all orders
             goaldists_recent = np.pad(goaldists_recent, (max(0, order + 1 - len(goaldists_recent)),0)) # fill up with starting 0s if not enough
@@ -90,8 +91,12 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
             obs = np.append(obs, subdists)
             # obs = np.append(obs, subdists_recent)
             # TODO more subderivs? (improves stability,convergence,speed?! how about generality?)
-            obs = np.append(obs, subdists_velo)
-            obs = np.append(obs, subdists_acc)
+            # obs = np.append(obs, subdists_velos_recent)
+            # obs = np.append(obs, subdists_accs_recent)
+            # obs = np.append(obs, subdists_jerks_recent)
+            obs = np.append(obs, subdists_velos_recent[-1])
+            obs = np.append(obs, subdists_accs_recent[-1])
+            obs = np.append(obs, subdists_jerks_recent[-1])
 
 
         # dgs-obs
