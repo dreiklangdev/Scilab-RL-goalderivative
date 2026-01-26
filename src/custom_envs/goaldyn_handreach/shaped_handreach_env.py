@@ -104,7 +104,7 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
 
         self.step_goalderivs = goalderivs
 
-        # boolphi
+        # boolphi (only shaping!)
         self.step_phi = 0
         if np.all(goalderivs[::2] < 0) and np.all(goalderivs[1::2] > 0): # reward slow down every derivative towards goal (instead of wrong old version: slowing down only every second derivative)
             self.step_phi = 1
@@ -153,12 +153,20 @@ class ShapedHandReachEnv(MujocoHandReachEnv):
         IS_REWARD_REDESIGN = True
         if IS_REWARD_REDESIGN:
             reward = 0
-            # soft vs. hard dynamics ("get close fast")
-            if np.all(self.step_goalderivs < 0):
+
+             # reward slow down every derivative towards goal
+            if np.all(self.step_goalderivs[::2] < 0) and np.all(self.step_goalderivs[1::2] > 0):
                 reward = 1
-            # else:
-            if np.all(self.step_goalderivs > 0):
+            elif np.all(self.step_goalderivs > 0):
                 reward = -1
+
+            # vs.
+            # reward some speed up towards goal ("get close faster")
+            # if np.all(self.step_goalderivs < 0):
+            #     reward = 1
+            # # else:
+            # if np.all(self.step_goalderivs > 0):
+            #     reward = -1
 
 
         # if info['is_success']:
